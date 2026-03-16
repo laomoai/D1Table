@@ -19,7 +19,7 @@
   <a
     v-else-if="fieldType === 'email' && value"
     :href="`mailto:${value}`"
-    class="cell-link"
+    :class="detail ? 'cell-link--full' : 'cell-link'"
     @click.stop
   >{{ value }}</a>
 
@@ -29,7 +29,7 @@
     :href="String(value)"
     target="_blank"
     rel="noopener noreferrer"
-    class="cell-link"
+    :class="detail ? 'cell-link--full' : 'cell-link'"
     @click.stop
   >{{ value }}</a>
 
@@ -43,16 +43,34 @@
   <span v-else-if="fieldType === 'percent'" class="cell-number">{{ percentVal }}</span>
 
   <!-- date -->
-  <span v-else-if="fieldType === 'date'" class="cell-text">{{ dateVal }}</span>
+  <span v-else-if="fieldType === 'date'" :class="detail ? 'cell-text--full' : 'cell-text'">{{ dateVal }}</span>
 
   <!-- datetime -->
-  <span v-else-if="fieldType === 'datetime'" class="cell-text">{{ datetimeVal }}</span>
+  <span v-else-if="fieldType === 'datetime'" :class="detail ? 'cell-text--full' : 'cell-text'">{{ datetimeVal }}</span>
 
   <!-- longtext -->
-  <span v-else-if="fieldType === 'longtext'" class="cell-longtext">{{ value }}</span>
+  <a
+    v-else-if="fieldType === 'longtext' && detail && isUrl(value)"
+    :href="String(value)" target="_blank" rel="noopener noreferrer"
+    class="cell-link--full"
+    @click.stop
+  >{{ value }}</a>
+  <span v-else-if="fieldType === 'longtext'" :class="detail ? 'cell-longtext--full' : 'cell-longtext'">{{ value }}</span>
 
   <!-- text (default) -->
-  <span v-else class="cell-text">{{ value }}</span>
+  <a
+    v-else-if="detail && isUrl(value)"
+    :href="String(value)" target="_blank" rel="noopener noreferrer"
+    class="cell-link--full"
+    @click.stop
+  >{{ value }}</a>
+  <a
+    v-else-if="detail && isEmail(value)"
+    :href="`mailto:${value}`"
+    class="cell-link--full"
+    @click.stop
+  >{{ value }}</a>
+  <span v-else :class="detail ? 'cell-text--full' : 'cell-text'">{{ value }}</span>
 </template>
 
 <script setup lang="ts">
@@ -63,6 +81,7 @@ const props = defineProps<{
   value: unknown
   fieldType: FieldType
   selectOptions?: SelectOption[] | null
+  detail?: boolean
 }>()
 
 const isEmpty = computed(() => props.value === null || props.value === undefined || props.value === '')
@@ -100,6 +119,19 @@ const percentVal = computed(() => {
   return n.toLocaleString('zh-CN') + '%'
 })
 
+function isUrl(v: unknown): boolean {
+  if (!v) return false
+  try {
+    const u = new URL(String(v))
+    return u.protocol === 'http:' || u.protocol === 'https:'
+  } catch { return false }
+}
+
+function isEmail(v: unknown): boolean {
+  if (!v) return false
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(v))
+}
+
 function toDate(v: unknown): Date | null {
   if (!v) return null
   const n = Number(v)
@@ -132,6 +164,7 @@ const datetimeVal = computed(() => {
 .cell-empty {
   color: #ccc;
 }
+/* 表格模式：截断 */
 .cell-text {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -147,11 +180,6 @@ const datetimeVal = computed(() => {
   white-space: normal;
   line-height: 1.4;
 }
-.cell-number {
-  display: block;
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-}
 .cell-link {
   color: #4f6ef7;
   text-decoration: none;
@@ -162,6 +190,33 @@ const datetimeVal = computed(() => {
 }
 .cell-link:hover {
   text-decoration: underline;
+}
+/* 详情模式：完整显示 */
+.cell-text--full {
+  display: block;
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.6;
+}
+.cell-longtext--full {
+  display: block;
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.6;
+}
+.cell-link--full {
+  color: #4f6ef7;
+  text-decoration: none;
+  word-break: break-all;
+  display: block;
+}
+.cell-link--full:hover {
+  text-decoration: underline;
+}
+.cell-number {
+  display: block;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 .cell-check-on {
   color: #18a058;

@@ -65,7 +65,7 @@
 
         <!-- select -->
         <n-select
-          v-else-if="field.field_type === 'select' && field.select_options?.length"
+          v-else-if="field.field_type === 'select'"
           :value="formData[field.column_name] as string"
           @update:value="(v: string) => formData[field.column_name] = v"
           :options="(field.select_options ?? []).map(o => ({ label: o.label, value: o.value }))"

@@ -78,10 +78,11 @@
               />
               <!-- select -->
               <n-select
-                v-else-if="field.field_type === 'select' && field.select_options?.length"
+                v-else-if="field.field_type === 'select'"
                 :value="editData[field.column_name] as string"
                 @update:value="(v: string) => editData[field.column_name] = v"
                 :options="(field.select_options ?? []).map(o => ({ label: o.label, value: o.value }))"
+                placeholder="Select..."
                 clearable
                 style="width:100%"
               />
@@ -91,10 +92,26 @@
                 :value="editData[field.column_name] as string"
                 @update:value="(v: string) => editData[field.column_name] = v"
                 type="textarea"
-                :rows="3"
+                :rows="4"
                 style="width:100%"
               />
-              <!-- text/email/url/default -->
+              <!-- email -->
+              <n-input
+                v-else-if="field.field_type === 'email'"
+                :value="editData[field.column_name] as string"
+                @update:value="(v: string) => editData[field.column_name] = v"
+                placeholder="user@example.com"
+                style="width:100%"
+              />
+              <!-- url -->
+              <n-input
+                v-else-if="field.field_type === 'url'"
+                :value="editData[field.column_name] as string"
+                @update:value="(v: string) => editData[field.column_name] = v"
+                placeholder="https://"
+                style="width:100%"
+              />
+              <!-- text/default -->
               <n-input
                 v-else
                 :value="editData[field.column_name] as string"
@@ -104,11 +121,21 @@
             </template>
             <!-- 只读模式 -->
             <template v-else>
-              <CellValue
-                :value="currentRow[field.column_name]"
-                :field-type="field.field_type"
-                :select-options="field.select_options"
-              />
+              <div class="readonly-value-wrap" :class="{ 'has-copy': isTextType(field.field_type) }">
+                <CellValue
+                  :value="currentRow[field.column_name]"
+                  :field-type="field.field_type"
+                  :select-options="field.select_options"
+                  :detail="true"
+                />
+                <button
+                  v-if="isTextType(field.field_type) && currentRow[field.column_name] != null && currentRow[field.column_name] !== ''"
+                  class="copy-btn"
+                  :class="{ copied: copiedCol === field.column_name }"
+                  @click="copyValue(field.column_name, currentRow[field.column_name])"
+                  :title="copiedCol === field.column_name ? 'Copied!' : 'Copy'"
+                >{{ copiedCol === field.column_name ? '✓' : '⎘' }}</button>
+              </div>
             </template>
           </div>
         </div>
@@ -130,7 +157,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, nextTick } from 'vue'
 import { useMessage, NDrawer, NDrawerContent, NButton, NInput, NInputNumber, NSwitch, NSelect, NDatePicker } from 'naive-ui'
 import { api, type FieldMeta, type FieldType } from '@/api/client'
 import { useQueryClient } from '@tanstack/vue-query'
@@ -232,6 +259,25 @@ function datetimeToTs(v: unknown): number | null {
   return isNaN(d.getTime()) ? null : d.getTime()
 }
 
+// ── 复制 ──────────────────────────────────────────────────────
+const copiedCol = ref<string | null>(null)
+let copyTimer: ReturnType<typeof setTimeout> | null = null
+
+function isTextType(type: FieldType): boolean {
+  return ['text', 'longtext', 'email', 'url'].includes(type)
+}
+
+async function copyValue(colName: string, value: unknown) {
+  try {
+    await navigator.clipboard.writeText(String(value ?? ''))
+    copiedCol.value = colName
+    if (copyTimer) clearTimeout(copyTimer)
+    copyTimer = setTimeout(() => { copiedCol.value = null }, 1500)
+  } catch {
+    message.error('Copy failed')
+  }
+}
+
 // ── 类型图标 & 颜色 ────────────────────────────────────────────
 function typeIcon(type: FieldType): string {
   const map: Record<string, string> = {
@@ -303,8 +349,33 @@ function typeColor(type: FieldType): string {
   color: #333;
   min-height: 28px;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
+  padding-top: 5px;
+  word-break: break-word;
 }
+.readonly-value-wrap {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+.copy-btn {
+  flex-shrink: 0;
+  background: none;
+  border: 1px solid #e0e2ea;
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: 13px;
+  color: #aaa;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s, border-color 0.15s;
+  line-height: 1.6;
+}
+.expand-field-row:hover .copy-btn { opacity: 1; }
+.copy-btn:hover { color: #4f6ef7; border-color: #4f6ef7; }
+.copy-btn.copied { color: #18a058; border-color: #18a058; opacity: 1; }
 .expand-footer {
   display: flex;
   justify-content: flex-end;

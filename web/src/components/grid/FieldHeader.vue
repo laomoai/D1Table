@@ -53,6 +53,7 @@ const props = defineProps<{
     onRename: (title: string) => void
     onToggleHidden: () => void
     onDeleteField: () => void
+    onEditField: () => void
   }
 }>()
 
@@ -114,6 +115,7 @@ function openMenu(e: MouseEvent) {
 }
 
 const menuOptions = computed(() => [
+  { label: 'Edit field', key: 'edit' },
   { label: 'Rename', key: 'rename' },
   { label: props.params.field?.is_hidden ? 'Show field' : 'Hide field', key: 'toggle' },
   { type: 'divider', key: 'd' },
@@ -122,7 +124,8 @@ const menuOptions = computed(() => [
 
 function onMenuSelect(key: string) {
   showMenu.value = false
-  if (key === 'rename') startRename()
+  if (key === 'edit') props.params.onEditField()
+  else if (key === 'rename') startRename()
   else if (key === 'toggle') props.params.onToggleHidden()
   else if (key === 'delete') props.params.onDeleteField()
 }

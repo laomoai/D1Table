@@ -5,6 +5,14 @@
       <span class="table-title">{{ displayTitle }}</span>
       <span v-if="totalCount !== null" class="row-count">{{ totalCount }} records</span>
       <div style="flex:1" />
+      <!-- 搜索 -->
+      <n-input
+        v-model:value="searchText"
+        placeholder="Search..."
+        size="small"
+        clearable
+        style="width: 180px;"
+      />
       <n-button size="small" @click="showFilterBar = !showFilterBar">
         Filter{{ activeFilters.length ? ` (${activeFilters.length})` : '' }}
       </n-button>
@@ -15,6 +23,15 @@
         <span :class="{ 'spin-icon': refreshing }">↻</span>
       </n-button>
       <n-button size="small" type="primary" @click="openCreate">+ Add</n-button>
+    </div>
+
+    <!-- 批量操作栏 -->
+    <div v-if="selectedCount > 0" class="selection-bar">
+      <span class="sel-count">{{ selectedCount }} row{{ selectedCount > 1 ? 's' : '' }} selected</span>
+      <n-button size="tiny" type="error" :loading="batchDeleting" @click="handleBatchDelete">
+        Delete selected
+      </n-button>
+      <n-button size="tiny" quaternary @click="clearSelection">Clear</n-button>
     </div>
 
     <!-- 筛选栏 -->
@@ -38,10 +55,12 @@
         :enableCellTextSelection="true"
         :ensureDomOrder="true"
         :suppressMovableColumns="true"
+        :rowSelection="rowSelection"
         @grid-ready="onGridReady"
         @column-resized="onColumnResized"
         @sort-changed="onSortChanged"
         @body-scroll="onBodyScroll"
+        @selection-changed="onSelectionChanged"
       />
     </div>
 
@@ -66,6 +85,7 @@
 
   <!-- 字段管理面板 -->
   <FieldPanel
+    ref="fieldPanelRef"
     v-model:show="showFieldPanel"
     :table-name="tableName"
     :fields="fields"
@@ -85,11 +105,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onBeforeUnmount, markRaw, shallowRef } from 'vue'
+import { ref, computed, watch, onBeforeUnmount, markRaw, shallowRef, nextTick } from 'vue'
 import { useInfiniteQuery, useQueryClient } from '@tanstack/vue-query'
-import { useMessage, useDialog, NButton, NSpin } from 'naive-ui'
+import { useMessage, useDialog, NButton, NSpin, NInput } from 'naive-ui'
 import { AgGridVue } from 'ag-grid-vue3'
-import type { ColDef, GridApi, ColumnResizedEvent, SortChangedEvent } from 'ag-grid-community'
+import type { ColDef, GridApi, ColumnResizedEvent, SortChangedEvent, SelectionChangedEvent } from 'ag-grid-community'
 
 import { api, type FieldMeta, type FieldType, type RecordRow, type SelectOption } from '@/api/client'
 import FilterBar, { type Filter } from './FilterBar.vue'
@@ -117,6 +137,7 @@ const queryClient = useQueryClient()
 const showFilterBar = ref(false)
 const showForm = ref(false)
 const showFieldPanel = ref(false)
+const fieldPanelRef = ref<InstanceType<typeof FieldPanel>>()
 const showExpand = ref(false)
 const editingRecord = ref<RecordRow | null>(null)
 const activeFilters = ref<Filter[]>([])
@@ -125,7 +146,23 @@ const expandIndex = ref(0)
 const gridApi = shallowRef<GridApi | null>(null)
 const sortField = ref('')
 const sortDir = ref<'asc' | 'desc'>('asc')
+const searchText = ref('')
+const selectedCount = ref(0)
+const batchDeleting = ref(false)
 let resizeTimer: ReturnType<typeof setTimeout> | null = null
+
+// ── 行选择配置 ────────────────────────────────────────────────
+const rowSelection = {
+  mode: 'multiRow' as const,
+  checkboxes: true,
+  headerCheckbox: true,
+  enableClickSelection: false,
+}
+
+// ── 搜索：监听 searchText 更新 AG Grid quick filter ──────────
+watch(searchText, (v) => {
+  gridApi.value?.setGridOption('quickFilterText', v)
+})
 
 // ── 计算属性 ──────────────────────────────────────────────────
 const visibleFields = computed(() =>
@@ -146,7 +183,7 @@ const filterColumns = computed(() =>
   }))
 )
 
-// ── 列定义（函数式 cell renderer，不用 Vue 组件，避免 Proxy 问题） ──
+// ── 列定义 ──────────────────────────────────────────────────
 const defaultColDef: ColDef = { sortable: false, resizable: false }
 
 const columnDefs = computed<ColDef[]>(() => {
@@ -181,6 +218,7 @@ const columnDefs = computed<ColDef[]>(() => {
         onRename: (title: string) => saveRename(field, title),
         onToggleHidden: () => toggleHidden(field),
         onDeleteField: () => deleteField(field),
+        onEditField: () => { showFieldPanel.value = true; nextTick(() => fieldPanelRef.value?.expand(field.column_name)) },
       },
       cellRenderer: typedCellRenderer,
       cellRendererParams: {
@@ -190,13 +228,13 @@ const columnDefs = computed<ColDef[]>(() => {
     })
   }
 
-  // 操作列
+  // 操作列（"..." 菜单）
   cols.push({
     colId: '__actions',
-    headerName: 'Actions',
-    width: 110,
-    minWidth: 110,
-    maxWidth: 110,
+    headerName: '',
+    width: 48,
+    minWidth: 48,
+    maxWidth: 48,
     sortable: false,
     resizable: false,
     cellRenderer: actionsCellRenderer,
@@ -230,7 +268,6 @@ const { data, isLoading, isFetchingNextPage, hasNextPage, fetchNextPage } =
     initialPageParam: undefined as string | undefined,
   })
 
-// 用 spread 创建纯对象，避免 Vue Proxy 被 AG Grid 误读
 const rowData = computed(() =>
   (data.value?.pages.flatMap(p => p.data.map(r => ({ ...r }))) ?? []) as RecordRow[]
 )
@@ -247,7 +284,6 @@ function onGridReady(params: { api: GridApi }) {
   }
 }
 
-// 显式推送 rowData 到 AG Grid（ag-grid-vue3 的 prop watcher 不可靠）
 watch(rowData, (rows) => {
   gridApi.value?.setGridOption('rowData', rows)
 }, { flush: 'post' })
@@ -280,7 +316,58 @@ function onSortChanged(event: SortChangedEvent) {
   invalidate()
 }
 
-onBeforeUnmount(() => { if (resizeTimer) clearTimeout(resizeTimer) })
+function onSelectionChanged(event: SelectionChangedEvent) {
+  selectedCount.value = event.api.getSelectedRows().length
+}
+
+// ── 批量删除 ─────────────────────────────────────────────────
+function clearSelection() {
+  gridApi.value?.deselectAll()
+  selectedCount.value = 0
+}
+
+function handleBatchDelete() {
+  const rows = gridApi.value?.getSelectedRows() as RecordRow[] | undefined
+  if (!rows?.length) return
+
+  dialog.warning({
+    title: 'Confirm batch delete',
+    content: `Delete ${rows.length} selected record${rows.length > 1 ? 's' : ''}? This action cannot be undone.`,
+    positiveText: 'Delete',
+    negativeText: 'Cancel',
+    onPositiveClick: async () => {
+      batchDeleting.value = true
+      try {
+        await Promise.all(rows.map(r => api.deleteRecord(props.tableName, r.id)))
+        message.success(`${rows.length} record${rows.length > 1 ? 's' : ''} deleted`)
+        selectedCount.value = 0
+        invalidate()
+        emit('refresh')
+      } catch (err) {
+        message.error((err as Error).message)
+      } finally {
+        batchDeleting.value = false
+      }
+    },
+  })
+}
+
+onBeforeUnmount(() => {
+  if (resizeTimer) clearTimeout(resizeTimer)
+  closeDropdown()
+  document.removeEventListener('click', closeDropdown)
+})
+
+// 注册全局 click 关闭下拉菜单
+document.addEventListener('click', closeDropdown)
+
+// ── 下拉菜单（"..." 操作列）────────────────────────────────────
+let activeDropdown: HTMLElement | null = null
+
+function closeDropdown() {
+  activeDropdown?.remove()
+  activeDropdown = null
+}
 
 // ── 函数式 cell renderer ─────────────────────────────────────
 function expandCellRenderer(params: { data: Record<string, unknown>; rowIndex: number }): HTMLElement {
@@ -382,18 +469,37 @@ function actionsCellRenderer(params: { data: RecordRow }): HTMLElement {
   const wrap = document.createElement('div')
   wrap.className = 'ag-actions-wrap'
 
-  const editBtn = document.createElement('button')
-  editBtn.className = 'ag-act-btn'
-  editBtn.textContent = 'Edit'
-  editBtn.onclick = (e) => { e.stopPropagation(); openEdit(params.data) }
+  const btn = document.createElement('button')
+  btn.className = 'ag-act-menu-btn'
+  btn.textContent = '···'
+  btn.title = 'More actions'
+  btn.onclick = (e) => {
+    e.stopPropagation()
+    closeDropdown()
 
-  const delBtn = document.createElement('button')
-  delBtn.className = 'ag-act-btn ag-act-btn--del'
-  delBtn.textContent = 'Delete'
-  delBtn.onclick = (e) => { e.stopPropagation(); handleDelete(params.data) }
+    const rect = btn.getBoundingClientRect()
+    const menu = document.createElement('div')
+    menu.className = 'ag-act-dropdown'
+    menu.style.top = (rect.bottom + 4) + 'px'
+    menu.style.left = (rect.right - 120) + 'px'
 
-  wrap.appendChild(editBtn)
-  wrap.appendChild(delBtn)
+    const editItem = document.createElement('div')
+    editItem.className = 'ag-act-dropdown-item'
+    editItem.textContent = 'Edit'
+    editItem.onclick = (ev) => { ev.stopPropagation(); closeDropdown(); openEdit(params.data) }
+
+    const delItem = document.createElement('div')
+    delItem.className = 'ag-act-dropdown-item ag-act-dropdown-item--del'
+    delItem.textContent = 'Delete'
+    delItem.onclick = (ev) => { ev.stopPropagation(); closeDropdown(); handleDelete(params.data) }
+
+    menu.appendChild(editItem)
+    menu.appendChild(delItem)
+    document.body.appendChild(menu)
+    activeDropdown = menu
+  }
+
+  wrap.appendChild(btn)
   return wrap
 }
 
@@ -415,7 +521,6 @@ function formatDate(v: unknown): string {
   if (!v) return ''
   const s = String(v)
   if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10)
-  // 尝试作为数字（Unix 时间戳）
   const n = Number(s)
   if (!isNaN(n) && n > 0) {
     const d = new Date(n < 1e10 ? n * 1000 : n)
@@ -427,7 +532,6 @@ function formatDate(v: unknown): string {
 
 function formatDatetime(v: unknown): string {
   if (!v) return ''
-  // 统一转数字处理（兼容 number、"1773571051"、"1773571051.0" 等）
   const n = Number(v)
   if (!isNaN(n) && n > 0) {
     const d = new Date(n < 1e10 ? n * 1000 : n)
@@ -436,7 +540,6 @@ function formatDatetime(v: unknown): string {
       return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
     }
   }
-  // 尝试日期字符串
   const d = new Date(String(v))
   if (!isNaN(d.getTime())) {
     const pad = (x: number) => String(x).padStart(2, '0')
@@ -519,7 +622,6 @@ function handleDelete(row: RecordRow) {
 
 function openExpand(row: Record<string, unknown>, _agIdx: number) {
   expandRow.value = row
-  // 用 ID 在 rowData 中查找真实索引（AG Grid 的 rowIndex 排序后会错位）
   const realIdx = rowData.value.findIndex(r => r.id === row.id)
   expandIndex.value = realIdx >= 0 ? realIdx : 0
   showExpand.value = true
@@ -562,6 +664,13 @@ async function refreshAll() {
   display: flex;
   align-items: center;
 }
+/* 行悬停高亮 */
+.ag-theme-alpine .ag-row-hover {
+  background-color: #f0f4ff !important;
+}
+.ag-theme-alpine .ag-row-selected {
+  background-color: #e8eeff !important;
+}
 /* 展开按钮仅悬浮时可见 */
 .ag-theme-alpine .ag-expand-btn {
   background: none;
@@ -588,15 +697,43 @@ async function refreshAll() {
 .ag-cell-link { color: #4f6ef7; text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ag-cell-link:hover { text-decoration: underline; }
 .ag-cell-badge { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 12px; border: 1px solid; font-weight: 500; }
-/* 操作按钮 */
-.ag-actions-wrap { display: flex; align-items: center; gap: 4px; height: 100%; }
-.ag-act-btn {
-  background: none; border: 1px solid #e0e2e8; border-radius: 4px;
-  padding: 1px 7px; font-size: 12px; cursor: pointer; color: #555; white-space: nowrap;
+/* "···" 操作按钮 */
+.ag-actions-wrap { display: flex; align-items: center; justify-content: center; height: 100%; }
+.ag-act-menu-btn {
+  background: none;
+  border: none;
+  padding: 2px 6px;
+  font-size: 16px;
+  cursor: pointer;
+  color: #bbb;
+  border-radius: 4px;
+  line-height: 1;
+  visibility: hidden;
+  letter-spacing: 1px;
 }
-.ag-act-btn:hover { background: #f0f2f5; }
-.ag-act-btn--del { color: #d03050; border-color: #fcc; }
-.ag-act-btn--del:hover { background: #fff0f3; }
+.ag-theme-alpine .ag-row-hover .ag-act-menu-btn { visibility: visible; }
+.ag-act-menu-btn:hover { background: #f0f2f5; color: #555; }
+/* 下拉菜单 */
+.ag-act-dropdown {
+  position: fixed;
+  z-index: 9999;
+  background: #fff;
+  border: 1px solid #e0e2e8;
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+  min-width: 120px;
+  overflow: hidden;
+}
+.ag-act-dropdown-item {
+  padding: 8px 14px;
+  font-size: 13px;
+  cursor: pointer;
+  color: #333;
+  transition: background 0.1s;
+}
+.ag-act-dropdown-item:hover { background: #f5f6f8; }
+.ag-act-dropdown-item--del { color: #d03050; }
+.ag-act-dropdown-item--del:hover { background: #fff0f3; }
 </style>
 
 <style scoped>
@@ -609,13 +746,28 @@ async function refreshAll() {
 .toolbar {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   padding: 10px 16px;
   border-bottom: 1px solid #e8eaf0;
   flex-shrink: 0;
 }
 .table-title { font-size: 15px; font-weight: 600; color: #1a1d2e; }
 .row-count { font-size: 12px; color: #999; background: #f0f2f5; padding: 2px 8px; border-radius: 10px; }
+/* 批量操作栏 */
+.selection-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 16px;
+  background: #eef1ff;
+  border-bottom: 1px solid #d8ddff;
+  flex-shrink: 0;
+}
+.sel-count {
+  font-size: 13px;
+  font-weight: 500;
+  color: #4f6ef7;
+}
 .ag-grid-box { flex: 1; min-height: 200px; }
 .grid-footer {
   display: flex; align-items: center; justify-content: center; gap: 8px;
