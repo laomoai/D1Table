@@ -153,6 +153,20 @@
               创建新 Key
             </n-button>
           </template>
+
+          <!-- API 文档入口 -->
+          <div class="section" style="margin-top: 32px; padding-top: 24px; border-top: 1px solid #f0f0f0;">
+            <div class="section-label">API 文档</div>
+            <div style="display: flex; gap: 10px; margin-top: 8px;">
+              <n-button tag="a" href="/api/docs" target="_blank" size="small" type="primary" ghost>
+                查看 API 文档
+              </n-button>
+              <n-button tag="a" href="/api/openapi.json" target="_blank" size="small" quaternary>
+                OpenAPI JSON
+              </n-button>
+            </div>
+            <div class="hint" style="margin-top: 8px;">AI Agent 可读取此文档自动发现可用接口</div>
+          </div>
         </div>
       </n-tab-pane>
 
@@ -201,23 +215,6 @@
         </div>
       </n-tab-pane>
 
-      <!-- ─── Tab 5: API 文档 ──────────────────────────────── -->
-      <n-tab-pane name="docs" tab="API 文档">
-        <div class="tab-content">
-          <div class="section">
-            <div class="section-label">OpenAPI 3.0 文档</div>
-            <div style="display: flex; gap: 10px; margin-top: 8px;">
-              <n-button tag="a" href="/api/docs" target="_blank" size="small" type="primary" ghost>
-                查看 API 文档
-              </n-button>
-              <n-button tag="a" href="/api/openapi.json" target="_blank" size="small" quaternary>
-                OpenAPI JSON
-              </n-button>
-            </div>
-            <div class="hint" style="margin-top: 8px;">AI Agent 可读取此文档自动发现可用接口</div>
-          </div>
-        </div>
-      </n-tab-pane>
     </n-tabs>
   </div>
 
