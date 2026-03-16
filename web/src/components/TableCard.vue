@@ -19,18 +19,18 @@
       <template v-else>
         <div class="card-title">
           {{ table.title || table.name }}
-          <button class="card-edit-btn" @click.stop="$emit('edit', table)" title="修改显示名">✎</button>
+          <button class="card-edit-btn" @click.stop="$emit('edit', table)" title="Edit display name">✎</button>
         </div>
       </template>
       <div class="card-id-row">
         <span class="card-id">ID: {{ table.name }}</span>
-        <button class="card-copy-btn" @click.stop="$emit('copy', table.name)" title="复制表 ID">
+        <button class="card-copy-btn" @click.stop="$emit('copy', table.name)" title="Copy table ID">
           {{ copiedId === table.name ? '✓' : '⎘' }}
         </button>
       </div>
-      <div class="card-stats">{{ table.row_count ?? 0 }} 条记录</div>
+      <div class="card-stats">{{ table.row_count ?? 0 }} records</div>
     </div>
-    <button class="card-delete-btn" @click.stop="$emit('delete', table)" title="删除表">×</button>
+    <button class="card-delete-btn" @click.stop="$emit('delete', table)" title="Delete table">×</button>
     <div class="card-arrow">›</div>
   </div>
 </template>

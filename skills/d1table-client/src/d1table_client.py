@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-D1Table Client - 基于 Cloudflare D1 的数据表管理
+D1Table Client - Cloudflare D1-based data table management
 """
 
 import json
@@ -13,15 +13,15 @@ from typing import Dict, List, Optional, Any
 
 
 def parse_iso_datetime(iso_string: str) -> datetime:
-    """解析 ISO 8601 时间字符串为本地时间"""
+    """Parse an ISO 8601 datetime string into local time."""
     if not iso_string:
         return None
     try:
-        # 处理带 Z 的 UTC 时间
+        # Handle UTC time ending with Z
         if iso_string.endswith('Z'):
             iso_string = iso_string[:-1] + '+00:00'
         dt = datetime.fromisoformat(iso_string)
-        # 转换为本地时间
+        # Convert to local time
         if dt.tzinfo:
             dt = dt.astimezone()
         return dt
@@ -30,22 +30,22 @@ def parse_iso_datetime(iso_string: str) -> datetime:
 
 
 class D1TableClient:
-    """D1Table API 客户端"""
-    
+    """D1Table API client."""
+
     def __init__(self, base_url: Optional[str] = None, api_key: Optional[str] = None,
                  config_path: Optional[str] = None):
-        """初始化客户端
+        """Initialize the client.
 
-        优先级（从高到低）：
-        1. 构造函数参数 base_url / api_key
-        2. 环境变量 D1TABLE_URL / D1TABLE_KEY
-        3. config.json 文件（openclaw workspace 或技能目录）
+        Priority (highest to lowest):
+        1. Constructor arguments base_url / api_key
+        2. Environment variables D1TABLE_URL / D1TABLE_KEY
+        3. config.json file (openclaw workspace or skill directory)
         """
-        # 1. 环境变量
+        # 1. Environment variables
         env_url = os.environ.get('D1TABLE_URL')
         env_key = os.environ.get('D1TABLE_KEY')
 
-        # 2. config.json（仅在参数和环境变量都缺失时读取）
+        # 2. config.json (only read when both arguments and env vars are missing)
         file_url, file_key, file_timeout = None, None, 30
         if not (base_url or env_url) or not (api_key or env_key):
             path = None
@@ -72,11 +72,11 @@ class D1TableClient:
 
         if not self.base_url:
             raise ValueError(
-                "缺少 D1Table 地址，请设置环境变量 D1TABLE_URL 或在 config.json 中配置 d1table.baseUrl"
+                "D1Table URL is missing. Set the D1TABLE_URL environment variable or configure d1table.baseUrl in config.json"
             )
         if not self.api_key:
             raise ValueError(
-                "缺少 API Key，请设置环境变量 D1TABLE_KEY 或在 config.json 中配置 d1table.apiKey"
+                "API Key is missing. Set the D1TABLE_KEY environment variable or configure d1table.apiKey in config.json"
             )
         self.session = requests.Session()
         self.session.headers.update({
@@ -84,9 +84,9 @@ class D1TableClient:
             'Content-Type': 'application/json',
             'Cache-Control': 'no-cache'
         })
-    
+
     def _request(self, method: str, endpoint: str, **kwargs) -> Dict:
-        """发送 HTTP 请求"""
+        """Send an HTTP request."""
         url = f"{self.base_url}{endpoint}"
         try:
             response = self.session.request(
@@ -96,28 +96,28 @@ class D1TableClient:
             return response.json()
         except requests.exceptions.RequestException as e:
             return {"error": str(e)}
-    
+
     def health_check(self) -> bool:
-        """健康检查"""
+        """Check service health."""
         result = self._request('GET', '/api/health')
         return 'error' not in result
-    
+
     def list_tables(self) -> List[Dict]:
-        """获取所有表列表"""
+        """List all tables."""
         result = self._request('GET', '/api/tables')
         return result.get('data', [])
-    
+
     def get_schema(self, table_name: str) -> Dict:
-        """获取表结构（v2.0.0 - 包含字段元数据）"""
-        # 获取表基本信息
+        """Get table schema (v2.0.0 - includes field metadata)."""
+        # Fetch basic table info
         result = self._request('GET', f'/api/tables/{table_name}')
         schema = result.get('data', {})
-        
-        # 获取字段元数据（包含 title、field_type 等）
+
+        # Fetch field metadata (includes title, field_type, etc.)
         fields_result = self._request('GET', f'/api/tables/{table_name}/fields')
         schema['fields'] = fields_result.get('data', [])
-        
-        # v2.0.0: 构建字段映射（column_name -> title）
+
+        # v2.0.0: Build field mapping (column_name -> title)
         field_mapping = {}
         for field in schema.get('fields', []):
             col_name = field.get('column_name')
@@ -125,23 +125,23 @@ class D1TableClient:
             if col_name and title:
                 field_mapping[col_name] = title
         schema['field_mapping'] = field_mapping
-        
+
         return schema
-    
+
     def get_field_mapping(self, table_name: str) -> Dict[str, str]:
-        """获取字段映射（v2.0.0 - column_name -> title）"""
+        """Get field mapping (v2.0.0 - column_name -> title)."""
         result = self._request('GET', f'/api/tables/{table_name}/fields')
         fields = result.get('data', [])
-        
+
         mapping = {}
         for field in fields:
             col_name = field.get('column_name')
             title = field.get('title')
             if col_name and title:
                 mapping[col_name] = title
-        
+
         return mapping
-    
+
     def query_records(
         self,
         table_name: str,
@@ -151,7 +151,7 @@ class D1TableClient:
         fields: Optional[str] = None,
         **filters
     ) -> Dict:
-        """查询记录（v2.0.0 - 支持 ISO 8601 时间和字段映射）"""
+        """Query records (v2.0.0 - supports ISO 8601 datetime and field mapping)."""
         params = {'page_size': limit}
         if cursor:
             params['cursor'] = cursor
@@ -159,67 +159,67 @@ class D1TableClient:
             params['sort'] = sort
         if fields:
             params['fields'] = fields
-        
-        # 添加筛选条件
+
+        # Apply filter conditions
         for key, value in filters.items():
             params[f'filter[{key}]'] = value
-        
+
         result = self._request(
             'GET',
             f'/api/tables/{table_name}/records',
             params=params
         )
-        
-        # v2.0.0: 处理 ISO 8601 时间格式
+
+        # v2.0.0: Process ISO 8601 datetime fields
         for record in result.get('data', []):
             new_fields = {}
             for key, value in record.items():
                 if isinstance(value, str) and 'T' in value:
-                    # 可能是 ISO 8601 时间
+                    # Possibly an ISO 8601 datetime
                     dt = parse_iso_datetime(value)
                     if dt:
-                        # 添加格式化后的本地时间字段
+                        # Add formatted local time field
                         new_fields[f'{key}_local'] = dt.strftime('%Y-%m-%d %H:%M:%S')
             record.update(new_fields)
-        
+
         return result
-    
+
     def get_record(self, table_name: str, record_id: str) -> Dict:
-        """获取单条记录"""
+        """Get a single record."""
         result = self._request(
             'GET',
             f'/api/tables/{table_name}/records/{record_id}'
         )
         return result.get('data', {})
-    
+
     def insert_record(self, table_name: str, data: Dict) -> Dict:
-        """新增记录"""
+        """Insert a record."""
         result = self._request(
             'POST',
             f'/api/tables/{table_name}/records',
             json=data
         )
         return result.get('data', {})
-    
+
     def update_record(self, table_name: str, record_id: str, data: Dict) -> Dict:
-        """更新记录"""
+        """Update a record."""
         result = self._request(
             'PATCH',
             f'/api/tables/{table_name}/records/{record_id}',
             json=data
         )
         return result.get('data', {})
-    
+
     def delete_record(self, table_name: str, record_id: str) -> bool:
-        """删除记录"""
+        """Delete a record."""
         result = self._request(
             'DELETE',
             f'/api/tables/{table_name}/records/{record_id}'
         )
         return 'error' not in result
-    
+
     def batch_insert(self, table_name: str, records: List[Dict]) -> Dict:
-        """批量插入记录"""
+        """Batch insert records."""
         result = self._request(
             'POST',
             f'/api/tables/{table_name}/records/batch',
@@ -229,46 +229,46 @@ class D1TableClient:
 
 
 def main():
-    """命令行入口"""
+    """Command-line entry point."""
     import argparse
-    
+
     parser = argparse.ArgumentParser(description='D1Table Client')
     parser.add_argument('action', choices=[
         'health', 'list-tables', 'schema', 'query',
         'get', 'insert', 'update', 'delete'
     ])
-    parser.add_argument('--table', help='表名')
-    parser.add_argument('--id', help='记录ID')
-    parser.add_argument('--data', help='JSON 数据')
-    parser.add_argument('--limit', type=int, default=20, help='返回数量')
-    parser.add_argument('--filter', help='筛选条件，如: name:张三')
-    
+    parser.add_argument('--table', help='Table name')
+    parser.add_argument('--id', help='Record ID')
+    parser.add_argument('--data', help='JSON data')
+    parser.add_argument('--limit', type=int, default=20, help='Number of records to return')
+    parser.add_argument('--filter', help='Filter condition, e.g.: name:Alice')
+
     args = parser.parse_args()
-    
+
     client = D1TableClient()
-    
+
     if args.action == 'health':
         if client.health_check():
-            print("✅ D1Table 服务正常")
+            print("✅ D1Table is healthy")
         else:
-            print("❌ D1Table 服务异常")
-    
+            print("❌ D1Table is unhealthy")
+
     elif args.action == 'list-tables':
         tables = client.list_tables()
-        print(f"共 {len(tables)} 个表:")
+        print(f"Found {len(tables)} table(s):")
         for table in tables:
-            print(f"  - {table.get('name')} ({table.get('row_count', 0)} 条)")
-    
+            print(f"  - {table.get('name')} ({table.get('row_count', 0)} row(s))")
+
     elif args.action == 'schema':
         if not args.table:
-            print("❌ 请指定 --table")
+            print("❌ Please specify --table")
             return
         schema = client.get_schema(args.table)
         print(json.dumps(schema, indent=2, ensure_ascii=False))
-    
+
     elif args.action == 'query':
         if not args.table:
-            print("❌ 请指定 --table")
+            print("❌ Please specify --table")
             return
         filters = {}
         if args.filter:
@@ -276,38 +276,38 @@ def main():
             filters[key] = value
         result = client.query_records(args.table, limit=args.limit, **filters)
         print(json.dumps(result, indent=2, ensure_ascii=False))
-    
+
     elif args.action == 'get':
         if not args.table or not args.id:
-            print("❌ 请指定 --table 和 --id")
+            print("❌ Please specify --table and --id")
             return
         record = client.get_record(args.table, args.id)
         print(json.dumps(record, indent=2, ensure_ascii=False))
-    
+
     elif args.action == 'insert':
         if not args.table or not args.data:
-            print("❌ 请指定 --table 和 --data")
+            print("❌ Please specify --table and --data")
             return
         data = json.loads(args.data)
         record = client.insert_record(args.table, data)
         print(json.dumps(record, indent=2, ensure_ascii=False))
-    
+
     elif args.action == 'update':
         if not args.table or not args.id or not args.data:
-            print("❌ 请指定 --table、--id 和 --data")
+            print("❌ Please specify --table, --id, and --data")
             return
         data = json.loads(args.data)
         record = client.update_record(args.table, args.id, data)
         print(json.dumps(record, indent=2, ensure_ascii=False))
-    
+
     elif args.action == 'delete':
         if not args.table or not args.id:
-            print("❌ 请指定 --table 和 --id")
+            print("❌ Please specify --table and --id")
             return
         if client.delete_record(args.table, args.id):
-            print("✅ 删除成功")
+            print("✅ Deleted successfully")
         else:
-            print("❌ 删除失败")
+            print("❌ Delete failed")
 
 
 if __name__ == '__main__':

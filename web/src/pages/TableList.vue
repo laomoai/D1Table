@@ -1,8 +1,8 @@
 <template>
   <div style="padding: 32px;">
-    <n-h2>数据表列表</n-h2>
+    <n-h2>Tables</n-h2>
     <n-spin v-if="isLoading" />
-    <n-empty v-else-if="!tables?.length" description="暂无数据表" />
+    <n-empty v-else-if="!tables?.length" description="No tables yet" />
     <n-grid v-else :cols="3" :x-gap="16" :y-gap="16">
       <n-gi v-for="t in tables" :key="t.name">
         <n-card
@@ -15,7 +15,7 @@
             {{ t.name }}
           </template>
           <n-text depth="3" style="font-size: 13px;">
-            {{ t.row_count !== null ? `${t.row_count} 条记录` : '未知行数' }}
+            {{ t.row_count !== null ? `${t.row_count} records` : 'Unknown row count' }}
           </n-text>
         </n-card>
       </n-gi>

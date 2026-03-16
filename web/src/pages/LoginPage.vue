@@ -4,17 +4,17 @@
       <!-- Logo -->
       <div class="login-brand">
         <div class="login-logo">D1Table</div>
-        <div class="login-subtitle">基于 Cloudflare D1 的数据管理平台</div>
+        <div class="login-subtitle">Data management platform powered by Cloudflare D1</div>
       </div>
 
-      <!-- 表单 -->
+      <!-- Form -->
       <div class="login-form">
         <label class="login-label">API Key</label>
         <n-input
           v-model:value="inputKey"
           type="password"
           show-password-on="click"
-          placeholder="输入 API Key 或 ADMIN_KEY"
+          placeholder="Enter API Key or ADMIN_KEY"
           size="large"
           :status="errorMsg ? 'error' : undefined"
           @keyup.enter="handleConnect"
@@ -33,18 +33,18 @@
           style="margin-top: 16px;"
           @click="handleConnect"
         >
-          连接
+          Connect
         </n-button>
       </div>
 
-      <!-- 帮助提示 -->
+      <!-- Help -->
       <div class="login-help">
         <n-collapse>
-          <n-collapse-item title="如何获取 API Key？" name="help">
+          <n-collapse-item title="How do I get an API Key?" name="help">
             <ul class="help-list">
-              <li>首次使用：输入部署时设置的 <code>ADMIN_KEY</code></li>
-              <li>管理员可在「设置」中创建只读或读写的 API Key</li>
-              <li>API Key 格式：<code>d1t_rw_...</code> 或 <code>d1t_ro_...</code></li>
+              <li>First-time use: enter the <code>ADMIN_KEY</code> you set during deployment</li>
+              <li>Admins can create read-only or read-write API Keys in "Settings"</li>
+              <li>API Key format: <code>d1t_rw_...</code> or <code>d1t_ro_...</code></li>
             </ul>
           </n-collapse-item>
         </n-collapse>
@@ -76,7 +76,7 @@ async function handleConnect() {
     saveApiKey(key)
     router.replace('/')
   } catch (err) {
-    errorMsg.value = (err as Error).message || '连接失败，请检查 API Key 是否正确'
+    errorMsg.value = (err as Error).message || 'Connection failed — please check your API Key'
   } finally {
     connecting.value = false
   }

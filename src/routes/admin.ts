@@ -58,7 +58,7 @@ admin.post('/keys', async (c) => {
   }>()
 
   if (!body.name?.trim()) {
-    return c.json({ error: { code: 'INVALID_BODY', message: '请提供 Key 的名称' } }, 400)
+    return c.json({ error: { code: 'INVALID_BODY', message: 'Key name is required' } }, 400)
   }
 
   const keyType = body.type === 'readwrite' ? 'readwrite' : 'readonly'
@@ -93,7 +93,7 @@ admin.post('/keys', async (c) => {
       scope,
       group_ids: scope === 'groups' ? (body.group_ids ?? []) : [],
     },
-    message: '请保存此 Key，关闭后将无法再次查看',
+    message: 'Save this key now — it will not be shown again',
   }, 201)
 })
 
@@ -128,7 +128,7 @@ admin.patch('/keys/:id', async (c) => {
   }
 
   if (stmts.length === 0) {
-    return c.json({ error: { code: 'INVALID_BODY', message: '没有有效字段' } }, 400)
+    return c.json({ error: { code: 'INVALID_BODY', message: 'No valid fields provided' } }, 400)
   }
 
   await c.env.DB.batch(stmts)
@@ -149,7 +149,7 @@ admin.delete('/keys/:id', async (c) => {
     .run()
 
   if (result.meta.changes === 0) {
-    return c.json({ error: { code: 'NOT_FOUND', message: 'Key 不存在' } }, 404)
+    return c.json({ error: { code: 'NOT_FOUND', message: 'Key not found' } }, 404)
   }
 
   return c.json({ data: { success: true } })

@@ -45,7 +45,7 @@ groups.post('/', async (c) => {
   const body = await c.req.json<{ name: string; sort_order?: number }>()
 
   if (!body.name?.trim()) {
-    return c.json({ error: { code: 'INVALID_BODY', message: '分组名称不能为空' } }, 400)
+    return c.json({ error: { code: 'INVALID_BODY', message: 'Group name cannot be empty' } }, 400)
   }
 
   try {
@@ -58,7 +58,7 @@ groups.post('/', async (c) => {
   } catch (err) {
     const msg = (err as Error).message ?? ''
     if (msg.includes('UNIQUE constraint')) {
-      return c.json({ error: { code: 'GROUP_EXISTS', message: `分组 "${body.name}" 已存在` } }, 409)
+      return c.json({ error: { code: 'GROUP_EXISTS', message: `Group "${body.name}" already exists` } }, 409)
     }
     throw err
   }
@@ -85,7 +85,7 @@ groups.patch('/:id', async (c) => {
   }
 
   if (sets.length === 0) {
-    return c.json({ error: { code: 'INVALID_BODY', message: '没有有效字段' } }, 400)
+    return c.json({ error: { code: 'INVALID_BODY', message: 'No valid fields provided' } }, 400)
   }
 
   params.push(id)
@@ -95,7 +95,7 @@ groups.patch('/:id', async (c) => {
     .run()
 
   if (result.meta.changes === 0) {
-    return c.json({ error: { code: 'NOT_FOUND', message: '分组不存在' } }, 404)
+    return c.json({ error: { code: 'NOT_FOUND', message: 'Group not found' } }, 404)
   }
 
   return c.json({ data: { success: true } })
@@ -114,7 +114,7 @@ groups.delete('/:id', async (c) => {
     .run()
 
   if (result.meta.changes === 0) {
-    return c.json({ error: { code: 'NOT_FOUND', message: '分组不存在' } }, 404)
+    return c.json({ error: { code: 'NOT_FOUND', message: 'Group not found' } }, 404)
   }
 
   return c.json({ data: { success: true } })
@@ -130,7 +130,7 @@ groups.put('/:id/tables', async (c) => {
   const body = await c.req.json<{ tables: string[] }>()
 
   if (!Array.isArray(body.tables)) {
-    return c.json({ error: { code: 'INVALID_BODY', message: 'tables 必须是数组' } }, 400)
+    return c.json({ error: { code: 'INVALID_BODY', message: 'tables must be an array' } }, 400)
   }
 
   // 验证分组存在
@@ -140,7 +140,7 @@ groups.put('/:id/tables', async (c) => {
     .first()
 
   if (!group) {
-    return c.json({ error: { code: 'NOT_FOUND', message: '分组不存在' } }, 404)
+    return c.json({ error: { code: 'NOT_FOUND', message: 'Group not found' } }, 404)
   }
 
   const stmts: D1PreparedStatement[] = [
@@ -168,7 +168,7 @@ groups.put('/:id/keys', async (c) => {
   const body = await c.req.json<{ key_ids: number[] }>()
 
   if (!Array.isArray(body.key_ids)) {
-    return c.json({ error: { code: 'INVALID_BODY', message: 'key_ids 必须是数组' } }, 400)
+    return c.json({ error: { code: 'INVALID_BODY', message: 'key_ids must be an array' } }, 400)
   }
 
   const group = await c.env.DB
@@ -177,7 +177,7 @@ groups.put('/:id/keys', async (c) => {
     .first()
 
   if (!group) {
-    return c.json({ error: { code: 'NOT_FOUND', message: '分组不存在' } }, 404)
+    return c.json({ error: { code: 'NOT_FOUND', message: 'Group not found' } }, 404)
   }
 
   const stmts: D1PreparedStatement[] = [

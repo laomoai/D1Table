@@ -2,21 +2,21 @@
   <div class="dashboard">
     <div class="dash-header">
       <div>
-        <h2 class="dash-title">数据表</h2>
-        <p class="dash-desc">管理你的所有数据表</p>
+        <h2 class="dash-title">Tables</h2>
+        <p class="dash-desc">Manage all your data tables</p>
       </div>
-      <n-button type="primary" @click="showCreateTable = true">+ 新建表</n-button>
+      <n-button type="primary" @click="showCreateTable = true">+ New Table</n-button>
     </div>
 
     <n-spin v-if="isLoading" style="padding: 80px; display: flex; justify-content: center;" />
 
     <template v-else-if="tables?.length">
-      <!-- 按分组展示 -->
+      <!-- Grouped display -->
       <template v-if="groupedSections.length > 0">
         <div v-for="section in groupedSections" :key="section.id" class="group-section">
           <div class="group-section-header">
             <span class="group-section-name">{{ section.name }}</span>
-            <span class="group-section-count">{{ section.tables.length }} 张表</span>
+            <span class="group-section-count">{{ section.tables.length }} tables</span>
           </div>
           <div class="table-cards">
             <TableCard
@@ -38,11 +38,11 @@
         </div>
       </template>
 
-      <!-- 未分组的表 -->
+      <!-- Ungrouped tables -->
       <div v-if="ungroupedTables.length > 0" class="group-section">
         <div v-if="groupedSections.length > 0" class="group-section-header">
-          <span class="group-section-name">未分组</span>
-          <span class="group-section-count">{{ ungroupedTables.length }} 张表</span>
+          <span class="group-section-name">Ungrouped</span>
+          <span class="group-section-count">{{ ungroupedTables.length }} tables</span>
         </div>
         <div class="table-cards">
           <TableCard
@@ -68,21 +68,21 @@
       <div class="empty-icon">
         <n-icon :component="GridOutline" :size="48" color="#ccc" />
       </div>
-      <p class="empty-text">还没有数据表</p>
-      <n-button type="primary" @click="showCreateTable = true">创建第一张表</n-button>
+      <p class="empty-text">No tables yet</p>
+      <n-button type="primary" @click="showCreateTable = true">Create your first table</n-button>
     </div>
 
-    <!-- API 文档入口 -->
+    <!-- API docs section -->
     <div class="api-section">
       <div class="api-card">
-        <div class="api-title">API 接口</div>
+        <div class="api-title">API</div>
         <p class="api-desc">
-          D1Table 提供完整的 REST API，支持表管理、记录 CRUD、字段配置等操作。
-          可在 AI Agent、自动化脚本或第三方系统中集成使用。
+          D1Table provides a full REST API supporting table management, record CRUD, field configuration, and more.
+          Integrate it with AI Agents, automation scripts, or third-party systems.
         </p>
         <div class="api-actions">
           <n-button tag="a" href="/api/docs" target="_blank" size="small" type="primary" ghost>
-            查看 API 文档
+            View API Docs
           </n-button>
           <n-button tag="a" href="/api/openapi.json" target="_blank" size="small" quaternary>
             OpenAPI JSON
@@ -131,7 +131,7 @@ const { data: groups } = useQuery({
   retry: false,
 })
 
-// 按分组组织表
+// Organize tables by group
 const groupedSections = computed(() => {
   if (!groups.value || !tables.value || groups.value.length === 0) return []
 
@@ -152,7 +152,7 @@ const ungroupedTables = computed(() => {
   return tables.value.filter(t => !groupedNames.has(t.name))
 })
 
-// ── 内联编辑表显示名 ──────────────────────────────────────────
+// ── Inline edit table display name ──────────────────────────────────────────
 const editingTable = ref<string | null>(null)
 const editTitle = ref('')
 
@@ -166,11 +166,11 @@ function cancelEdit() {
 }
 
 async function confirmDeleteTable(t: TableMeta) {
-  const confirmed = window.confirm(`确定删除表 ${t.title || t.name}？此操作不可撤销`)
+  const confirmed = window.confirm(`Delete table ${t.title || t.name}? This action cannot be undone.`)
   if (!confirmed) return
   try {
     await api.deleteTable(t.name)
-    message.success('表已删除')
+    message.success('Table deleted')
     queryClient.invalidateQueries({ queryKey: ['tables'] })
   } catch (err) {
     message.error((err as Error).message)
@@ -182,7 +182,7 @@ async function saveTitle(t: TableMeta) {
   if (!v || v === (t.title || t.name)) { cancelEdit(); return }
   try {
     await api.updateTableTitle(t.name, v)
-    message.success('表名已更新')
+    message.success('Table name updated')
     queryClient.invalidateQueries({ queryKey: ['tables'] })
   } catch (err) {
     message.error((err as Error).message)
@@ -227,7 +227,7 @@ async function saveTitle(t: TableMeta) {
 .empty-state { text-align: center; padding: 80px 20px; }
 .empty-icon { margin-bottom: 16px; }
 .empty-text { font-size: 15px; color: #999; margin-bottom: 20px; }
-/* API 区域 */
+/* API section */
 .api-section { margin-top: 40px; }
 .api-card {
   background: #f8f9fc; border: 1px solid #e8eaf0; border-radius: 10px;

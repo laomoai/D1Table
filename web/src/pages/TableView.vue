@@ -4,7 +4,7 @@
     <n-result
       v-else-if="fieldsError"
       status="error"
-      :title="`无法加载表 ${tableName}`"
+      :title="`Failed to load table ${tableName}`"
       :description="(fieldsError as Error).message"
     />
     <DataGrid

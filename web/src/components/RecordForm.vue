@@ -1,7 +1,7 @@
 <template>
   <n-modal
     v-model:show="visible"
-    :title="isEdit ? '编辑记录' : '新增记录'"
+    :title="isEdit ? 'Edit Record' : 'New Record'"
     preset="card"
     style="width: 560px;"
     :mask-closable="false"
@@ -21,7 +21,7 @@
         :rule="!field.nullable ? {
           required: true,
           type: ['number', 'currency', 'percent', 'datetime', 'checkbox'].includes(field.field_type) ? 'number' : 'string',
-          message: `${field.title} 为必填项`,
+          message: `${field.title} is required`,
           trigger: ['blur', 'input', 'change']
         } : undefined"
       >
@@ -37,7 +37,7 @@
           v-else-if="['number', 'currency', 'percent'].includes(field.field_type)"
           :value="formData[field.column_name] as number | null"
           @update:value="(v: number | null) => formData[field.column_name] = v"
-          :placeholder="`请输入 ${field.title}`"
+          :placeholder="`Enter ${field.title}`"
           style="width: 100%;"
           :prefix="field.field_type === 'currency' ? '¥' : undefined"
           :suffix="field.field_type === 'percent' ? '%' : undefined"
@@ -69,7 +69,7 @@
           :value="formData[field.column_name] as string"
           @update:value="(v: string) => formData[field.column_name] = v"
           :options="(field.select_options ?? []).map(o => ({ label: o.label, value: o.value }))"
-          :placeholder="`请选择 ${field.title}`"
+          :placeholder="`Select ${field.title}`"
           clearable
         />
 
@@ -78,7 +78,7 @@
           v-else-if="field.field_type === 'longtext'"
           :value="formData[field.column_name] as string"
           @update:value="(v: string) => formData[field.column_name] = v"
-          :placeholder="`请输入 ${field.title}`"
+          :placeholder="`Enter ${field.title}`"
           type="textarea"
           :rows="3"
         />
@@ -88,7 +88,7 @@
           v-else-if="field.field_type === 'email'"
           :value="formData[field.column_name] as string"
           @update:value="(v: string) => formData[field.column_name] = v"
-          placeholder="请输入邮箱地址"
+          placeholder="Enter email address"
           type="text"
         />
 
@@ -106,16 +106,16 @@
           v-else
           :value="formData[field.column_name] as string"
           @update:value="(v: string) => formData[field.column_name] = v"
-          :placeholder="`请输入 ${field.title}`"
+          :placeholder="`Enter ${field.title}`"
         />
       </n-form-item>
     </n-form>
 
     <template #footer>
       <div style="display: flex; justify-content: flex-end; gap: 8px;">
-        <n-button @click="visible = false">取消</n-button>
+        <n-button @click="visible = false">Cancel</n-button>
         <n-button type="primary" :loading="submitting" @click="handleSubmit">
-          {{ isEdit ? '保存' : '新增' }}
+          {{ isEdit ? 'Save' : 'Add' }}
         </n-button>
       </div>
     </template>

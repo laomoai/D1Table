@@ -1,6 +1,6 @@
 <template>
   <n-layout style="height: 100vh" has-sider>
-    <!-- 左侧边栏 -->
+    <!-- Left sidebar -->
     <n-layout-sider
       bordered
       :width="220"
@@ -17,13 +17,13 @@
           style="margin-left: auto; color: #8892b0;"
           quaternary
           @click.stop="showCreateTable = true"
-          title="新建表"
+          title="New table"
         >＋</n-button>
       </div>
 
-      <!-- 分组 + 表列表 -->
+      <!-- Groups + table list -->
       <div class="table-list">
-        <!-- 已分组的表 -->
+        <!-- Grouped tables -->
         <template v-for="group in groupedTables" :key="group.id">
           <div
             class="group-header"
@@ -62,7 +62,7 @@
           </template>
         </template>
 
-        <!-- 未分组的表 -->
+        <!-- Ungrouped tables -->
         <template v-if="ungroupedTables.length > 0">
           <div
             v-if="groupedTables.length > 0"
@@ -70,7 +70,7 @@
             @click="toggleGroup(-1)"
           >
             <span class="group-arrow" :class="{ expanded: expandedGroups.has(-1) }">›</span>
-            <span class="group-name">未分组</span>
+            <span class="group-name">Ungrouped</span>
             <span class="group-count">{{ ungroupedTables.length }}</span>
           </div>
           <template v-if="groupedTables.length === 0 || expandedGroups.has(-1)">
@@ -106,7 +106,7 @@
       <div class="sidebar-footer">
         <n-button text size="small" style="color: #8892b0;" @click="router.push('/settings')">
           <template #icon><n-icon :component="SettingsIcon" /></template>
-          设置
+          Settings
         </n-button>
       </div>
     </n-layout-sider>
@@ -116,7 +116,7 @@
       @created="(name) => { queryClient.invalidateQueries({ queryKey: ['tables'] }); router.push(`/tables/${name}`) }"
     />
 
-    <!-- 主内容区 -->
+    <!-- Main content area -->
     <n-layout-content>
       <router-view />
     </n-layout-content>
@@ -155,8 +155,8 @@ const activeTable = computed(() => {
   return typeof match === 'string' ? match : null
 })
 
-// ── 分组折叠 ──────────────────────────────────────────────────
-const expandedGroups = reactive(new Set<number>([-1])) // -1 = 未分组默认展开
+// ── Group collapse ──────────────────────────────────────────────────
+const expandedGroups = reactive(new Set<number>([-1])) // -1 = ungrouped, expanded by default
 
 function toggleGroup(id: number) {
   if (expandedGroups.has(id)) {
@@ -166,14 +166,14 @@ function toggleGroup(id: number) {
   }
 }
 
-// 计算分组后的表列表
+// Compute grouped table list
 const groupedTables = computed(() => {
   if (!groups.value || !tables.value || groups.value.length === 0) return []
 
   return groups.value
     .filter(g => g.tables.length > 0)
     .map(g => {
-      // 首次出现自动展开
+      // Auto-expand on first appearance
       if (!expandedGroups.has(g.id) && expandedGroups.size <= 1) {
         expandedGroups.add(g.id)
       }
@@ -198,7 +198,7 @@ function navigateToTable(name: string) {
   router.push(`/tables/${name}`)
 }
 
-// ── 内联编辑表显示名 ──────────────────────────────────────────
+// ── Inline edit table display name ──────────────────────────────────────────
 const editingTable = ref<string | null>(null)
 const editTableTitle = ref('')
 const tableEditInputRef = ref<HTMLInputElement>()
@@ -221,7 +221,7 @@ async function saveTableTitle(table: TableMeta) {
   }
   try {
     await api.updateTableTitle(table.name, newTitle)
-    message.success('表名已更新')
+    message.success('Table name updated')
     queryClient.invalidateQueries({ queryKey: ['tables'] })
   } catch (err) {
     message.error((err as Error).message)

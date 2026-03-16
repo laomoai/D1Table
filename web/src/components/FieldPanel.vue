@@ -1,6 +1,6 @@
 <template>
   <n-drawer v-model:show="visible" :width="340" placement="right">
-    <n-drawer-content title="字段管理" :native-scrollbar="false">
+    <n-drawer-content title="Field Management" :native-scrollbar="false">
       <div class="field-list">
         <div
           v-for="(field, idx) in localFields"
@@ -34,13 +34,13 @@
 
           <!-- 右侧操作：上移/下移/眼睛 -->
           <div class="field-actions">
-            <button class="icon-btn" :disabled="idx === 0" @click="moveField(idx, -1)" title="上移">↑</button>
-            <button class="icon-btn" :disabled="idx === localFields.length - 1" @click="moveField(idx, 1)" title="下移">↓</button>
+            <button class="icon-btn" :disabled="idx === 0" @click="moveField(idx, -1)" title="Move up">↑</button>
+            <button class="icon-btn" :disabled="idx === localFields.length - 1" @click="moveField(idx, 1)" title="Move down">↓</button>
             <button
               class="icon-btn"
               :class="{ 'eye-hidden': field.is_hidden }"
               @click="toggleHidden(field)"
-              :title="field.is_hidden ? '显示字段' : '隐藏字段'"
+              :title="field.is_hidden ? 'Show field' : 'Hide field'"
             >{{ field.is_hidden ? '👁️' : '👁' }}</button>
           </div>
         </div>
@@ -51,18 +51,18 @@
         <n-collapse-transition :show="showAddForm">
           <div class="add-field-form">
             <n-form size="small" label-placement="left" label-width="60">
-              <n-form-item label="显示名">
-                <n-input v-model:value="newField.title" placeholder="字段显示名" />
+              <n-form-item label="Display Name">
+                <n-input v-model:value="newField.title" placeholder="Field display name" />
               </n-form-item>
-              <n-form-item label="类型">
+              <n-form-item label="Type">
                 <n-select
                   v-model:value="newField.field_type"
                   :options="fieldTypeOptions"
                 />
               </n-form-item>
-              <!-- select 类型的选项 -->
+              <!-- select type options -->
               <template v-if="newField.field_type === 'select'">
-                <n-form-item label="选项">
+                <n-form-item label="Options">
                   <div class="select-options-editor">
                     <div
                       v-for="(opt, oi) in newField.select_options"
@@ -72,24 +72,24 @@
                       <input
                         v-model="opt.label"
                         class="opt-label-input"
-                        placeholder="选项名"
+                        placeholder="Option name"
                         @input="opt.value = opt.label"
                       />
                       <input
                         v-model="opt.color"
                         type="color"
                         class="opt-color-input"
-                        title="选择颜色"
+                        title="Choose color"
                       />
                       <button class="icon-btn" @click="newField.select_options.splice(oi, 1)">✕</button>
                     </div>
-                    <button class="add-opt-btn" @click="addSelectOption">+ 添加选项</button>
+                    <button class="add-opt-btn" @click="addSelectOption">+ Add Option</button>
                   </div>
                 </n-form-item>
               </template>
               <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:8px;">
-                <n-button size="small" @click="showAddForm = false">取消</n-button>
-                <n-button size="small" type="primary" :loading="adding" @click="submitAddField">添加</n-button>
+                <n-button size="small" @click="showAddForm = false">Cancel</n-button>
+                <n-button size="small" type="primary" :loading="adding" @click="submitAddField">Add</n-button>
               </div>
             </n-form>
           </div>
@@ -102,7 +102,7 @@
           style="width:100%; margin-top:12px;"
           @click="openAddForm"
         >
-          + 添加字段
+          + Add Field
         </n-button>
       </div>
     </n-drawer-content>
@@ -157,7 +157,7 @@ async function saveEdit(field: FieldMeta) {
   }
   try {
     await api.updateFieldMeta(props.tableName, field.column_name, { title: editTitle.value.trim() })
-    message.success('字段名已更新')
+    message.success('Field name updated')
     queryClient.invalidateQueries({ queryKey: ['fields', props.tableName] })
     emit('refresh')
   } catch (err) {
@@ -209,17 +209,17 @@ const newField = ref({
 })
 
 const fieldTypeOptions = [
-  { label: 'T  文本', value: 'text' },
-  { label: '¶  长文本', value: 'longtext' },
-  { label: '#  数字', value: 'number' },
-  { label: '¥  货币', value: 'currency' },
-  { label: '%  百分比', value: 'percent' },
-  { label: '@  邮箱', value: 'email' },
-  { label: '🔗 网址', value: 'url' },
-  { label: '📅 日期', value: 'date' },
-  { label: '🕐 日期时间', value: 'datetime' },
-  { label: '☑  复选框', value: 'checkbox' },
-  { label: '◉  下拉选择', value: 'select' },
+  { label: 'T  Text', value: 'text' },
+  { label: '¶  Long text', value: 'longtext' },
+  { label: '#  Number', value: 'number' },
+  { label: '¥  Currency', value: 'currency' },
+  { label: '%  Percent', value: 'percent' },
+  { label: '@  Email', value: 'email' },
+  { label: '🔗 URL', value: 'url' },
+  { label: '📅 Date', value: 'date' },
+  { label: '🕐 Datetime', value: 'datetime' },
+  { label: '☑  Checkbox', value: 'checkbox' },
+  { label: '◉  Select', value: 'select' },
 ]
 
 function openAddForm() {
@@ -235,7 +235,7 @@ function addSelectOption() {
 
 async function submitAddField() {
   if (!newField.value.title.trim()) {
-    message.warning('请输入字段显示名')
+    message.warning('Please enter a field display name')
     return
   }
   adding.value = true
@@ -245,7 +245,7 @@ async function submitAddField() {
       field_type: newField.value.field_type,
       select_options: newField.value.field_type === 'select' ? newField.value.select_options : undefined,
     })
-    message.success('字段已添加')
+    message.success('Field added')
     queryClient.invalidateQueries({ queryKey: ['fields', props.tableName] })
     emit('refresh')
     showAddForm.value = false

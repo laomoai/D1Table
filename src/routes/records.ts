@@ -35,7 +35,7 @@ records.get('/:tableName/records', async (c) => {
   ])
 
   if (!allTables.includes(tableName)) {
-    return c.json({ error: { code: 'TABLE_NOT_FOUND', message: `表 "${tableName}" 不存在` } }, 404)
+    return c.json({ error: { code: 'TABLE_NOT_FOUND', message: `Table "${tableName}" not found` } }, 404)
   }
 
   const allColumns = cols.map((c) => c.name)
@@ -115,11 +115,11 @@ records.get('/:tableName/records/:id', async (c) => {
   ])
 
   if (!allTables.includes(tableName)) {
-    return c.json({ error: { code: 'TABLE_NOT_FOUND', message: `表 "${tableName}" 不存在` } }, 404)
+    return c.json({ error: { code: 'TABLE_NOT_FOUND', message: `Table "${tableName}" not found` } }, 404)
   }
 
   if (!rowResult) {
-    return c.json({ error: { code: 'RECORD_NOT_FOUND', message: '记录不存在' } }, 404)
+    return c.json({ error: { code: 'RECORD_NOT_FOUND', message: 'Record not found' } }, 404)
   }
 
   const fields: Record<string, { title: string; field_type: string }> = {}
@@ -142,7 +142,7 @@ records.post('/:tableName/records', requireWriteMiddleware, async (c) => {
 
   const allTables = await getUserTables(c.env.DB)
   if (!allTables.includes(tableName)) {
-    return c.json({ error: { code: 'TABLE_NOT_FOUND', message: `表 "${tableName}" 不存在` } }, 404)
+    return c.json({ error: { code: 'TABLE_NOT_FOUND', message: `Table "${tableName}" not found` } }, 404)
   }
 
   const cols = await getTableColumns(c.env.DB, tableName)
@@ -158,7 +158,7 @@ records.post('/:tableName/records', requireWriteMiddleware, async (c) => {
   // 只保留合法字段
   const fields = Object.keys(body).filter((k) => allowedNames.includes(k))
   if (fields.length === 0) {
-    return c.json({ error: { code: 'INVALID_BODY', message: '请求体没有有效字段' } }, 400)
+    return c.json({ error: { code: 'INVALID_BODY', message: 'No valid fields provided in request body' } }, 400)
   }
 
   const values = fields.map((f) => body[f])
@@ -175,7 +175,7 @@ records.post('/:tableName/records', requireWriteMiddleware, async (c) => {
     return c.json({
       error: {
         code: 'REQUIRED_FIELDS_MISSING',
-        message: `以下字段为必填：${missing.map((c) => c.name).join('、')}`,
+        message: `The following fields are required: ${missing.map((c) => c.name).join(', ')}`,
       },
     }, 400)
   }
@@ -206,7 +206,7 @@ records.post('/:tableName/records', requireWriteMiddleware, async (c) => {
     if (msg.includes('NOT NULL constraint')) {
       const col = msg.match(/NOT NULL constraint failed: \w+\.(\w+)/)?.[1]
       return c.json({
-        error: { code: 'REQUIRED_FIELDS_MISSING', message: `字段 "${col ?? '未知'}" 为必填项` },
+        error: { code: 'REQUIRED_FIELDS_MISSING', message: `Field "${col ?? 'unknown'}" is required` },
       }, 400)
     }
     throw err // 其他错误继续抛出
@@ -223,7 +223,7 @@ records.patch('/:tableName/records/:id', requireWriteMiddleware, async (c) => {
 
   const allTables = await getUserTables(c.env.DB)
   if (!allTables.includes(tableName)) {
-    return c.json({ error: { code: 'TABLE_NOT_FOUND', message: `表 "${tableName}" 不存在` } }, 404)
+    return c.json({ error: { code: 'TABLE_NOT_FOUND', message: `Table "${tableName}" not found` } }, 404)
   }
 
   const cols = await getTableColumns(c.env.DB, tableName)
@@ -234,7 +234,7 @@ records.patch('/:tableName/records/:id', requireWriteMiddleware, async (c) => {
   const fields = Object.keys(body).filter((k) => allowedNames.includes(k))
 
   if (fields.length === 0) {
-    return c.json({ error: { code: 'INVALID_BODY', message: '请求体没有有效字段' } }, 400)
+    return c.json({ error: { code: 'INVALID_BODY', message: 'No valid fields provided in request body' } }, 400)
   }
 
   const setClause = fields.map((f) => `"${f}" = ?`).join(', ')
@@ -246,7 +246,7 @@ records.patch('/:tableName/records/:id', requireWriteMiddleware, async (c) => {
     .run()
 
   if (result.meta.changes === 0) {
-    return c.json({ error: { code: 'RECORD_NOT_FOUND', message: '记录不存在' } }, 404)
+    return c.json({ error: { code: 'RECORD_NOT_FOUND', message: 'Record not found' } }, 404)
   }
 
   return c.json({ data: { success: true, id: Number(id) } })
@@ -262,7 +262,7 @@ records.delete('/:tableName/records/:id', requireWriteMiddleware, async (c) => {
 
   const allTables = await getUserTables(c.env.DB)
   if (!allTables.includes(tableName)) {
-    return c.json({ error: { code: 'TABLE_NOT_FOUND', message: `表 "${tableName}" 不存在` } }, 404)
+    return c.json({ error: { code: 'TABLE_NOT_FOUND', message: `Table "${tableName}" not found` } }, 404)
   }
 
   // 获取完整记录用于存入回收站
@@ -272,7 +272,7 @@ records.delete('/:tableName/records/:id', requireWriteMiddleware, async (c) => {
     .first()
 
   if (!existing) {
-    return c.json({ error: { code: 'RECORD_NOT_FOUND', message: '记录不存在' } }, 404)
+    return c.json({ error: { code: 'RECORD_NOT_FOUND', message: 'Record not found' } }, 404)
   }
 
   await c.env.DB.batch([
@@ -300,7 +300,7 @@ records.post('/:tableName/records/batch', requireWriteMiddleware, async (c) => {
 
   const allTables = await getUserTables(c.env.DB)
   if (!allTables.includes(tableName)) {
-    return c.json({ error: { code: 'TABLE_NOT_FOUND', message: `表 "${tableName}" 不存在` } }, 404)
+    return c.json({ error: { code: 'TABLE_NOT_FOUND', message: `Table "${tableName}" not found` } }, 404)
   }
 
   const cols = await getTableColumns(c.env.DB, tableName)
@@ -309,7 +309,7 @@ records.post('/:tableName/records/batch', requireWriteMiddleware, async (c) => {
 
   const body = await c.req.json<{ records: Record<string, unknown>[] }>()
   if (!Array.isArray(body.records) || body.records.length === 0) {
-    return c.json({ error: { code: 'INVALID_BODY', message: 'records 数组不能为空' } }, 400)
+    return c.json({ error: { code: 'INVALID_BODY', message: 'records array cannot be empty' } }, 400)
   }
 
   const rows = body.records.slice(0, 500) // 单次最多 500 条
@@ -318,7 +318,7 @@ records.post('/:tableName/records/batch', requireWriteMiddleware, async (c) => {
   const firstRow = rows[0]
   const fields = Object.keys(firstRow).filter((k) => allowedNames.includes(k))
   if (fields.length === 0) {
-    return c.json({ error: { code: 'INVALID_BODY', message: '没有有效字段' } }, 400)
+    return c.json({ error: { code: 'INVALID_BODY', message: 'No valid fields provided' } }, 400)
   }
 
   const placeholders = fields.map(() => '?').join(', ')

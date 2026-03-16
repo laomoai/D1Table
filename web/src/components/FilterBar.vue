@@ -4,7 +4,7 @@
       <n-select
         v-model:value="filter.field"
         :options="columnOptions"
-        placeholder="选择字段"
+        placeholder="Select field"
         style="width: 140px;"
         size="small"
       />
@@ -16,7 +16,7 @@
       />
       <n-input
         v-model:value="filter.value"
-        placeholder="值"
+        placeholder="Value"
         style="width: 160px;"
         size="small"
         @keyup.enter="emit('change', filters)"
@@ -25,21 +25,21 @@
     </div>
 
     <div class="filter-actions">
-      <n-button size="small" dashed @click="addFilter">+ 添加条件</n-button>
+      <n-button size="small" dashed @click="addFilter">+ Add Condition</n-button>
       <n-button
         v-if="filters.length"
         size="small"
         type="primary"
         @click="emit('change', filters)"
       >
-        应用
+        Apply
       </n-button>
       <n-button
         v-if="filters.length"
         size="small"
         @click="clearFilters"
       >
-        清除
+        Clear
       </n-button>
     </div>
   </div>
@@ -68,14 +68,14 @@ const columnOptions = computed(() =>
 )
 
 const opOptions = [
-  { label: '等于', value: 'eq' },
-  { label: '不等于', value: 'ne' },
-  { label: '包含', value: 'like' },
-  { label: '不包含', value: 'nlike' },
-  { label: '大于', value: 'gt' },
-  { label: '大于等于', value: 'gte' },
-  { label: '小于', value: 'lt' },
-  { label: '小于等于', value: 'lte' },
+  { label: 'Equals', value: 'eq' },
+  { label: 'Not equals', value: 'ne' },
+  { label: 'Contains', value: 'like' },
+  { label: 'Does not contain', value: 'nlike' },
+  { label: 'Greater than', value: 'gt' },
+  { label: 'Greater than or equal', value: 'gte' },
+  { label: 'Less than', value: 'lt' },
+  { label: 'Less than or equal', value: 'lte' },
 ]
 
 function addFilter() {

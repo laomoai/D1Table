@@ -1,5 +1,5 @@
 <template>
-  <button class="expand-btn" @click.stop="params.onExpand(params.data, params.rowIndex)" title="展开详情">⤢</button>
+  <button class="expand-btn" @click.stop="params.onExpand(params.data, params.rowIndex)" title="Expand details">⤢</button>
 </template>
 
 <script setup lang="ts">

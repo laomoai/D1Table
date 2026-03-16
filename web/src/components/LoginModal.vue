@@ -4,17 +4,17 @@
     :mask-closable="false"
     :closable="false"
     preset="card"
-    title="欢迎使用 D1Table"
+    title="Welcome to D1Table"
     style="width: 420px;"
   >
     <n-space vertical>
-      <n-text depth="2">请输入 API Key 以继续（首次使用请填写 ADMIN_KEY）</n-text>
+      <n-text depth="2">Enter your API Key to continue (first-time use: enter the ADMIN_KEY)</n-text>
 
       <n-input
         v-model:value="inputKey"
         type="password"
         show-password-on="click"
-        placeholder="d1t_rw_... 或 ADMIN_KEY"
+        placeholder="d1t_rw_... or ADMIN_KEY"
         size="large"
         @keyup.enter="handleLogin"
       />
@@ -30,7 +30,7 @@
         :loading="testing"
         @click="handleLogin"
       >
-        确认
+        Confirm
       </n-button>
     </template>
   </n-modal>
@@ -61,7 +61,7 @@ async function handleLogin() {
     saveApiKey(inputKey.value.trim())
     emit('success')
   } catch (err) {
-    errorMsg.value = (err as Error).message || 'Key 无效，请检查后重试'
+    errorMsg.value = (err as Error).message || 'Invalid key — please check and try again'
   } finally {
     testing.value = false
   }

@@ -107,7 +107,7 @@ fields.get('/:tableName/fields', async (c) => {
   const { tableName } = c.req.param()
   const allTables = await getUserTables(c.env.DB)
   if (!allTables.includes(tableName)) {
-    return c.json({ error: { code: 'TABLE_NOT_FOUND', message: `表 "${tableName}" 不存在` } }, 404)
+    return c.json({ error: { code: 'TABLE_NOT_FOUND', message: `Table "${tableName}" not found` } }, 404)
   }
 
   const result = await ensureFieldMeta(c.env.DB, tableName)
@@ -142,7 +142,7 @@ fields.patch('/:tableName/fields/:colName', requireWriteMiddleware, async (c) =>
   if (body.order_index !== undefined) { updates.push('order_index = ?'); params.push(body.order_index) }
 
   if (updates.length === 0) {
-    return c.json({ error: { code: 'NO_CHANGES', message: '没有需要更新的字段' } }, 400)
+    return c.json({ error: { code: 'NO_CHANGES', message: 'No fields to update' } }, 400)
   }
 
   params.push(tableName, colName)
@@ -179,7 +179,7 @@ fields.post('/:tableName/fields', requireWriteMiddleware, async (c) => {
   }>()
 
   if (!body.title?.trim()) {
-    return c.json({ error: { code: 'INVALID_BODY', message: '字段显示名不能为空' } }, 400)
+    return c.json({ error: { code: 'INVALID_BODY', message: 'Field display name cannot be empty' } }, 400)
   }
 
   // 自动生成 column_name（从 title 转换）
@@ -187,7 +187,7 @@ fields.post('/:tableName/fields', requireWriteMiddleware, async (c) => {
     body.title.toLowerCase().replace(/[^\w\s]/g, '').replace(/\s+/g, '_').replace(/^[0-9]/, '_$&').slice(0, 32)
 
   if (!isValidIdentifier(columnName)) {
-    return c.json({ error: { code: 'INVALID_NAME', message: `无法从 "${body.title}" 生成合法的字段名` } }, 400)
+    return c.json({ error: { code: 'INVALID_NAME', message: `Cannot generate a valid field name from "${body.title}"` } }, 400)
   }
 
   // fieldType → SQLite type
@@ -223,7 +223,7 @@ fields.post('/:tableName/fields', requireWriteMiddleware, async (c) => {
   } catch (err) {
     const msg = (err as Error).message ?? ''
     if (msg.includes('duplicate column')) {
-      return c.json({ error: { code: 'FIELD_EXISTS', message: `字段 "${columnName}" 已存在` } }, 409)
+      return c.json({ error: { code: 'FIELD_EXISTS', message: `Field "${columnName}" already exists` } }, 409)
     }
     throw err
   }
@@ -242,7 +242,7 @@ fields.delete('/:tableName/fields/:colName', requireWriteMiddleware, async (c) =
 
   // 检查是否为系统列
   if (['id', 'created_at'].includes(colName)) {
-    return c.json({ error: { code: 'SYSTEM_FIELD', message: '不能删除系统字段' } }, 400)
+    return c.json({ error: { code: 'SYSTEM_FIELD', message: 'Cannot delete system fields' } }, 400)
   }
 
   await c.env.DB.prepare(

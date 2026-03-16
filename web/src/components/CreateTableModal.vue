@@ -1,41 +1,41 @@
 <template>
   <n-modal
     v-model:show="visible"
-    title="新建表"
+    title="New Table"
     preset="card"
     style="width: 600px;"
     :mask-closable="false"
   >
     <n-form ref="formRef" :model="form" label-placement="left" label-width="80">
       <n-form-item
-        label="表名"
+        label="Table Name"
         path="displayName"
-        :rule="{ required: true, message: '请输入表名', trigger: ['blur', 'input'] }"
+        :rule="{ required: true, message: 'Please enter a table name', trigger: ['blur', 'input'] }"
       >
         <n-input
           v-model:value="form.displayName"
-          placeholder="如：客户列表、订单管理"
+          placeholder="e.g. Customer List, Order Management"
         />
       </n-form-item>
     </n-form>
 
-    <!-- 字段列表 -->
+    <!-- Field list -->
     <div class="section-title">
-      字段定义
-      <span class="section-hint">（id 和 created_at 自动添加）</span>
+      Field Definitions
+      <span class="section-hint">(id and created_at are added automatically)</span>
     </div>
 
     <div class="col-header-row">
-      <span style="width:160px">显示名</span>
-      <span style="width:140px">类型</span>
-      <span style="width:50px">可空</span>
+      <span style="width:160px">Display Name</span>
+      <span style="width:140px">Type</span>
+      <span style="width:50px">Nullable</span>
       <span style="width:28px"></span>
     </div>
 
     <div v-for="(col, idx) in form.columns" :key="idx" class="col-row">
       <n-input
         v-model:value="col.displayName"
-        placeholder="字段显示名"
+        placeholder="Field display name"
         style="width: 160px;"
         size="small"
       />
@@ -57,36 +57,36 @@
     </div>
 
     <n-button dashed size="small" style="margin-top: 8px;" @click="addColumn">
-      + 添加字段
+      + Add Field
     </n-button>
 
-    <!-- select 类型选项编辑 -->
+    <!-- select type option editor -->
     <template v-for="(col, idx) in form.columns" :key="`opt-${idx}`">
       <div v-if="col.fieldType === 'select'" class="select-options-section">
         <div class="section-title" style="margin-top: 12px; margin-bottom: 8px;">
-          字段「{{ col.displayName || '未命名' }}」的选项
+          Options for field "{{ col.displayName || 'Unnamed' }}"
         </div>
         <div v-for="(opt, oi) in col.selectOptions" :key="oi" class="select-opt-row">
           <n-input
             v-model:value="opt.label"
             size="small"
-            placeholder="选项名"
+            placeholder="Option name"
             style="width: 140px;"
             @input="opt.value = opt.label"
           />
-          <input v-model="opt.color" type="color" class="color-picker" title="选择颜色" />
+          <input v-model="opt.color" type="color" class="color-picker" title="Choose color" />
           <n-button size="small" quaternary @click="col.selectOptions.splice(oi, 1)">✕</n-button>
         </div>
         <n-button size="small" dashed style="margin-top: 4px;" @click="addSelectOption(col)">
-          + 添加选项
+          + Add Option
         </n-button>
       </div>
     </template>
 
     <template #footer>
       <div style="display: flex; justify-content: flex-end; gap: 8px;">
-        <n-button @click="visible = false">取消</n-button>
-        <n-button type="primary" :loading="submitting" @click="handleSubmit">创建</n-button>
+        <n-button @click="visible = false">Cancel</n-button>
+        <n-button type="primary" :loading="submitting" @click="handleSubmit">Create</n-button>
       </div>
     </template>
   </n-modal>
@@ -119,17 +119,17 @@ interface ColDef {
 }
 
 const fieldTypeOptions = [
-  { label: 'T  文本', value: 'text' },
-  { label: '¶  长文本', value: 'longtext' },
-  { label: '#  数字', value: 'number' },
-  { label: '¥  货币', value: 'currency' },
-  { label: '%  百分比', value: 'percent' },
-  { label: '@  邮箱', value: 'email' },
-  { label: '🔗 网址', value: 'url' },
-  { label: '📅 日期', value: 'date' },
-  { label: '🕐 日期时间', value: 'datetime' },
-  { label: '☑  复选框', value: 'checkbox' },
-  { label: '◉  下拉选择', value: 'select' },
+  { label: 'T  Text', value: 'text' },
+  { label: '¶  Long text', value: 'longtext' },
+  { label: '#  Number', value: 'number' },
+  { label: '¥  Currency', value: 'currency' },
+  { label: '%  Percent', value: 'percent' },
+  { label: '@  Email', value: 'email' },
+  { label: '🔗 URL', value: 'url' },
+  { label: '📅 Date', value: 'date' },
+  { label: '🕐 Datetime', value: 'datetime' },
+  { label: '☑  Checkbox', value: 'checkbox' },
+  { label: '◉  Select', value: 'select' },
 ]
 
 const fieldTypeToSqlite: Record<string, string> = {
@@ -139,7 +139,7 @@ const fieldTypeToSqlite: Record<string, string> = {
   checkbox: 'INTEGER',
 }
 
-// 自动生成 API 表名：tbl_ + 8位随机字符
+// Auto-generate API table name: tbl_ + 8 random chars
 function generateTableName(): string {
   const chars = 'abcdefghijklmnopqrstuvwxyz0123456789'
   let id = ''
@@ -147,7 +147,7 @@ function generateTableName(): string {
   return `tbl_${id}`
 }
 
-// 自动生成列名：col_ + 4位随机字符
+// Auto-generate column name: col_ + 4 random chars
 function generateColName(): string {
   const chars = 'abcdefghijklmnopqrstuvwxyz0123456789'
   let id = ''
@@ -162,7 +162,7 @@ function syncSqliteType(col: ColDef) {
 const form = ref({
   displayName: '',
   columns: [
-    { displayName: '名称', fieldType: 'text' as FieldType, type: 'TEXT', nullable: false, selectOptions: [] as SelectOption[] },
+    { displayName: 'Name', fieldType: 'text' as FieldType, type: 'TEXT', nullable: false, selectOptions: [] as SelectOption[] },
   ] as ColDef[],
 })
 
@@ -190,7 +190,7 @@ async function handleSubmit() {
 
   const cols = form.value.columns.filter(c => c.displayName.trim())
   if (cols.length === 0) {
-    message.warning('至少添加一个字段')
+    message.warning('Please add at least one field')
     return
   }
 
@@ -210,15 +210,15 @@ async function handleSubmit() {
         select_options: c.fieldType === 'select' ? c.selectOptions : undefined,
       })),
     })
-    message.success(`表「${form.value.displayName}」创建成功`)
+    message.success(`Table "${form.value.displayName}" created successfully`)
     await queryClient.invalidateQueries({ queryKey: ['tables'] })
     await queryClient.refetchQueries({ queryKey: ['tables'] })
     emit('created', tableName)
     visible.value = false
-    // 重置
+    // Reset
     form.value = {
       displayName: '',
-      columns: [{ displayName: '名称', fieldType: 'text', type: 'TEXT', nullable: false, selectOptions: [] }],
+      columns: [{ displayName: 'Name', fieldType: 'text', type: 'TEXT', nullable: false, selectOptions: [] }],
     }
   } catch (err) {
     message.error((err as Error).message)

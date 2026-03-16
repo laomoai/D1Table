@@ -1,15 +1,15 @@
 <template>
   <div class="settings-page">
     <div class="settings-header">
-      <h2 class="settings-title">设置</h2>
+      <h2 class="settings-title">Settings</h2>
     </div>
 
     <n-tabs type="line" animated>
-      <!-- ─── Tab 1: 账号 ──────────────────────────────────── -->
-      <n-tab-pane name="account" tab="账号">
+      <!-- ─── Tab 1: Account ──────────────────────────────────── -->
+      <n-tab-pane name="account" tab="Account">
         <div class="tab-content">
           <div class="section">
-            <div class="section-label">当前 Key</div>
+            <div class="section-label">Current Key</div>
             <div class="key-display">
               <n-tag :type="keyStatus.type" size="small">{{ keyStatus.label }}</n-tag>
               <code class="key-masked">{{ maskedKey }}</code>
@@ -17,38 +17,38 @@
           </div>
 
           <div class="section">
-            <div class="section-label">更换 Key</div>
+            <div class="section-label">Change Key</div>
             <div style="display: flex; gap: 8px; align-items: center;">
               <n-input
                 v-model:value="inputKey"
                 type="password"
                 show-password-on="click"
-                placeholder="粘贴新的 API Key"
+                placeholder="Paste new API Key"
                 style="max-width: 360px;"
                 @keyup.enter="saveKey"
               />
-              <n-button type="primary" :disabled="!inputKey" @click="saveKey">保存</n-button>
-              <n-button :loading="testing" @click="testKey">测试</n-button>
+              <n-button type="primary" :disabled="!inputKey" @click="saveKey">Save</n-button>
+              <n-button :loading="testing" @click="testKey">Test</n-button>
             </div>
-            <div class="hint">Key 仅保存在浏览器 localStorage，不上传到服务器</div>
+            <div class="hint">Key is stored only in browser localStorage and never sent to the server</div>
           </div>
 
           <div class="section">
-            <n-button type="error" quaternary size="small" @click="logout">退出登录</n-button>
+            <n-button type="error" quaternary size="small" @click="logout">Sign out</n-button>
           </div>
         </div>
       </n-tab-pane>
 
-      <!-- ─── Tab 2: 分组 ──────────────────────────────────── -->
-      <n-tab-pane name="groups" tab="分组管理">
+      <!-- ─── Tab 2: Groups ──────────────────────────────────── -->
+      <n-tab-pane name="groups" tab="Groups">
         <div class="tab-content">
           <div class="hint" style="margin-bottom: 16px;">
-            分组可以整理你的数据表，也可以限制 API Key 只能访问特定分组内的表
+            Groups help organize your tables and can restrict API Keys to only access tables within specific groups
           </div>
 
           <n-spin v-if="groupsLoading" />
           <template v-else>
-            <!-- 分组列表 -->
+            <!-- Group list -->
             <div v-if="groupList?.length" class="group-list">
               <div v-for="g in groupList" :key="g.id" class="group-card">
                 <div class="group-card-header">
@@ -61,14 +61,14 @@
                       @keyup.escape="editingGroup = null"
                       autofocus
                     />
-                    <n-button size="tiny" type="primary" @click="saveGroupName(g.id)">确定</n-button>
-                    <n-button size="tiny" @click="editingGroup = null">取消</n-button>
+                    <n-button size="tiny" type="primary" @click="saveGroupName(g.id)">Confirm</n-button>
+                    <n-button size="tiny" @click="editingGroup = null">Cancel</n-button>
                   </template>
                   <template v-else>
                     <span class="group-card-name" @click="startEditGroup(g)">{{ g.name }}</span>
                     <div class="group-card-actions">
-                      <n-button size="tiny" quaternary @click="openGroupTableEditor(g)">编辑表</n-button>
-                      <n-button size="tiny" quaternary type="error" @click="handleDeleteGroup(g.id)">删除</n-button>
+                      <n-button size="tiny" quaternary @click="openGroupTableEditor(g)">Edit Tables</n-button>
+                      <n-button size="tiny" quaternary type="error" @click="handleDeleteGroup(g.id)">Delete</n-button>
                     </div>
                   </template>
                 </div>
@@ -84,20 +84,20 @@
                       {{ getTableTitle(tn) }}
                     </n-tag>
                   </template>
-                  <span v-else class="hint">暂无表，点击「编辑表」添加</span>
+                  <span v-else class="hint">No tables yet — click "Edit Tables" to add some</span>
                 </div>
               </div>
             </div>
 
             <div v-else class="empty-hint">
-              暂无分组
+              No groups yet
             </div>
 
-            <!-- 新建分组 -->
+            <!-- Create group -->
             <div class="create-group-row">
               <n-input
                 v-model:value="newGroupName"
-                placeholder="输入分组名称"
+                placeholder="Enter group name"
                 size="small"
                 style="max-width: 200px;"
                 @keyup.enter="handleCreateGroup"
@@ -108,7 +108,7 @@
                 :disabled="!newGroupName.trim()"
                 @click="handleCreateGroup"
               >
-                创建分组
+                Create Group
               </n-button>
             </div>
           </template>
@@ -127,13 +127,13 @@
                   <div class="key-card-meta">
                     <code class="key-prefix">{{ k.key_prefix }}...</code>
                     <n-tag :type="k.type === 'readonly' ? 'info' : 'warning'" size="tiny">
-                      {{ k.type === 'readonly' ? '只读' : '读写' }}
+                      {{ k.type === 'readonly' ? 'Read-only' : 'Read-write' }}
                     </n-tag>
                     <n-tag v-if="k.scope === 'groups'" size="tiny" :bordered="false">
-                      {{ k.groups?.map(g => g.name).join('、') || '无分组' }}
+                      {{ k.groups?.map(g => g.name).join(', ') || 'No groups' }}
                     </n-tag>
-                    <n-tag v-else size="tiny" :bordered="false">全部表</n-tag>
-                    <n-tag v-if="!k.is_active" type="error" size="tiny">已撤销</n-tag>
+                    <n-tag v-else size="tiny" :bordered="false">All tables</n-tag>
+                    <n-tag v-if="!k.is_active" type="error" size="tiny">Revoked</n-tag>
                   </div>
                 </div>
                 <n-button
@@ -143,38 +143,38 @@
                   quaternary
                   @click="handleRevoke(k.id)"
                 >
-                  撤销
+                  Revoke
                 </n-button>
               </div>
             </div>
-            <div v-else class="empty-hint">暂无 API Key</div>
+            <div v-else class="empty-hint">No API Keys yet</div>
 
             <n-button type="primary" size="small" style="margin-top: 16px;" @click="showCreate = true">
-              创建新 Key
+              Create New Key
             </n-button>
           </template>
 
-          <!-- API 文档入口 -->
+          <!-- API Docs link -->
           <div class="section" style="margin-top: 32px; padding-top: 24px; border-top: 1px solid #f0f0f0;">
-            <div class="section-label">API 文档</div>
+            <div class="section-label">API Documentation</div>
             <div style="display: flex; gap: 10px; margin-top: 8px;">
               <n-button tag="a" href="/api/docs" target="_blank" size="small" type="primary" ghost>
-                查看 API 文档
+                View API Docs
               </n-button>
               <n-button tag="a" href="/api/openapi.json" target="_blank" size="small" quaternary>
                 OpenAPI JSON
               </n-button>
             </div>
-            <div class="hint" style="margin-top: 8px;">AI Agent 可读取此文档自动发现可用接口</div>
+            <div class="hint" style="margin-top: 8px;">AI Agents can read this doc to auto-discover available endpoints</div>
           </div>
         </div>
       </n-tab-pane>
 
-      <!-- ─── Tab 4: 回收站 ──────────────────────────────── -->
-      <n-tab-pane name="trash" tab="回收站">
+      <!-- ─── Tab 4: Trash ──────────────────────────────── -->
+      <n-tab-pane name="trash" tab="Trash">
         <div class="tab-content">
           <div class="hint" style="margin-bottom: 16px;">
-            删除的记录会在回收站保留 30 天，之后自动永久删除
+            Deleted records are kept in the trash for 30 days, then permanently deleted automatically
           </div>
 
           <n-spin v-if="trashLoading" />
@@ -190,16 +190,16 @@
                     {{ formatTrashPreview(item.record_data) }}
                   </div>
                   <div class="trash-card-meta">
-                    删除于 {{ formatTrashTime(item.deleted_at) }}
+                    Deleted at {{ formatTrashTime(item.deleted_at) }}
                   </div>
                 </div>
                 <div class="trash-card-actions">
-                  <n-button size="tiny" type="primary" quaternary @click="handleRestore(item.id)">恢复</n-button>
-                  <n-button size="tiny" type="error" quaternary @click="handlePermanentDelete(item.id)">永久删除</n-button>
+                  <n-button size="tiny" type="primary" quaternary @click="handleRestore(item.id)">Restore</n-button>
+                  <n-button size="tiny" type="error" quaternary @click="handlePermanentDelete(item.id)">Delete permanently</n-button>
                 </div>
               </div>
             </div>
-            <div v-else class="empty-hint">回收站为空</div>
+            <div v-else class="empty-hint">Trash is empty</div>
 
             <n-button
               v-if="trashItems?.length"
@@ -209,7 +209,7 @@
               style="margin-top: 16px;"
               @click="handleEmptyTrash"
             >
-              清空回收站
+              Empty Trash
             </n-button>
           </template>
         </div>
@@ -218,29 +218,29 @@
     </n-tabs>
   </div>
 
-  <!-- 创建 Key 弹窗 -->
-  <n-modal v-model:show="showCreate" preset="card" style="width: 480px;" title="创建 API Key">
+  <!-- Create Key modal -->
+  <n-modal v-model:show="showCreate" preset="card" style="width: 480px;" title="Create API Key">
     <n-form :model="newKey" label-placement="left" label-width="80">
-      <n-form-item label="名称" :rule="{ required: true, message: '请输入名称' }">
-        <n-input v-model:value="newKey.name" placeholder="如：AI Agent 只读 Key" />
+      <n-form-item label="Name" :rule="{ required: true, message: 'Please enter a name' }">
+        <n-input v-model:value="newKey.name" placeholder="e.g. AI Agent Read-only Key" />
       </n-form-item>
-      <n-form-item label="权限">
+      <n-form-item label="Permission">
         <n-radio-group v-model:value="newKey.type">
           <n-space>
-            <n-radio value="readonly">只读</n-radio>
-            <n-radio value="readwrite">读写</n-radio>
+            <n-radio value="readonly">Read-only</n-radio>
+            <n-radio value="readwrite">Read-write</n-radio>
           </n-space>
         </n-radio-group>
       </n-form-item>
-      <n-form-item label="访问范围">
+      <n-form-item label="Scope">
         <n-radio-group v-model:value="newKey.scope">
           <n-space>
-            <n-radio value="all">全部表</n-radio>
-            <n-radio value="groups">指定分组</n-radio>
+            <n-radio value="all">All tables</n-radio>
+            <n-radio value="groups">Selected groups</n-radio>
           </n-space>
         </n-radio-group>
       </n-form-item>
-      <n-form-item v-if="newKey.scope === 'groups'" label="选择分组">
+      <n-form-item v-if="newKey.scope === 'groups'" label="Select Groups">
         <template v-if="groupList?.length">
           <n-checkbox-group v-model:value="newKey.group_ids">
             <n-space>
@@ -248,40 +248,40 @@
             </n-space>
           </n-checkbox-group>
         </template>
-        <span v-else class="hint">暂无分组，请先到「分组管理」创建</span>
+        <span v-else class="hint">No groups yet — please create one in the "Groups" tab first</span>
       </n-form-item>
     </n-form>
     <template #footer>
       <div style="display: flex; justify-content: flex-end; gap: 8px;">
-        <n-button @click="showCreate = false">取消</n-button>
-        <n-button type="primary" :loading="creating" @click="handleCreateKey">创建</n-button>
+        <n-button @click="showCreate = false">Cancel</n-button>
+        <n-button type="primary" :loading="creating" @click="handleCreateKey">Create</n-button>
       </div>
     </template>
   </n-modal>
 
-  <!-- 新 Key 展示弹窗 -->
-  <n-modal v-model:show="showNewKey" preset="card" style="width: 480px;" title="请保存你的 API Key">
+  <!-- New Key display modal -->
+  <n-modal v-model:show="showNewKey" preset="card" style="width: 480px;" title="Save your API Key">
     <n-alert type="warning" style="margin-bottom: 12px;">
-      此 Key 只显示一次，关闭后无法再次查看！
+      This key is shown only once — you won't be able to view it again after closing!
     </n-alert>
     <n-input :value="newKeyValue" readonly type="text" />
     <template #footer>
       <div style="display: flex; justify-content: flex-end; gap: 8px;">
-        <n-button @click="copyKey">复制</n-button>
-        <n-button type="primary" @click="showNewKey = false">我已保存</n-button>
+        <n-button @click="copyKey">Copy</n-button>
+        <n-button type="primary" @click="showNewKey = false">I've saved it</n-button>
       </div>
     </template>
   </n-modal>
 
-  <!-- 编辑分组弹窗（改名 + 编辑表） -->
-  <n-modal v-model:show="showGroupTableEditor" preset="card" style="width: 480px;" title="编辑分组">
+  <!-- Edit group modal (rename + edit tables) -->
+  <n-modal v-model:show="showGroupTableEditor" preset="card" style="width: 480px;" title="Edit Group">
     <template v-if="editingGroupData">
       <n-form label-placement="left" label-width="70" style="margin-bottom: 8px;">
-        <n-form-item label="分组名称">
-          <n-input v-model:value="editingGroupName" placeholder="分组名称" />
+        <n-form-item label="Group Name">
+          <n-input v-model:value="editingGroupName" placeholder="Group name" />
         </n-form-item>
       </n-form>
-      <div style="font-size: 13px; color: #555; margin-bottom: 8px; font-weight: 500;">包含的表</div>
+      <div style="font-size: 13px; color: #555; margin-bottom: 8px; font-weight: 500;">Included Tables</div>
       <n-checkbox-group v-model:value="selectedGroupTables">
         <n-space vertical>
           <n-checkbox
@@ -295,8 +295,8 @@
     </template>
     <template #footer>
       <div style="display: flex; justify-content: flex-end; gap: 8px;">
-        <n-button @click="showGroupTableEditor = false">取消</n-button>
-        <n-button type="primary" :loading="savingGroupTables" @click="handleSaveGroupTables">保存</n-button>
+        <n-button @click="showGroupTableEditor = false">Cancel</n-button>
+        <n-button type="primary" :loading="savingGroupTables" @click="handleSaveGroupTables">Save</n-button>
       </div>
     </template>
   </n-modal>
@@ -330,25 +330,25 @@ const newKey = ref({
   group_ids: [] as number[],
 })
 
-// ── 账号 ──────────────────────────────────────────────────────
+// ── Account ──────────────────────────────────────────────────────
 const maskedKey = computed(() => {
   const k = localStorage.getItem('d1table_api_key') ?? ''
-  if (!k) return '未设置'
+  if (!k) return 'Not set'
   return k.slice(0, 10) + '****' + k.slice(-4)
 })
 
 const keyStatus = computed(() => {
   const k = localStorage.getItem('d1table_api_key') ?? ''
   return k
-    ? { type: 'success' as const, label: '已设置' }
-    : { type: 'error' as const, label: '未设置' }
+    ? { type: 'success' as const, label: 'Set' }
+    : { type: 'error' as const, label: 'Not set' }
 })
 
 function saveKey() {
   if (!inputKey.value.trim()) return
   saveApiKey(inputKey.value.trim())
   inputKey.value = ''
-  message.success('API Key 已保存，页面将刷新')
+  message.success('API Key saved — reloading page')
   queryClient.invalidateQueries()
   setTimeout(() => window.location.reload(), 800)
 }
@@ -357,9 +357,9 @@ async function testKey() {
   testing.value = true
   try {
     await http.get('/tables')
-    message.success('连接成功，Key 有效')
+    message.success('Connection successful — key is valid')
   } catch (err) {
-    message.error('连接失败：' + (err as Error).message)
+    message.error('Connection failed: ' + (err as Error).message)
   } finally {
     testing.value = false
   }
@@ -381,7 +381,7 @@ const { data: keys, isLoading: keysLoading } = useQuery({
 
 async function handleCreateKey() {
   if (!newKey.value.name.trim()) {
-    message.warning('请输入名称')
+    message.warning('Please enter a name')
     return
   }
   creating.value = true
@@ -407,7 +407,7 @@ async function handleCreateKey() {
 async function handleRevoke(id: number) {
   try {
     await api.revokeKey(id)
-    message.success('Key 已撤销')
+    message.success('Key revoked')
     queryClient.invalidateQueries({ queryKey: ['admin-keys'] })
   } catch (err) {
     message.error((err as Error).message)
@@ -416,10 +416,10 @@ async function handleRevoke(id: number) {
 
 function copyKey() {
   navigator.clipboard.writeText(newKeyValue.value)
-  message.success('已复制到剪贴板')
+  message.success('Copied to clipboard')
 }
 
-// ── 分组管理 ──────────────────────────────────────────────────
+// ── Groups ──────────────────────────────────────────────────
 const newGroupName = ref('')
 const editingGroup = ref<number | null>(null)
 const editGroupName = ref('')
@@ -444,7 +444,7 @@ async function handleCreateGroup() {
   if (!newGroupName.value.trim()) return
   try {
     await api.createGroup(newGroupName.value.trim())
-    message.success('分组已创建')
+    message.success('Group created')
     newGroupName.value = ''
     queryClient.invalidateQueries({ queryKey: ['groups'] })
   } catch (err) {
@@ -462,7 +462,7 @@ async function saveGroupName(id: number) {
   if (!name) { editingGroup.value = null; return }
   try {
     await api.updateGroup(id, { name })
-    message.success('分组已更新')
+    message.success('Group updated')
     queryClient.invalidateQueries({ queryKey: ['groups'] })
   } catch (err) {
     message.error((err as Error).message)
@@ -471,18 +471,18 @@ async function saveGroupName(id: number) {
 }
 
 async function handleDeleteGroup(id: number) {
-  const confirmed = window.confirm('确定删除此分组？分组内的表不会被删除。')
+  const confirmed = window.confirm('Delete this group? Tables inside will not be deleted.')
   if (!confirmed) return
   try {
     await api.deleteGroup(id)
-    message.success('分组已删除')
+    message.success('Group deleted')
     queryClient.invalidateQueries({ queryKey: ['groups'] })
   } catch (err) {
     message.error((err as Error).message)
   }
 }
 
-// ── 编辑分组内的表 ──────────────────────────────────────────
+// ── Edit tables in group ──────────────────────────────────────────
 const showGroupTableEditor = ref(false)
 const editingGroupData = ref<Group | null>(null)
 const editingGroupName = ref('')
@@ -505,7 +505,7 @@ async function handleSaveGroupTables() {
       await api.updateGroup(editingGroupData.value.id, { name: editingGroupName.value.trim() })
     }
     await api.setGroupTables(editingGroupData.value.id, selectedGroupTables.value)
-    message.success('分组已更新')
+    message.success('Group updated')
     queryClient.invalidateQueries({ queryKey: ['groups'] })
     queryClient.invalidateQueries({ queryKey: ['tables'] })
     showGroupTableEditor.value = false
@@ -516,7 +516,7 @@ async function handleSaveGroupTables() {
   }
 }
 
-// ── 回收站 ──────────────────────────────────────────────────
+// ── Trash ──────────────────────────────────────────────────
 const { data: trashItems, isLoading: trashLoading } = useQuery({
   queryKey: ['trash'],
   queryFn: api.getTrash,
@@ -530,13 +530,13 @@ function formatTrashPreview(data: Record<string, unknown>): string {
 
 function formatTrashTime(iso: string): string {
   const d = new Date(iso)
-  return d.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+  return d.toLocaleString('en-US', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
 }
 
 async function handleRestore(id: number) {
   try {
     await api.restoreTrash(id)
-    message.success('记录已恢复')
+    message.success('Record restored')
     queryClient.invalidateQueries({ queryKey: ['trash'] })
     queryClient.invalidateQueries({ queryKey: ['records'] })
     queryClient.invalidateQueries({ queryKey: ['tables'] })
@@ -546,11 +546,11 @@ async function handleRestore(id: number) {
 }
 
 async function handlePermanentDelete(id: number) {
-  const confirmed = window.confirm('确定永久删除？此操作不可恢复。')
+  const confirmed = window.confirm('Delete permanently? This action cannot be undone.')
   if (!confirmed) return
   try {
     await api.deleteTrash(id)
-    message.success('已永久删除')
+    message.success('Permanently deleted')
     queryClient.invalidateQueries({ queryKey: ['trash'] })
   } catch (err) {
     message.error((err as Error).message)
@@ -558,11 +558,11 @@ async function handlePermanentDelete(id: number) {
 }
 
 async function handleEmptyTrash() {
-  const confirmed = window.confirm('确定清空回收站？所有记录将永久删除，不可恢复。')
+  const confirmed = window.confirm('Empty the trash? All records will be permanently deleted and cannot be recovered.')
   if (!confirmed) return
   try {
     await api.emptyTrash()
-    message.success('回收站已清空')
+    message.success('Trash emptied')
     queryClient.invalidateQueries({ queryKey: ['trash'] })
   } catch (err) {
     message.error((err as Error).message)
@@ -621,7 +621,7 @@ async function handleEmptyTrash() {
   border-radius: 4px;
 }
 
-/* ── 分组卡片 ── */
+/* ── Group cards ── */
 .group-list {
   display: flex;
   flex-direction: column;
@@ -671,7 +671,7 @@ async function handleEmptyTrash() {
   align-items: center;
 }
 
-/* ── 回收站 ── */
+/* ── Trash ── */
 .trash-list {
   display: flex;
   flex-direction: column;
@@ -727,7 +727,7 @@ async function handleEmptyTrash() {
   flex-shrink: 0;
 }
 
-/* ── Key 列表 ── */
+/* ── Key list ── */
 .key-list {
   display: flex;
   flex-direction: column;

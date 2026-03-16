@@ -88,7 +88,7 @@ tables.get('/:tableName', async (c) => {
 
   const allTables = await getUserTables(c.env.DB)
   if (!allTables.includes(tableName)) {
-    return c.json({ error: { code: 'TABLE_NOT_FOUND', message: `表 "${tableName}" 不存在` } }, 404)
+    return c.json({ error: { code: 'TABLE_NOT_FOUND', message: `Table "${tableName}" not found` } }, 404)
   }
 
   const columns = await getTableColumns(c.env.DB, tableName)
@@ -143,27 +143,27 @@ tables.post('/', requireWriteMiddleware, async (c) => {
   }>()
 
   if (!body.name || !isValidIdentifier(body.name)) {
-    return c.json({ error: { code: 'INVALID_NAME', message: '表名只允许字母、数字、下划线，且不能以数字开头' } }, 400)
+    return c.json({ error: { code: 'INVALID_NAME', message: 'Table name must contain only letters, numbers, and underscores, and cannot start with a digit' } }, 400)
   }
 
   if (!Array.isArray(body.columns) || body.columns.length === 0) {
-    return c.json({ error: { code: 'INVALID_COLUMNS', message: '至少需要一个字段' } }, 400)
+    return c.json({ error: { code: 'INVALID_COLUMNS', message: 'At least one field is required' } }, 400)
   }
 
   // 检查表是否已存在
   const existing = await getUserTables(c.env.DB)
   if (existing.includes(body.name)) {
-    return c.json({ error: { code: 'TABLE_EXISTS', message: `表 "${body.name}" 已存在` } }, 409)
+    return c.json({ error: { code: 'TABLE_EXISTS', message: `Table "${body.name}" already exists` } }, 409)
   }
 
   // 校验所有列名
   for (const col of body.columns) {
     if (!isValidIdentifier(col.name)) {
-      return c.json({ error: { code: 'INVALID_COLUMN_NAME', message: `字段名 "${col.name}" 不合法` } }, 400)
+      return c.json({ error: { code: 'INVALID_COLUMN_NAME', message: `Invalid field name "${col.name}"` } }, 400)
     }
     const validTypes = ['TEXT', 'INTEGER', 'REAL', 'BLOB']
     if (!validTypes.includes(col.type?.toUpperCase())) {
-      return c.json({ error: { code: 'INVALID_TYPE', message: `字段类型 "${col.type}" 不支持，可选：${validTypes.join('/')}` } }, 400)
+      return c.json({ error: { code: 'INVALID_TYPE', message: `Unsupported field type "${col.type}". Allowed: ${validTypes.join('/')}` } }, 400)
     }
   }
 
@@ -191,7 +191,7 @@ tables.post('/', requireWriteMiddleware, async (c) => {
       title: col.title?.trim() || col.name,
       field_type: col.field_type || inferFieldType(col.name, col.type),
     })),
-    { name: 'created_at', type: 'INTEGER', title: '创建时间', field_type: 'datetime', select_options: undefined },
+    { name: 'created_at', type: 'INTEGER', title: 'Created At', field_type: 'datetime', select_options: undefined },
   ]
   const fieldMetaStmts = allColumnsForMeta.map((col, idx) =>
     c.env.DB.prepare(
@@ -218,7 +218,7 @@ tables.post('/', requireWriteMiddleware, async (c) => {
     ...fieldMetaStmts,
   ])
 
-  return c.json({ data: { name: body.name, message: '建表成功' } }, 201)
+  return c.json({ data: { name: body.name, message: 'Table created successfully' } }, 201)
 })
 
 /**
@@ -230,13 +230,13 @@ tables.patch('/:tableName', requireWriteMiddleware, async (c) => {
 
   const allTables = await getUserTables(c.env.DB)
   if (!allTables.includes(tableName)) {
-    return c.json({ error: { code: 'TABLE_NOT_FOUND', message: `表 "${tableName}" 不存在` } }, 404)
+    return c.json({ error: { code: 'TABLE_NOT_FOUND', message: `Table "${tableName}" not found` } }, 404)
   }
 
   const body = await c.req.json<{ title?: string }>()
 
   if (!body.title?.trim()) {
-    return c.json({ error: { code: 'INVALID_BODY', message: '显示名不能为空' } }, 400)
+    return c.json({ error: { code: 'INVALID_BODY', message: 'Display name cannot be empty' } }, 400)
   }
 
   await c.env.DB.prepare(
@@ -255,7 +255,7 @@ tables.delete('/:tableName', requireWriteMiddleware, async (c) => {
 
   const allTables = await getUserTables(c.env.DB)
   if (!allTables.includes(tableName)) {
-    return c.json({ error: { code: 'TABLE_NOT_FOUND', message: `表 "${tableName}" 不存在` } }, 404)
+    return c.json({ error: { code: 'TABLE_NOT_FOUND', message: `Table "${tableName}" not found` } }, 404)
   }
 
   await c.env.DB.batch([

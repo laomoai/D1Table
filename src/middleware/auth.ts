@@ -19,7 +19,7 @@ export const authMiddleware: MiddlewareHandler<{
   const apiKey = c.req.header('X-API-Key') ?? c.req.query('api_key')
 
   if (!apiKey) {
-    return c.json({ error: { code: 'UNAUTHORIZED', message: '缺少 API Key，请在请求头携带 X-API-Key' } }, 401)
+    return c.json({ error: { code: 'UNAUTHORIZED', message: 'Missing API Key. Include it in the X-API-Key request header' } }, 401)
   }
 
   // 1. 检查环境变量中的 ADMIN_KEY
@@ -39,7 +39,7 @@ export const authMiddleware: MiddlewareHandler<{
     .first<{ id: number; type: 'readonly' | 'readwrite'; scope: 'all' | 'groups' }>()
 
   if (!row) {
-    return c.json({ error: { code: 'UNAUTHORIZED', message: 'API Key 无效或已禁用' } }, 401)
+    return c.json({ error: { code: 'UNAUTHORIZED', message: 'Invalid or disabled API Key' } }, 401)
   }
 
   c.set('keyType', row.type)
@@ -74,7 +74,7 @@ export const requireWriteMiddleware: MiddlewareHandler<{
 }> = async (c, next) => {
   if (c.get('keyType') !== 'readwrite') {
     return c.json(
-      { error: { code: 'FORBIDDEN', message: '此操作需要读写权限的 API Key' } },
+      { error: { code: 'FORBIDDEN', message: 'This operation requires a read-write API Key' } },
       403
     )
   }
@@ -97,7 +97,7 @@ export const tableAccessMiddleware: MiddlewareHandler<{
 
   if (!allowedTables.includes(tableName)) {
     return c.json(
-      { error: { code: 'FORBIDDEN', message: `无权访问表 "${tableName}"` } },
+      { error: { code: 'FORBIDDEN', message: `Access to table "${tableName}" is not allowed` } },
       403
     )
   }

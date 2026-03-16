@@ -16,7 +16,7 @@
               :disabled="currentIndex <= 0"
               @click="navigate(-1)"
             >
-              ← 上一条
+              ← Previous
             </n-button>
             <n-button
               size="small"
@@ -24,7 +24,7 @@
               :disabled="currentIndex >= allRows.length - 1"
               @click="navigate(1)"
             >
-              下一条 →
+              Next →
             </n-button>
           </div>
         </div>
@@ -117,11 +117,11 @@
       <template #footer>
         <div class="expand-footer">
           <template v-if="editing">
-            <n-button @click="cancelEdit">取消</n-button>
-            <n-button type="primary" :loading="saving" @click="saveEdit">保存</n-button>
+            <n-button @click="cancelEdit">Cancel</n-button>
+            <n-button type="primary" :loading="saving" @click="saveEdit">Save</n-button>
           </template>
           <template v-else>
-            <n-button type="primary" @click="startEdit">编辑</n-button>
+            <n-button type="primary" @click="startEdit">Edit</n-button>
           </template>
         </div>
       </template>
@@ -192,7 +192,7 @@ async function saveEdit() {
       payload[field.column_name] = val === '' ? null : val
     }
     await api.updateRecord(props.tableName, currentRow.value.id as number, payload)
-    message.success('记录已保存')
+    message.success('Record saved')
     queryClient.invalidateQueries({ queryKey: ['records', props.tableName] })
     emit('refresh')
     editing.value = false

@@ -1,8 +1,8 @@
 {
   "name": "d1table-client",
   "version": "1.0.0",
-  "description": "D1Table 客户端 - 基于 Cloudflare D1 的数据表管理",
-  "author": "招财",
+  "description": "D1Table client - Cloudflare D1-based data table management",
+  "author": "0xAlger",
   "license": "MIT",
   "tags": ["database", "d1", "cloudflare", "api", "crud"],
   "requirements": ["requests"]

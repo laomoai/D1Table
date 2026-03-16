@@ -1,7 +1,7 @@
 <template>
   <div class="actions-cell">
-    <button class="act-btn" @click.stop="params.onEdit(params.data)">编辑</button>
-    <button class="act-btn act-btn--danger" @click.stop="params.onDelete(params.data)">删除</button>
+    <button class="act-btn" @click.stop="params.onEdit(params.data)">Edit</button>
+    <button class="act-btn act-btn--danger" @click.stop="params.onDelete(params.data)">Delete</button>
   </div>
 </template>
 

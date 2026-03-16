@@ -3,18 +3,18 @@
     <!-- 工具栏 -->
     <div class="toolbar">
       <span class="table-title">{{ displayTitle }}</span>
-      <span v-if="totalCount !== null" class="row-count">{{ totalCount }} 条记录</span>
+      <span v-if="totalCount !== null" class="row-count">{{ totalCount }} records</span>
       <div style="flex:1" />
       <n-button size="small" @click="showFilterBar = !showFilterBar">
-        筛选{{ activeFilters.length ? ` (${activeFilters.length})` : '' }}
+        Filter{{ activeFilters.length ? ` (${activeFilters.length})` : '' }}
       </n-button>
       <n-button size="small" @click="showFieldPanel = true">
-        字段{{ hiddenCount ? ` (${hiddenCount} 隐藏)` : '' }}
+        Fields{{ hiddenCount ? ` (${hiddenCount} hidden)` : '' }}
       </n-button>
-      <n-button size="small" quaternary @click="refreshAll" title="刷新" :disabled="refreshing">
+      <n-button size="small" quaternary @click="refreshAll" title="Refresh" :disabled="refreshing">
         <span :class="{ 'spin-icon': refreshing }">↻</span>
       </n-button>
-      <n-button size="small" type="primary" @click="openCreate">+ 新增</n-button>
+      <n-button size="small" type="primary" @click="openCreate">+ Add</n-button>
     </div>
 
     <!-- 筛选栏 -->
@@ -48,11 +48,11 @@
     <!-- 底栏 -->
     <div class="grid-footer">
       <n-spin v-if="isFetchingNextPage || isLoading" size="small" />
-      <span v-else-if="rowData.length === 0" class="footer-hint">暂无数据</span>
+      <span v-else-if="rowData.length === 0" class="footer-hint">No data</span>
       <span v-else-if="!hasNextPage" class="footer-hint">
-        已加载全部 {{ rowData.length }} 条
+        All {{ rowData.length }} records loaded
       </span>
-      <span v-else class="footer-hint">已加载 {{ rowData.length }} 条，滚动加载更多</span>
+      <span v-else class="footer-hint">{{ rowData.length }} records loaded — scroll for more</span>
     </div>
   </div>
 
@@ -193,7 +193,7 @@ const columnDefs = computed<ColDef[]>(() => {
   // 操作列
   cols.push({
     colId: '__actions',
-    headerName: '操作',
+    headerName: 'Actions',
     width: 110,
     minWidth: 110,
     maxWidth: 110,
@@ -287,7 +287,7 @@ function expandCellRenderer(params: { data: Record<string, unknown>; rowIndex: n
   const btn = document.createElement('button')
   btn.className = 'ag-expand-btn'
   btn.textContent = '⤢'
-  btn.title = '展开详情'
+  btn.title = 'Expand details'
   btn.onclick = (e) => { e.stopPropagation(); openExpand(params.data, params.rowIndex) }
   return btn
 }
@@ -329,17 +329,17 @@ function typedCellRenderer(params: { value: unknown; fieldType: FieldType; selec
 
     case 'number': {
       const n = Number(value)
-      return `<span class="ag-cell-num">${isNaN(n) ? esc(String(value)) : n.toLocaleString('zh-CN')}</span>`
+      return `<span class="ag-cell-num">${isNaN(n) ? esc(String(value)) : n.toLocaleString('en-US')}</span>`
     }
 
     case 'currency': {
       const n = Number(value)
-      return `<span class="ag-cell-num">¥${isNaN(n) ? esc(String(value)) : n.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>`
+      return `<span class="ag-cell-num">¥${isNaN(n) ? esc(String(value)) : n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>`
     }
 
     case 'percent': {
       const n = Number(value)
-      return `<span class="ag-cell-num">${isNaN(n) ? esc(String(value)) : n.toLocaleString('zh-CN')}%</span>`
+      return `<span class="ag-cell-num">${isNaN(n) ? esc(String(value)) : n.toLocaleString('en-US')}%</span>`
     }
 
     case 'date':
@@ -384,12 +384,12 @@ function actionsCellRenderer(params: { data: RecordRow }): HTMLElement {
 
   const editBtn = document.createElement('button')
   editBtn.className = 'ag-act-btn'
-  editBtn.textContent = '编辑'
+  editBtn.textContent = 'Edit'
   editBtn.onclick = (e) => { e.stopPropagation(); openEdit(params.data) }
 
   const delBtn = document.createElement('button')
   delBtn.className = 'ag-act-btn ag-act-btn--del'
-  delBtn.textContent = '删除'
+  delBtn.textContent = 'Delete'
   delBtn.onclick = (e) => { e.stopPropagation(); handleDelete(params.data) }
 
   wrap.appendChild(editBtn)
@@ -464,10 +464,10 @@ async function toggleHidden(field: FieldMeta) {
 
 function deleteField(field: FieldMeta) {
   dialog.warning({
-    title: '确认删除字段',
-    content: `确定隐藏字段「${field.title}」？（数据不会丢失）`,
-    positiveText: '确认',
-    negativeText: '取消',
+    title: 'Confirm delete field',
+    content: `Hide field "${field.title}"? (Data will not be lost)`,
+    positiveText: 'Confirm',
+    negativeText: 'Cancel',
     onPositiveClick: async () => {
       try {
         await api.deleteField(props.tableName, field.column_name)
@@ -487,10 +487,10 @@ async function handleFormSubmit(formData: Record<string, unknown>) {
   try {
     if (editingRecord.value) {
       await api.updateRecord(props.tableName, editingRecord.value.id, formData)
-      message.success('记录已更新')
+      message.success('Record updated')
     } else {
       await api.createRecord(props.tableName, formData)
-      message.success('记录已新增')
+      message.success('Record added')
     }
     invalidate()
     emit('refresh')
@@ -502,14 +502,14 @@ async function handleFormSubmit(formData: Record<string, unknown>) {
 
 function handleDelete(row: RecordRow) {
   dialog.warning({
-    title: '确认删除',
-    content: `确定删除 id=${row.id} 的记录？此操作不可撤销。`,
-    positiveText: '删除',
-    negativeText: '取消',
+    title: 'Confirm delete',
+    content: `Delete record id=${row.id}? This action cannot be undone.`,
+    positiveText: 'Delete',
+    negativeText: 'Cancel',
     onPositiveClick: async () => {
       try {
         await api.deleteRecord(props.tableName, row.id)
-        message.success('记录已删除')
+        message.success('Record deleted')
         invalidate()
         emit('refresh')
       } catch (err) { message.error((err as Error).message) }

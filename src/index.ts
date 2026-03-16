@@ -41,7 +41,7 @@ app.get(
   '/api/docs',
   apiReference({
     spec: { url: '/api/openapi.json' },
-    pageTitle: 'D1Table API 文档',
+    pageTitle: 'D1Table API Docs',
     theme: 'purple',
   })
 )
@@ -86,14 +86,14 @@ function openApiSpec(serverUrl: string) {
     info: {
       title: 'D1Table API',
       version: '2.0.0',
-      description: `基于 Cloudflare D1 的数据管理 API，支持动态表 CRUD，适合 AI Agent 调用。
+      description: `Cloudflare D1-backed data management API with dynamic table CRUD, designed for AI Agent use.
 
-**关键约定：**
-- 认证：请求头携带 \`X-API-Key\`
-- 分页：游标分页（keyset），用 \`cursor\` 参数传入上一页的 \`next_cursor\`
-- 时间格式：datetime 字段返回 ISO 8601 格式（UTC），如 \`2026-03-15T04:37:31.000Z\`
-- 每张表有 API 名称（name，如 tbl_abc123）和显示名称（title，如"客户列表"）
-- 每个字段有列名（column_name）和显示名（title），API 请求用列名，响应附带显示名映射`,
+**Key conventions:**
+- Authentication: include \`X-API-Key\` in the request header
+- Pagination: cursor-based pagination (keyset) — pass the previous page's \`next_cursor\` as the \`cursor\` parameter
+- Datetime format: datetime fields are returned as ISO 8601 UTC strings, e.g. \`2026-03-15T04:37:31.000Z\`
+- Each table has an API name (name, e.g. tbl_abc123) and a display name (title, e.g. "Customer List")
+- Each field has a column name (column_name) and a display name (title); use the column name in API requests — the response includes a display name mapping`,
     },
     servers: [{ url: serverUrl }],
     security: [{ ApiKeyAuth: [] }],
@@ -116,22 +116,22 @@ function openApiSpec(serverUrl: string) {
         },
         FieldMapping: {
           type: 'object',
-          description: '字段名 → 显示信息的映射，帮助理解每个列的含义',
+          description: 'Mapping of column name → display info, useful for understanding each column',
           additionalProperties: {
             type: 'object',
             properties: {
-              title: { type: 'string', description: '字段显示名（中文）' },
+              title: { type: 'string', description: 'Field display name' },
               field_type: { type: 'string', enum: ['text', 'longtext', 'number', 'currency', 'percent', 'email', 'url', 'date', 'datetime', 'checkbox', 'select'] },
             },
           },
-          example: { name: { title: '姓名', field_type: 'text' }, created_at: { title: '创建时间', field_type: 'datetime' } },
+          example: { name: { title: 'Name', field_type: 'text' }, created_at: { title: 'Created At', field_type: 'datetime' } },
         },
         PaginationMeta: {
           type: 'object',
           properties: {
             page_size: { type: 'integer' },
-            count: { type: 'integer', description: '本页返回条数' },
-            next_cursor: { type: 'string', nullable: true, description: '下一页游标，为 null 表示已到末页' },
+            count: { type: 'integer', description: 'Number of records returned on this page' },
+            next_cursor: { type: 'string', nullable: true, description: 'Cursor for the next page; null means this is the last page' },
           },
         },
       },
@@ -139,17 +139,17 @@ function openApiSpec(serverUrl: string) {
     paths: {
       '/api/health': {
         get: {
-          summary: '健康检查',
+          summary: 'Health check',
           security: [],
-          responses: { '200': { description: '服务正常' } },
+          responses: { '200': { description: 'Service is healthy' } },
         },
       },
       '/api/tables': {
         get: {
-          summary: '获取所有表列表',
+          summary: 'List all tables',
           responses: {
             '200': {
-              description: '表列表',
+              description: 'Table list',
               content: {
                 'application/json': {
                   schema: {
@@ -160,9 +160,9 @@ function openApiSpec(serverUrl: string) {
                         items: {
                           type: 'object',
                           properties: {
-                            name: { type: 'string', description: 'API 表名（如 tbl_abc123）' },
-                            title: { type: 'string', nullable: true, description: '显示名（如"客户列表"）' },
-                            row_count: { type: 'integer', description: '记录总数' },
+                            name: { type: 'string', description: 'API table name (e.g. tbl_abc123)' },
+                            title: { type: 'string', nullable: true, description: 'Display name (e.g. "Customer List")' },
+                            row_count: { type: 'integer', description: 'Total number of records' },
                           },
                         },
                       },
@@ -174,8 +174,8 @@ function openApiSpec(serverUrl: string) {
           },
         },
         post: {
-          summary: '新建表',
-          description: '动态建表。id 和 created_at 字段自动添加。建议通过 UI 创建（自动生成 tbl_ 前缀表名），也可 API 指定。',
+          summary: 'Create table',
+          description: 'Dynamically create a table. The id and created_at fields are added automatically. It is recommended to create tables via the UI (which auto-generates a tbl_ prefixed name), but the API also accepts a custom name.',
           requestBody: {
             required: true,
             content: {
@@ -184,19 +184,19 @@ function openApiSpec(serverUrl: string) {
                   type: 'object',
                   required: ['name', 'columns'],
                   properties: {
-                    name: { type: 'string', description: 'API 表名（如 tbl_abc123）', example: 'tbl_orders01' },
-                    title: { type: 'string', description: '显示名（中文）', example: '订单管理' },
+                    name: { type: 'string', description: 'API table name (e.g. tbl_abc123)', example: 'tbl_orders01' },
+                    title: { type: 'string', description: 'Display name', example: 'Order Management' },
                     columns: {
                       type: 'array',
-                      description: '字段定义列表',
+                      description: 'Field definitions',
                       items: {
                         type: 'object',
                         required: ['name', 'type'],
                         properties: {
-                          name: { type: 'string', description: '列名', example: 'col_amt1' },
-                          title: { type: 'string', description: '显示名', example: '金额' },
-                          type: { type: 'string', enum: ['TEXT', 'INTEGER', 'REAL', 'BLOB'], description: 'SQLite 类型' },
-                          field_type: { type: 'string', enum: ['text', 'longtext', 'number', 'currency', 'percent', 'email', 'url', 'date', 'datetime', 'checkbox', 'select'], description: 'UI 字段类型' },
+                          name: { type: 'string', description: 'Column name', example: 'col_amt1' },
+                          title: { type: 'string', description: 'Display name', example: 'Amount' },
+                          type: { type: 'string', enum: ['TEXT', 'INTEGER', 'REAL', 'BLOB'], description: 'SQLite type' },
+                          field_type: { type: 'string', enum: ['text', 'longtext', 'number', 'currency', 'percent', 'email', 'url', 'date', 'datetime', 'checkbox', 'select'], description: 'UI field type' },
                           nullable: { type: 'boolean', default: true },
                         },
                       },
@@ -207,19 +207,19 @@ function openApiSpec(serverUrl: string) {
             },
           },
           responses: {
-            '201': { description: '建表成功' },
-            '409': { description: '表已存在' },
+            '201': { description: 'Table created successfully' },
+            '409': { description: 'Table already exists' },
           },
         },
       },
       '/api/tables/{tableName}': {
         get: {
-          summary: '获取表结构',
-          description: '返回表的字段定义，含显示名和字段类型。',
+          summary: 'Get table schema',
+          description: 'Returns the field definitions for a table, including display names and field types.',
           parameters: [{ name: 'tableName', in: 'path', required: true, schema: { type: 'string' } }],
           responses: {
             '200': {
-              description: '表结构',
+              description: 'Table schema',
               content: {
                 'application/json': {
                   schema: {
@@ -228,17 +228,17 @@ function openApiSpec(serverUrl: string) {
                       data: {
                         type: 'object',
                         properties: {
-                          name: { type: 'string', description: 'API 表名' },
-                          title: { type: 'string', description: '显示名' },
+                          name: { type: 'string', description: 'API table name' },
+                          title: { type: 'string', description: 'Display name' },
                           columns: {
                             type: 'array',
                             items: {
                               type: 'object',
                               properties: {
-                                name: { type: 'string', description: '列名' },
-                                title: { type: 'string', description: '显示名' },
-                                type: { type: 'string', description: 'SQLite 类型' },
-                                field_type: { type: 'string', description: 'UI 字段类型' },
+                                name: { type: 'string', description: 'Column name' },
+                                title: { type: 'string', description: 'Display name' },
+                                type: { type: 'string', description: 'SQLite type' },
+                                field_type: { type: 'string', description: 'UI field type' },
                                 nullable: { type: 'boolean' },
                                 isPrimaryKey: { type: 'boolean' },
                                 defaultValue: { type: 'string', nullable: true },
@@ -255,36 +255,36 @@ function openApiSpec(serverUrl: string) {
           },
         },
         delete: {
-          summary: '删除表（危险）',
-          description: '删除整张表及其数据，不可恢复。需要读写权限。',
+          summary: 'Delete table (destructive)',
+          description: 'Deletes the entire table and all its data. This action is irreversible. Requires read-write permission.',
           parameters: [{ name: 'tableName', in: 'path', required: true, schema: { type: 'string' } }],
           responses: {
-            '200': { description: '删除成功' },
-            '404': { description: '表不存在' },
+            '200': { description: 'Deleted successfully' },
+            '404': { description: 'Table not found' },
           },
         },
       },
       '/api/tables/{tableName}/records': {
         get: {
-          summary: '查询记录（分页）',
-          description: 'datetime 字段自动转为 ISO 8601 UTC 格式（如 2026-03-15T04:37:31.000Z）。响应包含 fields 字段映射，用于理解列名含义。',
+          summary: 'List records (paginated)',
+          description: 'datetime fields are automatically converted to ISO 8601 UTC format (e.g. 2026-03-15T04:37:31.000Z). The response includes a fields mapping to help interpret column names.',
           parameters: [
             { name: 'tableName', in: 'path', required: true, schema: { type: 'string' } },
             { name: 'page_size', in: 'query', schema: { type: 'integer', default: 20, maximum: 100 } },
-            { name: 'cursor', in: 'query', schema: { type: 'string' }, description: '上一页最后一条记录的 id' },
-            { name: 'sort', in: 'query', schema: { type: 'string' }, description: '格式：field:asc 或 field:desc' },
-            { name: 'fields', in: 'query', schema: { type: 'string' }, description: '逗号分隔的字段列表' },
-            { name: 'filter[field]', in: 'query', schema: { type: 'string' }, description: '等值筛选，支持后缀 __gt/__gte/__lt/__lte/__like/__ne' },
+            { name: 'cursor', in: 'query', schema: { type: 'string' }, description: 'The id of the last record from the previous page' },
+            { name: 'sort', in: 'query', schema: { type: 'string' }, description: 'Format: field:asc or field:desc' },
+            { name: 'fields', in: 'query', schema: { type: 'string' }, description: 'Comma-separated list of fields to return' },
+            { name: 'filter[field]', in: 'query', schema: { type: 'string' }, description: 'Equality filter; supports suffixes __gt/__gte/__lt/__lte/__like/__ne' },
           ],
           responses: {
             '200': {
-              description: '记录列表 + 字段映射',
+              description: 'Record list + field mapping',
               content: {
                 'application/json': {
                   schema: {
                     type: 'object',
                     properties: {
-                      data: { type: 'array', items: { type: 'object' }, description: '记录数组，datetime 字段为 ISO 8601 字符串' },
+                      data: { type: 'array', items: { type: 'object' }, description: 'Array of records; datetime fields are ISO 8601 strings' },
                       fields: { $ref: '#/components/schemas/FieldMapping' },
                       meta: { $ref: '#/components/schemas/PaginationMeta' },
                     },
@@ -295,19 +295,19 @@ function openApiSpec(serverUrl: string) {
           },
         },
         post: {
-          summary: '新增记录',
-          description: '请求体为 JSON 对象，key 用列名（column_name），datetime 字段可传 Unix 时间戳（秒）或 ISO 8601 字符串。',
+          summary: 'Create record',
+          description: 'Request body is a JSON object with column names as keys. datetime fields accept a Unix timestamp (seconds) or an ISO 8601 string.',
           parameters: [{ name: 'tableName', in: 'path', required: true, schema: { type: 'string' } }],
           requestBody: {
             required: true,
             content: { 'application/json': { schema: { type: 'object' } } },
           },
-          responses: { '201': { description: '新增成功，返回 { id, ...fields }' } },
+          responses: { '201': { description: 'Created successfully; returns { id, ...fields }' } },
         },
       },
       '/api/tables/{tableName}/records/batch': {
         post: {
-          summary: '批量新增记录（最多500条）',
+          summary: 'Batch create records (up to 500)',
           parameters: [{ name: 'tableName', in: 'path', required: true, schema: { type: 'string' } }],
           requestBody: {
             required: true,
@@ -320,22 +320,22 @@ function openApiSpec(serverUrl: string) {
               },
             },
           },
-          responses: { '201': { description: '批量插入成功' } },
+          responses: { '201': { description: 'Batch insert successful' } },
         },
       },
       '/api/tables/{tableName}/records/{id}': {
         get: {
-          summary: '查询单条记录',
-          description: '返回记录数据 + fields 字段映射。datetime 字段为 ISO 8601 UTC 格式。',
+          summary: 'Get single record',
+          description: 'Returns record data + fields mapping. datetime fields are in ISO 8601 UTC format.',
           parameters: [
             { name: 'tableName', in: 'path', required: true, schema: { type: 'string' } },
             { name: 'id', in: 'path', required: true, schema: { type: 'string' } },
           ],
-          responses: { '200': { description: '记录详情 + 字段映射', content: { 'application/json': { schema: { type: 'object', properties: { data: { type: 'object' }, fields: { $ref: '#/components/schemas/FieldMapping' } } } } } } },
+          responses: { '200': { description: 'Record detail + field mapping', content: { 'application/json': { schema: { type: 'object', properties: { data: { type: 'object' }, fields: { $ref: '#/components/schemas/FieldMapping' } } } } } } },
         },
         patch: {
-          summary: '更新记录',
-          description: 'datetime 字段可传 Unix 时间戳（秒）或 ISO 8601 字符串。',
+          summary: 'Update record',
+          description: 'datetime fields accept a Unix timestamp (seconds) or an ISO 8601 string.',
           parameters: [
             { name: 'tableName', in: 'path', required: true, schema: { type: 'string' } },
             { name: 'id', in: 'path', required: true, schema: { type: 'string' } },
@@ -344,25 +344,25 @@ function openApiSpec(serverUrl: string) {
             required: true,
             content: { 'application/json': { schema: { type: 'object' } } },
           },
-          responses: { '200': { description: '更新成功' } },
+          responses: { '200': { description: 'Updated successfully' } },
         },
         delete: {
-          summary: '删除记录',
+          summary: 'Delete record',
           parameters: [
             { name: 'tableName', in: 'path', required: true, schema: { type: 'string' } },
             { name: 'id', in: 'path', required: true, schema: { type: 'string' } },
           ],
-          responses: { '200': { description: '删除成功' } },
+          responses: { '200': { description: 'Deleted successfully' } },
         },
       },
       '/api/tables/{tableName}/fields': {
         get: {
-          summary: '获取字段元数据',
-          description: '返回字段的显示名、类型、宽度、可见性等信息，前端 UI 用此驱动渲染',
+          summary: 'Get field metadata',
+          description: 'Returns field display names, types, widths, visibility, etc. Used by the frontend UI to drive rendering.',
           parameters: [{ name: 'tableName', in: 'path', required: true, schema: { type: 'string' } }],
           responses: {
             '200': {
-              description: '字段元数据列表',
+              description: 'Field metadata list',
               content: {
                 'application/json': {
                   schema: {
@@ -391,8 +391,8 @@ function openApiSpec(serverUrl: string) {
           },
         },
         post: {
-          summary: '添加字段',
-          description: '执行 ALTER TABLE ADD COLUMN 并写入 _field_meta',
+          summary: 'Add field',
+          description: 'Executes ALTER TABLE ADD COLUMN and writes to _field_meta.',
           parameters: [{ name: 'tableName', in: 'path', required: true, schema: { type: 'string' } }],
           requestBody: {
             required: true,
@@ -402,8 +402,8 @@ function openApiSpec(serverUrl: string) {
                   type: 'object',
                   required: ['title', 'field_type'],
                   properties: {
-                    title: { type: 'string', description: '字段显示名' },
-                    column_name: { type: 'string', description: '可选，不填自动从 title 生成' },
+                    title: { type: 'string', description: 'Field display name' },
+                    column_name: { type: 'string', description: 'Optional; auto-generated from title if omitted' },
                     field_type: { type: 'string', enum: ['text', 'longtext', 'number', 'email', 'url', 'date', 'datetime', 'checkbox', 'select'] },
                     nullable: { type: 'boolean', default: true },
                     select_options: { type: 'array', items: { type: 'object', properties: { value: { type: 'string' }, label: { type: 'string' }, color: { type: 'string' } } } },
@@ -413,15 +413,15 @@ function openApiSpec(serverUrl: string) {
             },
           },
           responses: {
-            '201': { description: '字段创建成功' },
-            '409': { description: '字段已存在' },
+            '201': { description: 'Field created successfully' },
+            '409': { description: 'Field already exists' },
           },
         },
       },
       '/api/tables/{tableName}/fields/{colName}': {
         patch: {
-          summary: '更新字段元数据',
-          description: '修改字段的显示名、类型、宽度、可见性等（不修改数据库 schema）',
+          summary: 'Update field metadata',
+          description: 'Modify field display name, type, width, visibility, etc. (does not alter the database schema).',
           parameters: [
             { name: 'tableName', in: 'path', required: true, schema: { type: 'string' } },
             { name: 'colName', in: 'path', required: true, schema: { type: 'string' } },
@@ -442,21 +442,21 @@ function openApiSpec(serverUrl: string) {
               },
             },
           },
-          responses: { '200': { description: '更新成功' } },
+          responses: { '200': { description: 'Updated successfully' } },
         },
         delete: {
-          summary: '删除（隐藏）字段',
+          summary: 'Delete (hide) field',
           parameters: [
             { name: 'tableName', in: 'path', required: true, schema: { type: 'string' } },
             { name: 'colName', in: 'path', required: true, schema: { type: 'string' } },
           ],
-          responses: { '200': { description: '操作成功' } },
+          responses: { '200': { description: 'Operation successful' } },
         },
       },
       '/api/admin/keys': {
-        get: { summary: '获取 API Key 列表（含分组信息）', responses: { '200': { description: 'Key 列表' } } },
+        get: { summary: 'List API Keys (with group info)', responses: { '200': { description: 'Key list' } } },
         post: {
-          summary: '创建 API Key',
+          summary: 'Create API Key',
           requestBody: {
             required: true,
             content: {
@@ -467,19 +467,19 @@ function openApiSpec(serverUrl: string) {
                   properties: {
                     name: { type: 'string' },
                     type: { type: 'string', enum: ['readonly', 'readwrite'] },
-                    scope: { type: 'string', enum: ['all', 'groups'], description: 'all=访问全部表，groups=仅访问指定分组的表' },
-                    group_ids: { type: 'array', items: { type: 'integer' }, description: 'scope=groups 时关联的分组 ID 列表' },
+                    scope: { type: 'string', enum: ['all', 'groups'], description: 'all = access all tables; groups = access only tables in specified groups' },
+                    group_ids: { type: 'array', items: { type: 'integer' }, description: 'List of group IDs to associate when scope=groups' },
                   },
                 },
               },
             },
           },
-          responses: { '201': { description: '创建成功，明文 Key 仅返回一次' } },
+          responses: { '201': { description: 'Created successfully; plaintext key is returned only once' } },
         },
       },
       '/api/admin/keys/{id}': {
         patch: {
-          summary: '更新 Key 的 scope 和关联分组',
+          summary: "Update Key's scope and associated groups",
           parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }],
           requestBody: {
             content: {
@@ -494,21 +494,21 @@ function openApiSpec(serverUrl: string) {
               },
             },
           },
-          responses: { '200': { description: '更新成功' } },
+          responses: { '200': { description: 'Updated successfully' } },
         },
         delete: {
-          summary: '撤销 API Key',
+          summary: 'Revoke API Key',
           parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }],
-          responses: { '200': { description: '撤销成功' } },
+          responses: { '200': { description: 'Revoked successfully' } },
         },
       },
       '/api/groups': {
         get: {
-          summary: '获取所有分组（含关联表列表）',
-          responses: { '200': { description: '分组列表' } },
+          summary: 'List all groups (with associated tables)',
+          responses: { '200': { description: 'Group list' } },
         },
         post: {
-          summary: '创建分组',
+          summary: 'Create group',
           requestBody: {
             required: true,
             content: {
@@ -517,19 +517,19 @@ function openApiSpec(serverUrl: string) {
                   type: 'object',
                   required: ['name'],
                   properties: {
-                    name: { type: 'string', description: '分组名称' },
-                    sort_order: { type: 'integer', description: '排序权重，越小越靠前' },
+                    name: { type: 'string', description: 'Group name' },
+                    sort_order: { type: 'integer', description: 'Sort weight; lower values appear first' },
                   },
                 },
               },
             },
           },
-          responses: { '201': { description: '创建成功' }, '409': { description: '分组已存在' } },
+          responses: { '201': { description: 'Created successfully' }, '409': { description: 'Group already exists' } },
         },
       },
       '/api/groups/{id}': {
         patch: {
-          summary: '更新分组',
+          summary: 'Update group',
           parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }],
           requestBody: {
             content: {
@@ -544,17 +544,17 @@ function openApiSpec(serverUrl: string) {
               },
             },
           },
-          responses: { '200': { description: '更新成功' } },
+          responses: { '200': { description: 'Updated successfully' } },
         },
         delete: {
-          summary: '删除分组（不影响表本身）',
+          summary: 'Delete group (tables are not affected)',
           parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }],
-          responses: { '200': { description: '删除成功' } },
+          responses: { '200': { description: 'Deleted successfully' } },
         },
       },
       '/api/groups/{id}/tables': {
         put: {
-          summary: '设置分组内的表（全量替换）',
+          summary: 'Set tables in group (full replace)',
           parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }],
           requestBody: {
             required: true,
@@ -563,13 +563,13 @@ function openApiSpec(serverUrl: string) {
                 schema: {
                   type: 'object',
                   properties: {
-                    tables: { type: 'array', items: { type: 'string' }, description: '表名列表' },
+                    tables: { type: 'array', items: { type: 'string' }, description: 'List of table names' },
                   },
                 },
               },
             },
           },
-          responses: { '200': { description: '设置成功' } },
+          responses: { '200': { description: 'Set successfully' } },
         },
       },
     },

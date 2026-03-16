@@ -57,13 +57,13 @@ trash.post('/:id/restore', async (c) => {
     .first<{ table_name: string; record_id: number; record_data: string }>()
 
   if (!row) {
-    return c.json({ error: { code: 'NOT_FOUND', message: '回收站中无此记录' } }, 404)
+    return c.json({ error: { code: 'NOT_FOUND', message: 'Record not found in trash' } }, 404)
   }
 
   // 检查原表是否还存在
   const tables = await getUserTables(c.env.DB)
   if (!tables.includes(row.table_name)) {
-    return c.json({ error: { code: 'TABLE_NOT_FOUND', message: `原表 "${row.table_name}" 已不存在，无法恢复` } }, 400)
+    return c.json({ error: { code: 'TABLE_NOT_FOUND', message: `Original table "${row.table_name}" no longer exists; cannot restore` } }, 400)
   }
 
   const record = JSON.parse(row.record_data) as Record<string, unknown>
@@ -74,7 +74,7 @@ trash.post('/:id/restore', async (c) => {
 
   const fields = Object.keys(record).filter(k => colNames.includes(k))
   if (fields.length === 0) {
-    return c.json({ error: { code: 'RESTORE_FAILED', message: '记录字段与当前表结构不兼容' } }, 400)
+    return c.json({ error: { code: 'RESTORE_FAILED', message: 'Record fields are incompatible with the current table schema' } }, 400)
   }
 
   const columnList = fields.map(f => `"${f}"`).join(', ')
@@ -94,7 +94,7 @@ trash.post('/:id/restore', async (c) => {
   } catch (err) {
     const msg = (err as Error).message ?? ''
     if (msg.includes('UNIQUE constraint')) {
-      return c.json({ error: { code: 'RESTORE_FAILED', message: '恢复失败：原表中已存在相同 ID 的记录' } }, 409)
+      return c.json({ error: { code: 'RESTORE_FAILED', message: 'Restore failed: a record with the same ID already exists in the table' } }, 409)
     }
     throw err
   }
@@ -115,7 +115,7 @@ trash.delete('/:id', async (c) => {
     .run()
 
   if (result.meta.changes === 0) {
-    return c.json({ error: { code: 'NOT_FOUND', message: '记录不存在' } }, 404)
+    return c.json({ error: { code: 'NOT_FOUND', message: 'Record not found' } }, 404)
   }
 
   return c.json({ data: { success: true } })
