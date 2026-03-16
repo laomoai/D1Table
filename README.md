@@ -169,31 +169,95 @@ curl "/api/tables/contacts/records?page_size=20&cursor=42"
 
 ## Python Client
 
-A Python client SDK is included in `skills/d1table-client/`.
+A Python client SDK is included in `skills/d1table-client/`. Requires `pip install requests`.
+
+### Configuration
 
 ```bash
-# Configure via environment variables
+# Option 1: Environment variables (recommended)
 export D1TABLE_URL=https://your-instance.com
 export D1TABLE_KEY=your-api-key
 
-# List tables
-python3 skills/d1table-client/src/d1table_client.py list-tables
+# Option 2: Constructor arguments
+client = D1TableClient(base_url="https://your-instance.com", api_key="your-api-key")
 
-# Query records
-python3 skills/d1table-client/src/d1table_client.py query --table contacts --limit 10
+# Option 3: config.json (OpenClaw / agent frameworks)
+# { "d1table": { "baseUrl": "...", "apiKey": "...", "timeout": 30 } }
 ```
 
-Or use it as a Python library:
+### Command Line
+
+```bash
+# Health check
+python3 skills/d1table-client/src/d1table_client.py health
+
+# List all tables
+python3 skills/d1table-client/src/d1table_client.py list-tables
+
+# Get table schema (fields, types, display names)
+python3 skills/d1table-client/src/d1table_client.py schema --table contacts
+
+# Query records (with optional filter and limit)
+python3 skills/d1table-client/src/d1table_client.py query --table contacts --limit 10
+python3 skills/d1table-client/src/d1table_client.py query --table contacts --filter name:Alice
+
+# Get a single record
+python3 skills/d1table-client/src/d1table_client.py get --table contacts --id 1
+
+# Insert a record
+python3 skills/d1table-client/src/d1table_client.py insert --table contacts --data '{"name":"Alice","email":"alice@example.com"}'
+
+# Update a record
+python3 skills/d1table-client/src/d1table_client.py update --table contacts --id 1 --data '{"name":"Bob"}'
+
+# Delete a record (moves to trash)
+python3 skills/d1table-client/src/d1table_client.py delete --table contacts --id 1
+```
+
+### Python API
 
 ```python
 from d1table_client import D1TableClient
 
 client = D1TableClient()
-records = client.query_records("contacts", limit=10)
-record = client.insert_record("contacts", {"name": "Alice", "email": "alice@example.com"})
-```
 
-See [`skills/d1table-client/SKILL.md`](skills/d1table-client/SKILL.md) for full documentation.
+# Health check
+ok = client.health_check()  # → bool
+
+# List tables
+tables = client.list_tables()  # → [{"name": "contacts", "row_count": 42, ...}]
+
+# Get table schema + field mapping
+schema = client.get_schema("contacts")
+# schema["field_mapping"] → {"name": "Full Name", "email": "Email Address", ...}
+
+# Get field mapping only (column_name → display title)
+mapping = client.get_field_mapping("contacts")
+
+# Query records (supports pagination, sorting, filters)
+result = client.query_records("contacts", limit=20, cursor="42", sort="created_at:desc")
+result = client.query_records("contacts", name="Alice")  # filter by field
+# result["data"]          → list of records
+# result["meta"]["next_cursor"]  → pass as cursor for the next page
+
+# Get a single record
+record = client.get_record("contacts", "1")
+
+# Insert a record
+record = client.insert_record("contacts", {"name": "Alice", "email": "alice@example.com"})
+
+# Update a record
+record = client.update_record("contacts", "1", {"name": "Bob"})
+
+# Delete a record (soft delete — moved to trash)
+ok = client.delete_record("contacts", "1")  # → bool
+
+# Batch insert (up to 500 records)
+result = client.batch_insert("contacts", [
+    {"name": "Alice", "email": "alice@example.com"},
+    {"name": "Bob",   "email": "bob@example.com"},
+])
+```
 
 ---
 
