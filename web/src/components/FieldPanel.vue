@@ -82,7 +82,7 @@
                     />
                     <button class="icon-btn" @click="editForm.select_options.splice(oi, 1)">✕</button>
                   </div>
-                  <button class="add-opt-btn" @click="addEditOption">+ Add Option</button>
+                  <button class="add-opt-btn" @click="addSelectOption(editForm.select_options)">+ Add Option</button>
                 </div>
               </div>
 
@@ -129,7 +129,7 @@
                     <input v-model="opt.color" type="color" class="opt-color-input" />
                     <button class="icon-btn" @click="newField.select_options.splice(oi, 1)">✕</button>
                   </div>
-                  <button class="add-opt-btn" @click="addNewOption">+ Add Option</button>
+                  <button class="add-opt-btn" @click="addSelectOption(newField.select_options)">+ Add Option</button>
                 </div>
               </div>
             </template>
@@ -222,14 +222,14 @@ function cancelExpand() {
 function selectType(type: FieldType) {
   editForm.value.field_type = type
   if (type === 'select' && editForm.value.select_options.length === 0) {
-    addEditOption()
+    addSelectOption(editForm.value.select_options)
   }
 }
 
-function addEditOption() {
-  const colors = ['#4f6ef7', '#18a058', '#f0a020', '#d03050', '#8a2be2', '#00ced1']
-  const color = colors[editForm.value.select_options.length % colors.length]
-  editForm.value.select_options.push({ value: '', label: '', color })
+const SELECT_COLORS = ['#4f6ef7', '#18a058', '#f0a020', '#d03050', '#8a2be2', '#00ced1']
+
+function addSelectOption(options: SelectOption[]) {
+  options.push({ value: '', label: '', color: SELECT_COLORS[options.length % SELECT_COLORS.length] })
 }
 
 async function saveFieldEdit(field: FieldMeta) {
@@ -291,9 +291,11 @@ async function moveField(idx: number, dir: -1 | 1) {
   localFields.value = arr
 
   try {
-    await Promise.all(
-      arr.map((f, i) => api.updateFieldMeta(props.tableName, f.column_name, { order_index: i * 10 }))
-    )
+    // Only the two swapped positions changed; all others retain their order_index
+    await Promise.all([
+      api.updateFieldMeta(props.tableName, arr[idx].column_name, { order_index: idx * 10 }),
+      api.updateFieldMeta(props.tableName, arr[target].column_name, { order_index: target * 10 }),
+    ])
     queryClient.invalidateQueries({ queryKey: ['fields', props.tableName] })
     emit('refresh')
   } catch (err) {
@@ -316,11 +318,6 @@ function openAddForm() {
   cancelExpand()
 }
 
-function addNewOption() {
-  const colors = ['#4f6ef7', '#18a058', '#f0a020', '#d03050', '#8a2be2', '#00ced1']
-  const color = colors[newField.value.select_options.length % colors.length]
-  newField.value.select_options.push({ value: '', label: '', color })
-}
 
 async function submitAddField() {
   if (!newField.value.title.trim()) {

@@ -121,7 +121,7 @@
             </template>
             <!-- 只读模式 -->
             <template v-else>
-              <div class="readonly-value-wrap" :class="{ 'has-copy': isTextType(field.field_type) }">
+              <div class="readonly-value-wrap">
                 <CellValue
                   :value="currentRow[field.column_name]"
                   :field-type="field.field_type"
@@ -157,7 +157,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, nextTick } from 'vue'
+import { ref, computed, watch, onBeforeUnmount } from 'vue'
 import { useMessage, NDrawer, NDrawerContent, NButton, NInput, NInputNumber, NSwitch, NSelect, NDatePicker } from 'naive-ui'
 import { api, type FieldMeta, type FieldType } from '@/api/client'
 import { useQueryClient } from '@tanstack/vue-query'
@@ -262,6 +262,8 @@ function datetimeToTs(v: unknown): number | null {
 // ── 复制 ──────────────────────────────────────────────────────
 const copiedCol = ref<string | null>(null)
 let copyTimer: ReturnType<typeof setTimeout> | null = null
+
+onBeforeUnmount(() => { if (copyTimer) clearTimeout(copyTimer) })
 
 function isTextType(type: FieldType): boolean {
   return ['text', 'longtext', 'email', 'url'].includes(type)

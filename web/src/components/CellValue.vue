@@ -192,12 +192,7 @@ const datetimeVal = computed(() => {
   text-decoration: underline;
 }
 /* 详情模式：完整显示 */
-.cell-text--full {
-  display: block;
-  white-space: pre-wrap;
-  word-break: break-word;
-  line-height: 1.6;
-}
+.cell-text--full,
 .cell-longtext--full {
   display: block;
   white-space: pre-wrap;
