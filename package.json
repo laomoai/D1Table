@@ -1,0 +1,26 @@
+{
+  "name": "d1table",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev:worker": "wrangler dev --port 8787",
+    "dev:web": "cd web && npm run dev",
+    "build:web": "cd web && npm run build",
+    "deploy": "npm run build:web && wrangler deploy",
+    "db:migrate:local": "wrangler d1 execute d1table --local --file=migrations/0001_init.sql",
+    "db:migrate": "wrangler d1 execute d1table --remote --file=migrations/0001_init.sql",
+    "db:seed:local": "wrangler d1 execute d1table --local --file=migrations/0002_seed.sql",
+    "db:seed": "wrangler d1 execute d1table --remote --file=migrations/0002_seed.sql"
+  },
+  "dependencies": {
+    "@hono/zod-openapi": "^0.18.3",
+    "@scalar/hono-api-reference": "^0.5.161",
+    "hono": "^4.6.19",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250214.0",
+    "typescript": "^5.7.3",
+    "wrangler": "^4.4.0"
+  }
+}

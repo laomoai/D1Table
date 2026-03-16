@@ -1,0 +1,182 @@
+<template>
+  <!-- 空值 -->
+  <span v-if="isEmpty" class="cell-empty">—</span>
+
+  <!-- checkbox -->
+  <span v-else-if="fieldType === 'checkbox'" :class="boolVal ? 'cell-check-on' : 'cell-check-off'">
+    {{ boolVal ? '✓' : '—' }}
+  </span>
+
+  <!-- select -->
+  <span
+    v-else-if="fieldType === 'select' && selectOpt"
+    class="cell-badge"
+    :style="{ background: selectOpt.color + '22', color: selectOpt.color, borderColor: selectOpt.color + '55' }"
+  >{{ selectOpt.label }}</span>
+  <span v-else-if="fieldType === 'select'" class="cell-text">{{ value }}</span>
+
+  <!-- email -->
+  <a
+    v-else-if="fieldType === 'email' && value"
+    :href="`mailto:${value}`"
+    class="cell-link"
+    @click.stop
+  >{{ value }}</a>
+
+  <!-- url -->
+  <a
+    v-else-if="fieldType === 'url' && value"
+    :href="String(value)"
+    target="_blank"
+    rel="noopener noreferrer"
+    class="cell-link"
+    @click.stop
+  >{{ value }}</a>
+
+  <!-- number -->
+  <span v-else-if="fieldType === 'number'" class="cell-number">{{ numVal }}</span>
+
+  <!-- currency -->
+  <span v-else-if="fieldType === 'currency'" class="cell-number">{{ currencyVal }}</span>
+
+  <!-- percent -->
+  <span v-else-if="fieldType === 'percent'" class="cell-number">{{ percentVal }}</span>
+
+  <!-- date -->
+  <span v-else-if="fieldType === 'date'" class="cell-text">{{ dateVal }}</span>
+
+  <!-- datetime -->
+  <span v-else-if="fieldType === 'datetime'" class="cell-text">{{ datetimeVal }}</span>
+
+  <!-- longtext -->
+  <span v-else-if="fieldType === 'longtext'" class="cell-longtext">{{ value }}</span>
+
+  <!-- text (default) -->
+  <span v-else class="cell-text">{{ value }}</span>
+</template>
+
+<script setup lang="ts">
+import { computed } from 'vue'
+import type { FieldType, SelectOption } from '@/api/client'
+
+const props = defineProps<{
+  value: unknown
+  fieldType: FieldType
+  selectOptions?: SelectOption[] | null
+}>()
+
+const isEmpty = computed(() => props.value === null || props.value === undefined || props.value === '')
+
+const boolVal = computed(() => {
+  if (typeof props.value === 'boolean') return props.value
+  if (typeof props.value === 'number') return props.value !== 0
+  if (typeof props.value === 'string') return props.value === '1' || props.value.toLowerCase() === 'true'
+  return false
+})
+
+const selectOpt = computed<SelectOption | undefined>(() => {
+  if (!props.selectOptions || !props.value) return undefined
+  return props.selectOptions.find(o => o.value === String(props.value))
+})
+
+const numVal = computed(() => {
+  if (props.value === null || props.value === undefined) return ''
+  const n = Number(props.value)
+  if (isNaN(n)) return String(props.value)
+  return n.toLocaleString('zh-CN')
+})
+
+const currencyVal = computed(() => {
+  if (props.value === null || props.value === undefined) return ''
+  const n = Number(props.value)
+  if (isNaN(n)) return String(props.value)
+  return '¥' + n.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+})
+
+const percentVal = computed(() => {
+  if (props.value === null || props.value === undefined) return ''
+  const n = Number(props.value)
+  if (isNaN(n)) return String(props.value)
+  return n.toLocaleString('zh-CN') + '%'
+})
+
+function toDate(v: unknown): Date | null {
+  if (!v) return null
+  const n = Number(v)
+  if (!isNaN(n) && n > 0) {
+    const d = new Date(n < 1e10 ? n * 1000 : n)
+    if (!isNaN(d.getTime())) return d
+  }
+  const d = new Date(String(v))
+  return isNaN(d.getTime()) ? null : d
+}
+
+const dateVal = computed(() => {
+  if (!props.value) return ''
+  const s = String(props.value)
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10)
+  const d = toDate(props.value)
+  return d ? d.toISOString().slice(0, 10) : s
+})
+
+const datetimeVal = computed(() => {
+  if (!props.value) return ''
+  const d = toDate(props.value)
+  if (!d) return String(props.value)
+  const pad = (x: number) => String(x).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+})
+</script>
+
+<style scoped>
+.cell-empty {
+  color: #ccc;
+}
+.cell-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: block;
+}
+.cell-longtext {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: normal;
+  line-height: 1.4;
+}
+.cell-number {
+  display: block;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.cell-link {
+  color: #4f6ef7;
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: block;
+}
+.cell-link:hover {
+  text-decoration: underline;
+}
+.cell-check-on {
+  color: #18a058;
+  font-weight: 700;
+  font-size: 15px;
+}
+.cell-check-off {
+  color: #bbb;
+}
+.cell-badge {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 10px;
+  font-size: 12px;
+  border: 1px solid;
+  font-weight: 500;
+}
+</style>

@@ -1,0 +1,5 @@
+# 复制此文件为 .dev.vars 并填入本地开发用的值
+# .dev.vars 已加入 .gitignore，不会提交到仓库
+
+# 本地开发用的管理员 Key（任意字符串即可，生产环境通过 wrangler secret put ADMIN_KEY 设置）
+ADMIN_KEY=your_local_admin_key_here
