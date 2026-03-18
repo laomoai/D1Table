@@ -8,3 +8,5 @@ public/
 *.local
 web/node_modules/
 web/dist/
+docs/tmp/
+skills/*.zip
