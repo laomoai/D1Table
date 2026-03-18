@@ -1,20 +1,23 @@
 # D1Table
 
-A lightweight, self-hosted data table management tool built on **Cloudflare Workers + D1**. Create tables, manage records through a spreadsheet-like UI, and expose a clean REST API — all running at the edge with zero server maintenance.
+A lightweight data table management tool built on **Cloudflare Workers + D1**. Create tables, manage records through a spreadsheet-like UI, and expose a clean REST API — all running at the edge with zero server maintenance.
 
-Designed to work as a personal database backend for AI Agents, automation scripts, and internal tools.
+Designed as a structured data backend for **AI Agents** — agents read and write via REST API, humans monitor and manage via the visual interface.
 
 ## Features
 
+- **Google OAuth login** — sign in with Google; allowed emails controlled via environment variable
 - **Dynamic tables** — create, rename, and delete tables without touching SQL
 - **Spreadsheet UI** — AG Grid-powered table view with sorting, filtering, column resizing, and inline editing
+- **Detail view** — expand any row; select/checkbox fields save instantly, text/date fields save on blur
 - **REST API** — full CRUD with keyset pagination, field filtering, and batch inserts
 - **OpenAPI docs** — auto-generated docs at `/api/docs`, readable by AI Agents
-- **Field types** — text, longtext, number, email, URL, date, datetime, checkbox, select
+- **Field types** — text, longtext, number, currency, percent, email, URL, date, datetime, checkbox, select
 - **Table groups** — organize tables into groups; restrict API key access per group
 - **API key management** — multiple keys, readonly/read-write permissions, group-scoped access
 - **Recycle bin** — deleted records are soft-deleted and retained for 30 days
-- **Cost-optimized** — keyset pagination (no `OFFSET`), `_meta` row count cache (no `COUNT(*)` scans), parallel D1 queries
+- **Sidebar customization** — adjustable font size and text color, persisted to localStorage
+- **Cost-optimized** — keyset pagination (no `OFFSET`), `_meta` row count cache (no `COUNT(*)` scans), Cache API for GET responses
 
 ## Tech Stack
 
@@ -35,6 +38,7 @@ Designed to work as a personal database backend for AI Agents, automation script
 - [Node.js](https://nodejs.org/) 18+
 - [Wrangler CLI](https://developers.cloudflare.com/workers/wrangler/) — `npm install -g wrangler`
 - A Cloudflare account
+- A Google Cloud project with OAuth 2.0 credentials
 
 ### 1. Clone and install
 
@@ -63,21 +67,32 @@ database_id = "YOUR_DATABASE_ID"   # ← paste here
 ### 3. Run migrations
 
 ```bash
-# Apply all migrations in order
 wrangler d1 execute d1table --remote --file=migrations/0001_init.sql
 wrangler d1 execute d1table --remote --file=migrations/0003_field_meta.sql
 wrangler d1 execute d1table --remote --file=migrations/0004_groups.sql
 wrangler d1 execute d1table --remote --file=migrations/0005_trash.sql
 ```
 
-### 4. Set the admin key
+### 4. Set up Google OAuth
+
+1. Go to [Google Cloud Console](https://console.cloud.google.com) → APIs & Services → Credentials
+2. Create an **OAuth 2.0 Client ID** (Web application)
+3. Add authorized redirect URIs:
+   - `https://your-domain.com/api/auth/callback`
+   - `http://localhost:8787/api/auth/callback` (for local dev)
+
+### 5. Set secrets
 
 ```bash
-wrangler secret put ADMIN_KEY
-# Enter a strong secret key when prompted — this is your master admin password
+wrangler secret put GOOGLE_CLIENT_ID
+wrangler secret put GOOGLE_CLIENT_SECRET
+wrangler secret put SESSION_SECRET      # any random 32+ character string
+wrangler secret put ALLOWED_EMAILS      # comma-separated, e.g. alice@gmail.com,bob@gmail.com
 ```
 
-### 5. Deploy
+> `ALLOWED_EMAILS` can also be set as a plain text variable in the Cloudflare Dashboard (easier to update without redeploying).
+
+### 6. Deploy
 
 ```bash
 npm run deploy
@@ -85,15 +100,16 @@ npm run deploy
 
 Your instance will be available at `https://d1table.<your-subdomain>.workers.dev`.
 
-To use a custom domain, add a route in the **Cloudflare Dashboard** → Workers & Pages → d1table → Settings → Domains & Routes.
+To use a custom domain, go to **Cloudflare Dashboard** → Workers & Pages → d1table → Settings → Domains & Routes.
 
 ---
 
 ## Local Development
 
 ```bash
-# Copy the example env file and fill in a local admin key
+# Copy and fill in local secrets
 cp .dev.vars.example .dev.vars
+# Edit .dev.vars: add GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, SESSION_SECRET, ALLOWED_EMAILS
 
 # Run migrations locally
 wrangler d1 execute d1table --local --file=migrations/0001_init.sql
@@ -110,18 +126,26 @@ Open `http://localhost:5173` in your browser.
 
 ---
 
-## API
+## Authentication
 
-The full REST API is documented at `/api/docs` (powered by Scalar). A machine-readable OpenAPI JSON is available at `/api/openapi.json`.
+### Web UI
 
-### Authentication
+Sign in with Google. Access is restricted to emails listed in `ALLOWED_EMAILS`. Session is stored as an HMAC-signed cookie (30-day expiry), no database required.
 
-All API requests require an `X-API-Key` header:
+### API (AI Agents)
+
+All API requests require an `X-API-Key` header. Create keys in Settings → API Keys.
 
 ```bash
 curl https://your-instance.com/api/tables \
   -H "X-API-Key: your_api_key"
 ```
+
+---
+
+## API
+
+The full REST API is documented at `/api/docs` (powered by Scalar). A machine-readable OpenAPI JSON is available at `/api/openapi.json`.
 
 ### Quick reference
 
@@ -140,7 +164,7 @@ curl https://your-instance.com/api/tables \
 
 ### Pagination
 
-D1Table uses **keyset pagination** — pass the `next_cursor` from the previous response as the `cursor` parameter for the next page:
+D1Table uses **keyset pagination** — pass the `next_cursor` from the previous response as the `cursor` parameter:
 
 ```bash
 # First page
@@ -153,13 +177,13 @@ curl "/api/tables/contacts/records?page_size=20&cursor=42"
 ### Filtering and sorting
 
 ```bash
-# Filter: field equals value
+# Equality filter
 /api/tables/contacts/records?filter[name]=Alice
 
-# Filter: field contains value
+# Contains filter
 /api/tables/contacts/records?filter[name__like]=ali
 
-# Filter operators: __gt, __gte, __lt, __lte, __ne, __like
+# Operators: __gt, __gte, __lt, __lte, __ne, __like, __nlike
 
 # Sort
 /api/tables/contacts/records?sort=created_at:desc
@@ -174,44 +198,8 @@ A Python client SDK is included in `skills/d1table-client/`. Requires `pip insta
 ### Configuration
 
 ```bash
-# Option 1: Environment variables (recommended)
 export D1TABLE_URL=https://your-instance.com
 export D1TABLE_KEY=your-api-key
-
-# Option 2: Constructor arguments
-client = D1TableClient(base_url="https://your-instance.com", api_key="your-api-key")
-
-# Option 3: config.json (OpenClaw / agent frameworks)
-# { "d1table": { "baseUrl": "...", "apiKey": "...", "timeout": 30 } }
-```
-
-### Command Line
-
-```bash
-# Health check
-python3 skills/d1table-client/src/d1table_client.py health
-
-# List all tables
-python3 skills/d1table-client/src/d1table_client.py list-tables
-
-# Get table schema (fields, types, display names)
-python3 skills/d1table-client/src/d1table_client.py schema --table contacts
-
-# Query records (with optional filter and limit)
-python3 skills/d1table-client/src/d1table_client.py query --table contacts --limit 10
-python3 skills/d1table-client/src/d1table_client.py query --table contacts --filter name:Alice
-
-# Get a single record
-python3 skills/d1table-client/src/d1table_client.py get --table contacts --id 1
-
-# Insert a record
-python3 skills/d1table-client/src/d1table_client.py insert --table contacts --data '{"name":"Alice","email":"alice@example.com"}'
-
-# Update a record
-python3 skills/d1table-client/src/d1table_client.py update --table contacts --id 1 --data '{"name":"Bob"}'
-
-# Delete a record (moves to trash)
-python3 skills/d1table-client/src/d1table_client.py delete --table contacts --id 1
 ```
 
 ### Python API
@@ -221,42 +209,29 @@ from d1table_client import D1TableClient
 
 client = D1TableClient()
 
-# Health check
-ok = client.health_check()  # → bool
-
 # List tables
-tables = client.list_tables()  # → [{"name": "contacts", "row_count": 42, ...}]
+tables = client.list_tables()
 
-# Get table schema + field mapping
-schema = client.get_schema("contacts")
-# schema["field_mapping"] → {"name": "Full Name", "email": "Email Address", ...}
+# Query records
+result = client.query_records("contacts", limit=20, sort="created_at:desc")
+# result["data"] → list of records
+# result["meta"]["next_cursor"] → pass as cursor for next page
 
-# Get field mapping only (column_name → display title)
-mapping = client.get_field_mapping("contacts")
+# Filter
+result = client.query_records("contacts", name="Alice")
 
-# Query records (supports pagination, sorting, filters)
-result = client.query_records("contacts", limit=20, cursor="42", sort="created_at:desc")
-result = client.query_records("contacts", name="Alice")  # filter by field
-# result["data"]          → list of records
-# result["meta"]["next_cursor"]  → pass as cursor for the next page
-
-# Get a single record
-record = client.get_record("contacts", "1")
-
-# Insert a record
+# Insert
 record = client.insert_record("contacts", {"name": "Alice", "email": "alice@example.com"})
 
-# Update a record
-record = client.update_record("contacts", "1", {"name": "Bob"})
-
-# Delete a record (soft delete — moved to trash)
-ok = client.delete_record("contacts", "1")  # → bool
-
-# Batch insert (up to 500 records)
+# Batch insert (up to 500)
 result = client.batch_insert("contacts", [
     {"name": "Alice", "email": "alice@example.com"},
     {"name": "Bob",   "email": "bob@example.com"},
 ])
+
+# Update / delete
+client.update_record("contacts", "1", {"name": "Bob"})
+client.delete_record("contacts", "1")  # moves to trash
 ```
 
 ---
@@ -267,14 +242,14 @@ result = client.batch_insert("contacts", [
 D1Table/
 ├── src/                    # Cloudflare Worker (Hono.js API)
 │   ├── index.ts            # Entry point + OpenAPI spec
-│   ├── middleware/         # Auth middleware
-│   ├── routes/             # API route handlers
-│   └── utils/              # Query builder, schema helpers
+│   ├── middleware/         # Auth middleware (session + API key)
+│   ├── routes/             # API route handlers (tables, records, fields, auth, ...)
+│   └── utils/              # Query builder, session signing, schema helpers
 ├── web/                    # Vue 3 frontend
 │   └── src/
-│       ├── pages/          # Settings, Dashboard, TableView
-│       ├── components/     # DataGrid, AppLayout, modals
-│       └── api/            # API client (axios)
+│       ├── pages/          # Dashboard, TableView, Settings, Login
+│       ├── components/     # DataGrid, AppLayout, RowExpand, FilterBar, ...
+│       └── api/            # Axios client
 ├── migrations/             # D1 SQL migrations (run in order)
 ├── skills/
 │   └── d1table-client/     # Python client SDK
