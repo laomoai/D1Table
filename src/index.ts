@@ -11,6 +11,7 @@ import adminRouter from './routes/admin'
 import fieldsRouter from './routes/fields'
 import groupsRouter from './routes/groups'
 import trashRouter from './routes/trash'
+import uploadRouter from './routes/upload'
 
 const app = new Hono<{ Bindings: Env; Variables: AuthVariables }>()
 
@@ -68,6 +69,19 @@ app.route('/api/tables', fieldsRouter)
 app.route('/api/admin', adminRouter)
 app.route('/api/groups', groupsRouter)
 app.route('/api/trash', trashRouter)
+app.route('/api/upload', uploadRouter)
+
+// GET /api/files/* — 从 R2 代理图片（鉴权后才可访问）
+app.get('/api/files/*', async (c) => {
+  const key = c.req.path.replace('/api/files/', '')
+  if (!key) return c.json({ error: { message: 'Missing key' } }, 400)
+  const obj = await c.env.BUCKET.get(key)
+  if (!obj) return c.json({ error: { message: 'Not found' } }, 404)
+  const headers = new Headers()
+  obj.writeHttpMetadata(headers)
+  headers.set('Cache-Control', 'public, max-age=31536000, immutable')
+  return new Response(obj.body, { headers })
+})
 
 // ── 入口：API 走 Hono，其余走静态资源（SPA）────────────────────
 export default {

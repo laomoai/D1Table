@@ -57,6 +57,15 @@
   >{{ value }}</a>
   <span v-else-if="fieldType === 'longtext'" :class="detail ? 'cell-longtext--full' : 'cell-longtext'">{{ value }}</span>
 
+  <!-- image -->
+  <img
+    v-else-if="fieldType === 'image' && imageThumb"
+    :src="`/api/files/${imageThumb}`"
+    class="cell-image"
+    loading="lazy"
+  />
+  <span v-else-if="fieldType === 'image'" class="cell-empty">—</span>
+
   <!-- text (default) -->
   <a
     v-else-if="detail && isUrl(value)"
@@ -85,6 +94,11 @@ const props = defineProps<{
 }>()
 
 const isEmpty = computed(() => props.value === null || props.value === undefined || props.value === '')
+
+const imageThumb = computed<string | null>(() => {
+  if (props.fieldType !== 'image' || !props.value) return null
+  try { return (JSON.parse(String(props.value)) as { thumb: string }).thumb } catch { return null }
+})
 
 const boolVal = computed(() => {
   if (typeof props.value === 'boolean') return props.value
@@ -228,5 +242,12 @@ const datetimeVal = computed(() => {
   font-size: 12px;
   border: 1px solid;
   font-weight: 500;
+}
+.cell-image {
+  width: 24px;
+  height: 24px;
+  object-fit: cover;
+  border-radius: 3px;
+  display: block;
 }
 </style>

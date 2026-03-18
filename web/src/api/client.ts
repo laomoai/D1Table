@@ -22,7 +22,14 @@ http.interceptors.response.use(
 
 // ── 类型定义 ──────────────────────────────────────────────────
 
-export type FieldType = 'text' | 'longtext' | 'number' | 'currency' | 'percent' | 'email' | 'url' | 'date' | 'datetime' | 'checkbox' | 'select'
+export type FieldType = 'text' | 'longtext' | 'number' | 'currency' | 'percent' | 'email' | 'url' | 'date' | 'datetime' | 'checkbox' | 'select' | 'image'
+
+export interface ImageValue {
+  thumb: string    // R2 key，如 images/uuid/thumb.webp
+  display: string  // R2 key，如 images/uuid/display.webp
+  name: string     // 原始文件名
+  size: number     // display 文件大小（字节）
+}
 
 export interface SelectOption {
   value: string
@@ -155,6 +162,19 @@ export const api = {
     http.patch<{ data: { success: boolean } }>(`/admin/keys/${id}`, data).then((r) => r.data.data),
   revokeKey: (id: number) =>
     http.delete(`/admin/keys/${id}`),
+
+  /** 图片上传 */
+  uploadImage: async (thumb: Blob, display: Blob, name: string): Promise<ImageValue> => {
+    const form = new FormData()
+    form.append('thumb', thumb, 'thumb.webp')
+    form.append('display', display, 'display.webp')
+    form.append('name', name)
+    const res = await http.post<{ data: ImageValue }>('/upload/image', form)
+    return res.data.data
+  },
+
+  deleteImage: (thumb: string, display: string): Promise<void> =>
+    http.delete('/upload/image', { data: { thumb, display } }).then(() => {}),
 
   /** 回收站 */
   getTrash: () =>

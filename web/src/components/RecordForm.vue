@@ -101,6 +101,13 @@
           type="text"
         />
 
+        <!-- image -->
+        <ImageUpload
+          v-else-if="field.field_type === 'image'"
+          :value="(formData[field.column_name] as string) ?? null"
+          @update:value="(v) => formData[field.column_name] = v"
+        />
+
         <!-- text (default) -->
         <n-input
           v-else
@@ -130,6 +137,7 @@ import {
   type FormInst,
 } from 'naive-ui'
 import type { FieldMeta, RecordRow } from '@/api/client'
+import ImageUpload from './ImageUpload.vue'
 
 const formRef = ref<FormInst>()
 

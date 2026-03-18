@@ -23,6 +23,27 @@
         <span :class="{ 'spin-icon': refreshing }">↻</span>
       </n-button>
       <n-button size="small" type="primary" @click="openCreate">+ Add</n-button>
+      <!-- 视图切换 -->
+      <div class="view-switcher">
+        <button class="view-btn view-btn--active" title="Grid view">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
+            <rect x="1" y="1" width="5" height="2.5" rx="0.5"/>
+            <rect x="8" y="1" width="5" height="2.5" rx="0.5"/>
+            <rect x="1" y="5.5" width="5" height="2.5" rx="0.5"/>
+            <rect x="8" y="5.5" width="5" height="2.5" rx="0.5"/>
+            <rect x="1" y="10" width="5" height="2.5" rx="0.5"/>
+            <rect x="8" y="10" width="5" height="2.5" rx="0.5"/>
+          </svg>
+        </button>
+        <button class="view-btn" title="Gallery view" @click="emit('switchView', 'gallery')">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
+            <rect x="1" y="1" width="5" height="5" rx="1"/>
+            <rect x="8" y="1" width="5" height="5" rx="1"/>
+            <rect x="1" y="8" width="5" height="5" rx="1"/>
+            <rect x="8" y="8" width="5" height="5" rx="1"/>
+          </svg>
+        </button>
+      </div>
     </div>
 
     <!-- 批量操作栏 -->
@@ -127,7 +148,7 @@ const props = defineProps<{
   totalCount: number | null
 }>()
 
-const emit = defineEmits<{ refresh: [] }>()
+const emit = defineEmits<{ refresh: []; switchView: [view: 'gallery'] }>()
 
 const message = useMessage()
 const dialog = useDialog()
@@ -434,6 +455,18 @@ function typedCellRenderer(params: { value: unknown; fieldType: FieldType; selec
         }
       }
       return `<span class="ag-cell-text">${esc(String(value))}</span>`
+    }
+
+    case 'image': {
+      try {
+        const img = document.createElement('img')
+        img.src = `/api/files/${(JSON.parse(String(value)) as { thumb: string }).thumb}`
+        img.style.cssText = 'width:24px;height:24px;object-fit:cover;border-radius:3px;display:block'
+        img.loading = 'lazy'
+        return img
+      } catch {
+        return '<span class="ag-cell-empty">—</span>'
+      }
     }
 
     case 'text':
@@ -759,6 +792,32 @@ async function refreshAll() {
   font-weight: 500;
   color: #4f6ef7;
 }
+/* 视图切换 */
+.view-switcher {
+  display: flex;
+  gap: 2px;
+  border: 1px solid #e0e2e8;
+  border-radius: 6px;
+  padding: 2px;
+  background: #f7f8fa;
+}
+.view-btn {
+  background: none;
+  border: none;
+  border-radius: 4px;
+  width: 26px;
+  height: 22px;
+  cursor: pointer;
+  color: #aaa;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: background 0.15s, color 0.15s;
+}
+.view-btn:hover { background: #eef0ff; color: #4f6ef7; }
+.view-btn--active { background: #fff; color: #4f6ef7; box-shadow: 0 1px 3px rgba(0,0,0,0.1); cursor: default; }
+
 .ag-grid-box { flex: 1; min-height: 200px; }
 .grid-footer {
   display: flex; align-items: center; justify-content: center; gap: 8px;

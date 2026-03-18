@@ -183,8 +183,17 @@ fields.post('/:tableName/fields', requireWriteMiddleware, async (c) => {
   }
 
   // 自动生成 column_name（从 title 转换）
-  const columnName = body.column_name?.trim() ||
-    body.title.toLowerCase().replace(/[^\w\s]/g, '').replace(/\s+/g, '_').replace(/^[0-9]/, '_$&').slice(0, 32)
+  let columnName = body.column_name?.trim() ?? ''
+  if (!columnName) {
+    const derived = body.title.toLowerCase()
+      .replace(/[^\w\s]/g, '')   // 去掉非 ASCII 字符（含中文）
+      .replace(/\s+/g, '_')
+      .replace(/^[0-9]/, '_$&')
+      .replace(/^_+|_+$/g, '')   // 去掉首尾下划线
+      .slice(0, 32)
+    // 如果 title 全是中文等非 ASCII，derived 为空，用随机短码兜底
+    columnName = isValidIdentifier(derived) ? derived : `field_${Date.now().toString(36)}`
+  }
 
   if (!isValidIdentifier(columnName)) {
     return c.json({ error: { code: 'INVALID_NAME', message: `Cannot generate a valid field name from "${body.title}"` } }, 400)

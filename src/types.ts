@@ -1,6 +1,7 @@
 export type Env = {
   DB: D1Database
   ASSETS: Fetcher
+  BUCKET: R2Bucket
   ENVIRONMENT: string
   ADMIN_KEY?: string
   GOOGLE_CLIENT_ID: string

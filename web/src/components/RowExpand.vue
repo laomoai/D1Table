@@ -37,6 +37,15 @@
               </div>
             </template>
 
+            <!-- 即时交互：image -->
+            <template v-else-if="field.field_type === 'image'">
+              <ImageUpload
+                :value="(currentRow[field.column_name] as string) ?? null"
+                @update:value="(v) => saveField(field.column_name, v)"
+                style="width:100%"
+              />
+            </template>
+
             <!-- 即时交互：select -->
             <template v-else-if="field.field_type === 'select'">
               <n-select
@@ -152,6 +161,7 @@ import { useMessage, NDrawer, NDrawerContent, NButton, NInput, NInputNumber, NSw
 import { api, type FieldMeta, type FieldType } from '@/api/client'
 import { useQueryClient } from '@tanstack/vue-query'
 import CellValue from './CellValue.vue'
+import ImageUpload from './ImageUpload.vue'
 
 const props = defineProps<{
   tableName: string
@@ -274,7 +284,7 @@ function datetimeToTs(v: unknown): number | null {
 function typeIcon(type: FieldType): string {
   const map: Record<string, string> = {
     text: 'T', longtext: '¶', number: '#', currency: '¥', percent: '%',
-    email: '@', url: '🔗', date: '📅', datetime: '🕐', checkbox: '☑', select: '◉',
+    email: '@', url: '🔗', date: '📅', datetime: '🕐', checkbox: '☑', select: '◉', image: '🖼',
   }
   return map[type] ?? 'T'
 }
@@ -282,7 +292,7 @@ function typeIcon(type: FieldType): string {
 function typeColor(type: FieldType): string {
   const map: Record<string, string> = {
     text: '#666', longtext: '#888', number: '#4f6ef7', currency: '#18a058', percent: '#f0a020',
-    email: '#00adb5', url: '#4f6ef7', date: '#8a2be2', datetime: '#d03050', checkbox: '#18a058', select: '#f0a020',
+    email: '#00adb5', url: '#4f6ef7', date: '#8a2be2', datetime: '#d03050', checkbox: '#18a058', select: '#f0a020', image: '#e91e8c',
   }
   return map[type] ?? '#666'
 }
