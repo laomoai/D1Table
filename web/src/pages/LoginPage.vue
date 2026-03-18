@@ -1,86 +1,46 @@
 <template>
   <div class="login-page">
     <div class="login-card">
-      <!-- Logo -->
       <div class="login-brand">
+        <img src="/logo.png" class="login-logo-img" alt="D1Table" />
         <div class="login-logo">D1Table</div>
         <div class="login-subtitle">Data management platform powered by Cloudflare D1</div>
       </div>
 
-      <!-- Form -->
-      <div class="login-form">
-        <label class="login-label">API Key</label>
-        <n-input
-          v-model:value="inputKey"
-          type="password"
-          show-password-on="click"
-          placeholder="Enter API Key or ADMIN_KEY"
-          size="large"
-          :status="errorMsg ? 'error' : undefined"
-          @keyup.enter="handleConnect"
-        />
+      <n-alert v-if="errorMsg" type="error" style="margin-bottom: 20px;">
+        {{ errorMsg }}
+      </n-alert>
 
-        <n-alert v-if="errorMsg" type="error" style="margin-top: 12px;">
-          {{ errorMsg }}
-        </n-alert>
-
-        <n-button
-          type="primary"
-          block
-          size="large"
-          :loading="connecting"
-          :disabled="!inputKey.trim()"
-          style="margin-top: 16px;"
-          @click="handleConnect"
-        >
-          Connect
-        </n-button>
-      </div>
-
-      <!-- Help -->
-      <div class="login-help">
-        <n-collapse>
-          <n-collapse-item title="How do I get an API Key?" name="help">
-            <ul class="help-list">
-              <li>First-time use: enter the <code>ADMIN_KEY</code> you set during deployment</li>
-              <li>Admins can create read-only or read-write API Keys in "Settings"</li>
-              <li>API Key format: <code>d1t_rw_...</code> or <code>d1t_ro_...</code></li>
-            </ul>
-          </n-collapse-item>
-        </n-collapse>
-      </div>
+      <a href="/api/auth/login" class="google-btn">
+        <svg class="google-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+          <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+          <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/>
+          <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+        </svg>
+        <span>Continue with Google</span>
+      </a>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
-import { useRouter } from 'vue-router'
-import { NInput, NButton, NAlert, NCollapse, NCollapseItem } from 'naive-ui'
-import { http, saveApiKey } from '@/api/client'
+import { computed } from 'vue'
+import { useRoute } from 'vue-router'
+import { NAlert } from 'naive-ui'
 
-const router = useRouter()
-const inputKey = ref('')
-const connecting = ref(false)
-const errorMsg = ref('')
+const route = useRoute()
 
-async function handleConnect() {
-  const key = inputKey.value.trim()
-  if (!key) return
-
-  connecting.value = true
-  errorMsg.value = ''
-
-  try {
-    await http.get('/tables', { headers: { 'X-API-Key': key } })
-    saveApiKey(key)
-    router.replace('/')
-  } catch (err) {
-    errorMsg.value = (err as Error).message || 'Connection failed — please check your API Key'
-  } finally {
-    connecting.value = false
+const errorMsg = computed(() => {
+  const err = route.query.error as string
+  if (!err) return ''
+  const messages: Record<string, string> = {
+    unauthorized_email: 'This Google account is not authorized to access D1Table.',
+    invalid_state: 'Login failed due to an invalid state. Please try again.',
+    oauth_failed: 'Google authentication failed. Please try again.',
   }
-}
+  return messages[err] ?? 'An unexpected error occurred. Please try again.'
+})
 </script>
 
 <style scoped>
@@ -102,6 +62,12 @@ async function handleConnect() {
   text-align: center;
   margin-bottom: 32px;
 }
+.login-logo-img {
+  width: 56px;
+  height: 56px;
+  object-fit: contain;
+  margin-bottom: 12px;
+}
 .login-logo {
   font-size: 28px;
   font-weight: 800;
@@ -113,29 +79,31 @@ async function handleConnect() {
   color: #999;
   margin-top: 6px;
 }
-.login-label {
-  display: block;
-  font-size: 13px;
-  font-weight: 600;
-  color: #555;
-  margin-bottom: 8px;
+.google-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 24px;
+  border: 1.5px solid #dadce0;
+  border-radius: 8px;
+  background: #fff;
+  color: #3c4043;
+  font-size: 15px;
+  font-weight: 500;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background 0.15s, box-shadow 0.15s;
+  box-sizing: border-box;
 }
-.login-help {
-  margin-top: 24px;
-  border-top: 1px solid #f0f2f5;
-  padding-top: 16px;
+.google-btn:hover {
+  background: #f8f9ff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
 }
-.help-list {
-  margin: 0;
-  padding-left: 18px;
-  font-size: 13px;
-  color: #666;
-  line-height: 1.8;
-}
-.help-list code {
-  background: #f0f2f5;
-  padding: 1px 5px;
-  border-radius: 3px;
-  font-size: 12px;
+.google-icon {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
 }
 </style>

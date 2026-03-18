@@ -1,6 +1,7 @@
 import type { MiddlewareHandler } from 'hono'
 import type { AuthVariables, Env } from '../types'
 import { sha256 } from '../utils/crypto'
+import { verifySession } from '../utils/session'
 
 /**
  * API Key 认证中间件
@@ -16,6 +17,20 @@ export const authMiddleware: MiddlewareHandler<{
   Bindings: Env
   Variables: AuthVariables
 }> = async (c, next) => {
+  // 1. 尝试 session cookie 认证（web UI）
+  const cookieHeader = c.req.header('Cookie')
+  if (cookieHeader) {
+    const allowedEmails = (c.env.ALLOWED_EMAILS ?? '').split(',').map(e => e.trim()).filter(Boolean)
+    const user = await verifySession(cookieHeader, c.env.SESSION_SECRET, allowedEmails)
+    if (user) {
+      c.set('keyType', 'readwrite')
+      c.set('keyScope', 'all')
+      c.set('allowedTables', null)
+      c.set('user', user)
+      return next()
+    }
+  }
+  // 2. 继续 API Key 认证（AI Agent，现有逻辑不变）
   const apiKey = c.req.header('X-API-Key') ?? c.req.query('api_key')
 
   if (!apiKey) {

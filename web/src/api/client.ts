@@ -1,25 +1,16 @@
 import axios from 'axios'
 
-// API Key 存储在 localStorage，生产环境建议使用更安全的方式
-const getApiKey = () => localStorage.getItem('d1table_api_key') ?? ''
-
 export const http = axios.create({
   baseURL: '/api',
   timeout: 15000,
-})
-
-http.interceptors.request.use((config) => {
-  const key = getApiKey()
-  if (key) config.headers['X-API-Key'] = key
-  return config
+  withCredentials: true,
 })
 
 http.interceptors.response.use(
   (res) => res,
   (err) => {
-    // 401: Key 无效，清除并跳转登录
+    // 401: 未登录，跳转登录页
     if (err.response?.status === 401) {
-      localStorage.removeItem('d1table_api_key')
       if (window.location.pathname !== '/login') {
         window.location.href = '/login'
       }
@@ -208,12 +199,6 @@ export interface ApiKeyInfo {
   groups: GroupInfo[]
 }
 
-/** 保存 API Key 到 localStorage */
-export function saveApiKey(key: string) {
-  localStorage.setItem('d1table_api_key', key)
-}
-
-/** 检查是否已设置 API Key */
-export function hasApiKey(): boolean {
-  return !!getApiKey()
-}
+export const getCurrentUser = (): Promise<{ email: string; name: string; picture: string }> =>
+  http.get<{ data: { email: string; name: string; picture: string } }>('/auth/me')
+    .then(r => r.data.data)

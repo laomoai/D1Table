@@ -4,6 +4,7 @@ import { logger } from 'hono/logger'
 import { apiReference } from '@scalar/hono-api-reference'
 import type { Env, AuthVariables } from './types'
 import { authMiddleware, tableAccessMiddleware } from './middleware/auth'
+import authRouter from './routes/auth'
 import tablesRouter from './routes/tables'
 import recordsRouter from './routes/records'
 import adminRouter from './routes/admin'
@@ -45,6 +46,9 @@ app.get(
     theme: 'purple',
   })
 )
+
+// auth 路由不需要认证，必须在 authMiddleware 之前注册
+app.route('/api/auth', authRouter)
 
 // ── 需要认证的路由 ─────────────────────────────────────────────
 app.use('/api/*', async (c, next) => {

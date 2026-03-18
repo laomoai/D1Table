@@ -3,6 +3,16 @@ export type Env = {
   ASSETS: Fetcher
   ENVIRONMENT: string
   ADMIN_KEY?: string
+  GOOGLE_CLIENT_ID: string
+  GOOGLE_CLIENT_SECRET: string
+  SESSION_SECRET: string
+  ALLOWED_EMAILS: string  // 逗号分隔的邮箱列表
+}
+
+export type SessionUser = {
+  email: string
+  name: string
+  picture: string
 }
 
 export type ColumnInfo = {
@@ -29,4 +39,5 @@ export type AuthVariables = {
   keyType: 'readonly' | 'readwrite'
   keyScope: 'all' | 'groups'
   allowedTables: string[] | null // null = all tables, string[] = restricted
+  user?: SessionUser
 }

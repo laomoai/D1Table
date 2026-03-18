@@ -11,14 +11,8 @@
       style="background: #1a1d2e;"
     >
       <div class="sidebar-header" @click="router.push('/')" style="cursor:pointer;">
+        <img src="/logo.png" class="logo-img" alt="D1Table" />
         <span class="logo">D1Table</span>
-        <n-button
-          size="tiny"
-          style="margin-left: auto; color: #8892b0;"
-          quaternary
-          @click.stop="showCreateTable = true"
-          title="New table"
-        >＋</n-button>
       </div>
 
       <!-- Groups + table list -->
@@ -35,11 +29,16 @@
           </div>
           <template v-if="expandedGroups.has(group.id)">
             <div
-              v-for="table in group.tables"
+              v-for="table in sortedTables(group.tables)"
               :key="table.name"
               class="table-item grouped"
               :class="{ active: activeTable === table.name }"
+              draggable="true"
               @click="navigateToTable(table.name)"
+              @dragstart="onDragStart($event, table.name)"
+              @dragover="onDragOver"
+              @drop="onDrop($event, table.name)"
+              @dragend="onDragEnd"
             >
               <n-icon class="table-icon" :component="TableIcon" size="14" />
               <template v-if="editingTable === table.name">
@@ -75,11 +74,16 @@
           </div>
           <template v-if="groupedTables.length === 0 || expandedGroups.has(-1)">
             <div
-              v-for="table in ungroupedTables"
+              v-for="table in sortedTables(ungroupedTables)"
               :key="table.name"
               class="table-item"
               :class="{ active: activeTable === table.name, grouped: groupedTables.length > 0 }"
+              draggable="true"
               @click="navigateToTable(table.name)"
+              @dragstart="onDragStart($event, table.name)"
+              @dragover="onDragOver"
+              @drop="onDrop($event, table.name)"
+              @dragend="onDragEnd"
             >
               <n-icon class="table-icon" :component="TableIcon" size="14" />
               <template v-if="editingTable === table.name">
@@ -104,17 +108,29 @@
       </div>
 
       <div class="sidebar-footer">
-        <n-button text size="small" style="color: #8892b0;" @click="router.push('/settings')">
-          <template #icon><n-icon :component="SettingsIcon" /></template>
-          Settings
-        </n-button>
+        <div v-if="currentUser" class="user-info">
+          <img
+            :src="currentUser.picture"
+            class="user-avatar"
+            referrerpolicy="no-referrer"
+            :alt="currentUser.name"
+          />
+          <div class="user-details">
+            <div class="user-name">{{ currentUser.name }}</div>
+            <div class="user-email">{{ currentUser.email }}</div>
+          </div>
+        </div>
+        <div class="footer-actions">
+          <n-button text size="small" style="color: #8892b0;" @click="router.push('/settings')">
+            <template #icon><n-icon :component="SettingsIcon" /></template>
+            Settings
+          </n-button>
+          <n-button text size="small" style="color: #8892b0;" @click="logout">
+            Logout
+          </n-button>
+        </div>
       </div>
     </n-layout-sider>
-
-    <CreateTableModal
-      v-model:show="showCreateTable"
-      @created="(name) => { queryClient.invalidateQueries({ queryKey: ['tables'] }); router.push(`/tables/${name}`) }"
-    />
 
     <!-- Main content area -->
     <n-layout-content>
@@ -129,11 +145,10 @@ import { useRouter, useRoute } from 'vue-router'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import { NLayout, NLayoutSider, NLayoutContent, NButton, NIcon } from 'naive-ui'
 import { GridOutline as TableIcon, Settings as SettingsIcon } from '@vicons/ionicons5'
-import { api, type TableMeta, type Group } from '@/api/client'
+import { api, http, type TableMeta } from '@/api/client'
 import { useMessage } from 'naive-ui'
-import CreateTableModal from './CreateTableModal.vue'
+import { getCachedUser, resetAuthState } from '@/router'
 
-const showCreateTable = ref(false)
 const message = useMessage()
 const router = useRouter()
 const route = useRoute()
@@ -228,6 +243,72 @@ async function saveTableTitle(table: TableMeta) {
   }
   cancelTableEdit()
 }
+
+// ── 拖拽排序 ────────────────────────────────────────────────────────
+const tableOrder = ref<string[]>(
+  JSON.parse(localStorage.getItem('d1table_table_order') ?? 'null') ?? []
+)
+
+function sortedTables(list: TableMeta[]) {
+  if (!tableOrder.value.length) return list
+  const idx = (name: string) => {
+    const i = tableOrder.value.indexOf(name)
+    return i === -1 ? 9999 : i
+  }
+  return [...list].sort((a, b) => idx(a.name) - idx(b.name))
+}
+
+const draggedTable = ref<string | null>(null)
+
+function onDragStart(e: DragEvent, name: string) {
+  draggedTable.value = name
+  e.dataTransfer!.effectAllowed = 'move'
+}
+
+function onDragOver(e: DragEvent) {
+  e.preventDefault()
+  e.dataTransfer!.dropEffect = 'move'
+}
+
+function onDrop(e: DragEvent, targetName: string) {
+  e.preventDefault()
+  if (!draggedTable.value || draggedTable.value === targetName) return
+
+  // 以当前渲染顺序为基础重排
+  const allTableNames = [
+    ...groupedTables.value.flatMap(g => g.tables.map(t => t.name)),
+    ...ungroupedTables.value.map(t => t.name),
+  ]
+  // 去重，保持顺序（用 tableOrder 补全未排序的表）
+  const order = tableOrder.value.length
+    ? [...new Set([...tableOrder.value, ...allTableNames])]
+    : [...allTableNames]
+
+  const from = order.indexOf(draggedTable.value)
+  const to = order.indexOf(targetName)
+  if (from === -1 || to === -1) return
+
+  order.splice(from, 1)
+  order.splice(to, 0, draggedTable.value)
+
+  tableOrder.value = order
+  localStorage.setItem('d1table_table_order', JSON.stringify(order))
+  draggedTable.value = null
+}
+
+function onDragEnd() {
+  draggedTable.value = null
+}
+
+const currentUser = computed(() => getCachedUser())
+
+async function logout() {
+  try {
+    await http.post('/auth/logout')
+  } catch { /* ignore */ }
+  resetAuthState()
+  router.replace('/login')
+}
 </script>
 
 <style scoped>
@@ -236,6 +317,15 @@ async function saveTableTitle(table: TableMeta) {
   border-bottom: 1px solid #2d3154;
   display: flex;
   align-items: center;
+  gap: 8px;
+}
+.logo-img {
+  width: 26px;
+  height: 26px;
+  object-fit: contain;
+  filter: invert(1);
+  opacity: 0.9;
+  flex-shrink: 0;
 }
 .logo {
   font-size: 18px;
@@ -323,9 +413,48 @@ async function saveTableTitle(table: TableMeta) {
   outline: none;
   min-width: 0;
 }
+.table-item[draggable="true"] { cursor: grab; }
+.table-item[draggable="true"]:active { cursor: grabbing; }
 .sidebar-footer {
   position: absolute;
   bottom: 16px;
   left: 16px;
+}
+.user-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px 4px;
+}
+.user-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.user-details {
+  min-width: 0;
+  flex: 1;
+}
+.user-name {
+  font-size: 12px;
+  color: #ccd6f6;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.user-email {
+  font-size: 11px;
+  color: #6b7394;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.footer-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 16px 16px;
 }
 </style>

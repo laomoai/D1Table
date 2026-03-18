@@ -1,5 +1,21 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import { hasApiKey } from '@/api/client'
+import { getCurrentUser } from '@/api/client'
+
+// 模块级缓存，避免每次路由跳转都发请求
+let authState: { authed: boolean; user: { email: string; name: string; picture: string } | null } = {
+  authed: false,
+  user: null,
+}
+let authChecked = false
+
+export function resetAuthState() {
+  authState = { authed: false, user: null }
+  authChecked = false
+}
+
+export function getCachedUser() {
+  return authState.user
+}
 
 const router = createRouter({
   history: createWebHistory(),
@@ -21,11 +37,18 @@ const router = createRouter({
   ],
 })
 
-// 导航守卫：未登录跳 /login，已登录访问 /login 跳首页
-router.beforeEach((to) => {
-  const authed = hasApiKey()
-  if (!authed && !to.meta.guest) return '/login'
-  if (authed && to.path === '/login') return '/'
+router.beforeEach(async (to) => {
+  if (!authChecked) {
+    try {
+      const user = await getCurrentUser()
+      authState = { authed: true, user }
+    } catch {
+      authState = { authed: false, user: null }
+    }
+    authChecked = true
+  }
+  if (!authState.authed && !to.meta.guest) return '/login'
+  if (authState.authed && to.path === '/login') return '/'
 })
 
 export default router

@@ -39,7 +39,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { NModal, NInput, NButton, NText, NSpace, NAlert } from 'naive-ui'
-import { http, saveApiKey } from '@/api/client'
+import { http } from '@/api/client'
 
 defineProps<{ show: boolean }>()
 const emit = defineEmits<{ success: [] }>()
@@ -58,7 +58,6 @@ async function handleLogin() {
     await http.get('/tables', {
       headers: { 'X-API-Key': inputKey.value.trim() },
     })
-    saveApiKey(inputKey.value.trim())
     emit('success')
   } catch (err) {
     errorMsg.value = (err as Error).message || 'Invalid key — please check and try again'

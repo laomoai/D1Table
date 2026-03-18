@@ -9,31 +9,6 @@
       <n-tab-pane name="account" tab="Account">
         <div class="tab-content">
           <div class="section">
-            <div class="section-label">Current Key</div>
-            <div class="key-display">
-              <n-tag :type="keyStatus.type" size="small">{{ keyStatus.label }}</n-tag>
-              <code class="key-masked">{{ maskedKey }}</code>
-            </div>
-          </div>
-
-          <div class="section">
-            <div class="section-label">Change Key</div>
-            <div style="display: flex; gap: 8px; align-items: center;">
-              <n-input
-                v-model:value="inputKey"
-                type="password"
-                show-password-on="click"
-                placeholder="Paste new API Key"
-                style="max-width: 360px;"
-                @keyup.enter="saveKey"
-              />
-              <n-button type="primary" :disabled="!inputKey" @click="saveKey">Save</n-button>
-              <n-button :loading="testing" @click="testKey">Test</n-button>
-            </div>
-            <div class="hint">Key is stored only in browser localStorage and never sent to the server</div>
-          </div>
-
-          <div class="section">
             <n-button type="error" quaternary size="small" @click="logout">Sign out</n-button>
           </div>
         </div>
@@ -303,7 +278,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref } from 'vue'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import { useRouter } from 'vue-router'
 import {
@@ -311,18 +286,17 @@ import {
   NSpin, NModal, NAlert, NRadioGroup, NRadio, NCheckboxGroup, NCheckbox,
   useMessage,
 } from 'naive-ui'
-import { api, http, saveApiKey, type ApiKeyInfo, type Group, type TableMeta, type TrashItem } from '@/api/client'
+import { api, http, type ApiKeyInfo, type Group, type TableMeta, type TrashItem } from '@/api/client'
+import { resetAuthState } from '@/router'
 
 const message = useMessage()
 const queryClient = useQueryClient()
 const router = useRouter()
 
-const inputKey = ref('')
 const showCreate = ref(false)
 const showNewKey = ref(false)
 const newKeyValue = ref('')
 const creating = ref(false)
-const testing = ref(false)
 const newKey = ref({
   name: '',
   type: 'readonly' as 'readonly' | 'readwrite',
@@ -331,45 +305,13 @@ const newKey = ref({
 })
 
 // ── Account ──────────────────────────────────────────────────────
-const maskedKey = computed(() => {
-  const k = localStorage.getItem('d1table_api_key') ?? ''
-  if (!k) return 'Not set'
-  return k.slice(0, 10) + '****' + k.slice(-4)
-})
-
-const keyStatus = computed(() => {
-  const k = localStorage.getItem('d1table_api_key') ?? ''
-  return k
-    ? { type: 'success' as const, label: 'Set' }
-    : { type: 'error' as const, label: 'Not set' }
-})
-
-function saveKey() {
-  if (!inputKey.value.trim()) return
-  saveApiKey(inputKey.value.trim())
-  inputKey.value = ''
-  message.success('API Key saved — reloading page')
-  queryClient.invalidateQueries()
-  setTimeout(() => window.location.reload(), 800)
-}
-
-async function testKey() {
-  testing.value = true
+async function logout() {
   try {
-    await http.get('/tables')
-    message.success('Connection successful — key is valid')
-  } catch (err) {
-    message.error('Connection failed: ' + (err as Error).message)
-  } finally {
-    testing.value = false
-  }
-}
-
-function logout() {
-  localStorage.removeItem('d1table_api_key')
+    await http.post('/auth/logout')
+  } catch { /* ignore */ }
+  resetAuthState()
   queryClient.clear()
-  router.push('/')
-  setTimeout(() => window.location.reload(), 100)
+  router.replace('/login')
 }
 
 // ── API Keys ──────────────────────────────────────────────────
