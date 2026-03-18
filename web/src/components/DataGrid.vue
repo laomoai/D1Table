@@ -37,7 +37,7 @@
     <!-- 筛选栏 -->
     <FilterBar
       v-if="showFilterBar"
-      :columns="filterColumns"
+      :columns="visibleFields"
       @change="handleFilterChange"
     />
 
@@ -173,15 +173,6 @@ const visibleFields = computed(() =>
 const hiddenCount = computed(() => props.fields.filter(f => f.is_hidden).length)
 const displayTitle = computed(() => props.tableTitle || props.tableName)
 
-const filterColumns = computed(() =>
-  visibleFields.value.map(f => ({
-    name: f.column_name,
-    type: f.sqliteType || 'TEXT',
-    nullable: f.nullable,
-    isPrimaryKey: f.isPrimaryKey,
-    defaultValue: f.defaultValue,
-  }))
-)
 
 // ── 列定义 ──────────────────────────────────────────────────
 const defaultColDef: ColDef = { sortable: false, resizable: false }

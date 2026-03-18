@@ -48,9 +48,9 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { NSelect, NInput, NButton } from 'naive-ui'
-import type { ColumnDef } from '@/api/client'
+import type { FieldMeta } from '@/api/client'
 
-const props = defineProps<{ columns: ColumnDef[] }>()
+const props = defineProps<{ columns: FieldMeta[] }>()
 const emit = defineEmits<{ change: [filters: Filter[]] }>()
 
 export interface Filter {
@@ -64,7 +64,7 @@ const filters = ref<Filter[]>([])
 const columnOptions = computed(() =>
   props.columns
     .filter((c) => !c.isPrimaryKey)
-    .map((c) => ({ label: `${c.name} (${c.type})`, value: c.name }))
+    .map((c) => ({ label: c.title || c.column_name, value: c.column_name }))
 )
 
 const opOptions = [
@@ -80,7 +80,7 @@ const opOptions = [
 
 function addFilter() {
   filters.value.push({
-    field: props.columns.find((c) => !c.isPrimaryKey)?.name ?? '',
+    field: props.columns.find((c) => !c.isPrimaryKey)?.column_name ?? '',
     op: 'eq',
     value: '',
   })
