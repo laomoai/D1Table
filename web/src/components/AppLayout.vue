@@ -32,6 +32,7 @@
               v-for="table in sortedTables(group.tables)"
               :key="table.name"
               class="table-item grouped"
+              :style="tableItemStyle"
               :class="{ active: activeTable === table.name }"
               draggable="true"
               @click="navigateToTable(table.name)"
@@ -77,6 +78,7 @@
               v-for="table in sortedTables(ungroupedTables)"
               :key="table.name"
               class="table-item"
+              :style="tableItemStyle"
               :class="{ active: activeTable === table.name, grouped: groupedTables.length > 0 }"
               draggable="true"
               @click="navigateToTable(table.name)"
@@ -108,27 +110,26 @@
       </div>
 
       <div class="sidebar-footer">
-        <div v-if="currentUser" class="user-info">
-          <img
-            :src="currentUser.picture"
-            class="user-avatar"
-            referrerpolicy="no-referrer"
-            :alt="currentUser.name"
-          />
-          <div class="user-details">
-            <div class="user-name">{{ currentUser.name }}</div>
-            <div class="user-email">{{ currentUser.email }}</div>
+        <n-dropdown
+          trigger="click"
+          placement="top-start"
+          :options="userMenuOptions"
+          @select="handleUserMenuSelect"
+        >
+          <div v-if="currentUser" class="user-trigger">
+            <img
+              :src="currentUser.picture"
+              class="user-avatar"
+              referrerpolicy="no-referrer"
+              :alt="currentUser.name"
+            />
+            <div class="user-details">
+              <div class="user-name">{{ currentUser.name }}</div>
+              <div class="user-email">{{ currentUser.email }}</div>
+            </div>
+            <span class="user-chevron">⋯</span>
           </div>
-        </div>
-        <div class="footer-actions">
-          <n-button text size="small" style="color: #8892b0;" @click="router.push('/settings')">
-            <template #icon><n-icon :component="SettingsIcon" /></template>
-            Settings
-          </n-button>
-          <n-button text size="small" style="color: #8892b0;" @click="logout">
-            Logout
-          </n-button>
-        </div>
+        </n-dropdown>
       </div>
     </n-layout-sider>
 
@@ -140,11 +141,11 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, nextTick, reactive } from 'vue'
+import { computed, ref, nextTick, reactive, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
-import { NLayout, NLayoutSider, NLayoutContent, NButton, NIcon } from 'naive-ui'
-import { GridOutline as TableIcon, Settings as SettingsIcon } from '@vicons/ionicons5'
+import { NLayout, NLayoutSider, NLayoutContent, NButton, NIcon, NDropdown } from 'naive-ui'
+import { GridOutline as TableIcon } from '@vicons/ionicons5'
 import { api, http, type TableMeta } from '@/api/client'
 import { useMessage } from 'naive-ui'
 import { getCachedUser, resetAuthState } from '@/router'
@@ -300,7 +301,43 @@ function onDragEnd() {
   draggedTable.value = null
 }
 
+// ── 侧边栏外观偏好 ────────────────────────────────────────
+const SIDEBAR_PREFS_KEY = 'd1table_sidebar_prefs'
+
+function loadSidebarPrefs() {
+  try {
+    const raw = localStorage.getItem(SIDEBAR_PREFS_KEY)
+    return raw ? JSON.parse(raw) : {}
+  } catch { return {} }
+}
+
+const sidebarPrefs = ref(loadSidebarPrefs())
+
+function onStorageChange(e: StorageEvent) {
+  if (e.key === SIDEBAR_PREFS_KEY) {
+    sidebarPrefs.value = loadSidebarPrefs()
+  }
+}
+window.addEventListener('storage', onStorageChange)
+onUnmounted(() => window.removeEventListener('storage', onStorageChange))
+
+const tableItemStyle = computed(() => ({
+  fontSize: `${sidebarPrefs.value.fontSize ?? 14}px`,
+  color: sidebarPrefs.value.textColor ?? '#b0bcd4',
+}))
+
 const currentUser = computed(() => getCachedUser())
+
+const userMenuOptions = [
+  { label: 'Settings', key: 'settings' },
+  { type: 'divider', key: 'd1' },
+  { label: 'Logout', key: 'logout' },
+]
+
+function handleUserMenuSelect(key: string) {
+  if (key === 'settings') router.push('/settings')
+  if (key === 'logout') logout()
+}
 
 async function logout() {
   try {
@@ -380,8 +417,6 @@ async function logout() {
   gap: 8px;
   padding: 7px 16px;
   cursor: pointer;
-  color: #8892b0;
-  font-size: 13px;
   transition: background 0.15s, color 0.15s;
 }
 .table-item.grouped {
@@ -417,18 +452,26 @@ async function logout() {
 .table-item[draggable="true"]:active { cursor: grabbing; }
 .sidebar-footer {
   position: absolute;
-  bottom: 16px;
-  left: 16px;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  border-top: 1px solid #2d3154;
 }
-.user-info {
+.user-trigger {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 16px 4px;
+  padding: 10px 14px;
+  cursor: pointer;
+  transition: background 0.15s;
+  border-radius: 0;
+}
+.user-trigger:hover {
+  background: rgba(255, 255, 255, 0.06);
 }
 .user-avatar {
-  width: 28px;
-  height: 28px;
+  width: 30px;
+  height: 30px;
   border-radius: 50%;
   flex-shrink: 0;
 }
@@ -437,7 +480,7 @@ async function logout() {
   flex: 1;
 }
 .user-name {
-  font-size: 12px;
+  font-size: 13px;
   color: #ccd6f6;
   font-weight: 500;
   white-space: nowrap;
@@ -451,10 +494,10 @@ async function logout() {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.footer-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 4px 16px 16px;
+.user-chevron {
+  font-size: 16px;
+  color: #6b7394;
+  flex-shrink: 0;
+  letter-spacing: -2px;
 }
 </style>

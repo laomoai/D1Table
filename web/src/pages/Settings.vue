@@ -5,16 +5,7 @@
     </div>
 
     <n-tabs type="line" animated>
-      <!-- ─── Tab 1: Account ──────────────────────────────────── -->
-      <n-tab-pane name="account" tab="Account">
-        <div class="tab-content">
-          <div class="section">
-            <n-button type="error" quaternary size="small" @click="logout">Sign out</n-button>
-          </div>
-        </div>
-      </n-tab-pane>
-
-      <!-- ─── Tab 2: Groups ──────────────────────────────────── -->
+      <!-- ─── Tab 1: Groups ──────────────────────────────────── -->
       <n-tab-pane name="groups" tab="Groups">
         <div class="tab-content">
           <div class="hint" style="margin-bottom: 16px;">
@@ -190,6 +181,48 @@
         </div>
       </n-tab-pane>
 
+      <!-- ─── Tab: Appearance ──────────────────────────────────── -->
+      <n-tab-pane name="appearance" tab="Appearance">
+        <div class="tab-content">
+          <div class="section">
+            <div class="section-title">Sidebar</div>
+
+            <div class="appearance-row">
+              <label class="appearance-label">Table font size</label>
+              <div class="appearance-control">
+                <n-slider
+                  v-model:value="sidebarFontSize"
+                  :min="12"
+                  :max="16"
+                  :step="1"
+                  :marks="{ 12: '12', 13: '13', 14: '14', 15: '15', 16: '16' }"
+                  style="width: 180px;"
+                  @update:value="saveSidebarPrefs"
+                />
+                <span class="appearance-value">{{ sidebarFontSize }}px</span>
+              </div>
+            </div>
+
+            <div class="appearance-row" style="margin-top: 20px;">
+              <label class="appearance-label">Table text color</label>
+              <div class="appearance-control">
+                <input
+                  type="color"
+                  v-model="sidebarTextColor"
+                  class="color-picker"
+                  @change="saveSidebarPrefs"
+                />
+                <span class="appearance-value">{{ sidebarTextColor }}</span>
+              </div>
+            </div>
+
+            <div style="margin-top: 20px;">
+              <n-button size="small" @click="resetSidebarPrefs">Reset to defaults</n-button>
+            </div>
+          </div>
+        </div>
+      </n-tab-pane>
+
     </n-tabs>
   </div>
 
@@ -284,10 +317,9 @@ import { useRouter } from 'vue-router'
 import {
   NTabs, NTabPane, NForm, NFormItem, NInput, NButton, NText, NTag, NSpace,
   NSpin, NModal, NAlert, NRadioGroup, NRadio, NCheckboxGroup, NCheckbox,
-  useMessage,
+  NSlider, useMessage,
 } from 'naive-ui'
-import { api, http, type ApiKeyInfo, type Group, type TableMeta, type TrashItem } from '@/api/client'
-import { resetAuthState } from '@/router'
+import { api, type ApiKeyInfo, type Group, type TableMeta, type TrashItem } from '@/api/client'
 
 const message = useMessage()
 const queryClient = useQueryClient()
@@ -303,16 +335,6 @@ const newKey = ref({
   scope: 'all' as 'all' | 'groups',
   group_ids: [] as number[],
 })
-
-// ── Account ──────────────────────────────────────────────────────
-async function logout() {
-  try {
-    await http.post('/auth/logout')
-  } catch { /* ignore */ }
-  resetAuthState()
-  queryClient.clear()
-  router.replace('/login')
-}
 
 // ── API Keys ──────────────────────────────────────────────────
 const { data: keys, isLoading: keysLoading } = useQuery({
@@ -509,6 +531,38 @@ async function handleEmptyTrash() {
   } catch (err) {
     message.error((err as Error).message)
   }
+}
+
+// ── Sidebar Appearance ────────────────────────────────────
+const SIDEBAR_PREFS_KEY = 'd1table_sidebar_prefs'
+
+function loadSidebarPrefs() {
+  try {
+    const raw = localStorage.getItem(SIDEBAR_PREFS_KEY)
+    return raw ? JSON.parse(raw) : {}
+  } catch { return {} }
+}
+
+const prefs = loadSidebarPrefs()
+const sidebarFontSize = ref<number>(prefs.fontSize ?? 14)
+const sidebarTextColor = ref<string>(prefs.textColor ?? '#b0bcd4')
+
+function saveSidebarPrefs() {
+  localStorage.setItem(SIDEBAR_PREFS_KEY, JSON.stringify({
+    fontSize: sidebarFontSize.value,
+    textColor: sidebarTextColor.value,
+  }))
+  // 通知 AppLayout 更新（用 storage event）
+  window.dispatchEvent(new StorageEvent('storage', {
+    key: SIDEBAR_PREFS_KEY,
+    newValue: localStorage.getItem(SIDEBAR_PREFS_KEY),
+  }))
+}
+
+function resetSidebarPrefs() {
+  sidebarFontSize.value = 14
+  sidebarTextColor.value = '#b0bcd4'
+  saveSidebarPrefs()
 }
 </script>
 
@@ -710,5 +764,44 @@ async function handleEmptyTrash() {
   background: #f5f6f8;
   padding: 1px 6px;
   border-radius: 3px;
+}
+
+/* ── Appearance ── */
+.section-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1a1d2e;
+  margin-bottom: 16px;
+}
+.appearance-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 8px 0;
+}
+.appearance-label {
+  font-size: 13px;
+  color: #555;
+  width: 140px;
+  flex-shrink: 0;
+}
+.appearance-control {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.appearance-value {
+  font-size: 12px;
+  color: #999;
+  min-width: 40px;
+}
+.color-picker {
+  width: 36px;
+  height: 28px;
+  border: 1px solid #e0e2ea;
+  border-radius: 4px;
+  padding: 2px;
+  cursor: pointer;
+  background: none;
 }
 </style>
