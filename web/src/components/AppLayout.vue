@@ -171,15 +171,23 @@ const activeTable = computed(() => {
   return typeof match === 'string' ? match : null
 })
 
-// ── Group collapse ──────────────────────────────────────────────────
-const expandedGroups = reactive(new Set<number>([-1])) // -1 = ungrouped, expanded by default
+// ── Group collapse（持久化到 localStorage）──────────────────────────
+const EXPANDED_GROUPS_KEY = 'd1table_expanded_groups'
+
+function loadExpandedGroups(): Set<number> {
+  try {
+    const raw = localStorage.getItem(EXPANDED_GROUPS_KEY)
+    if (raw) return new Set(JSON.parse(raw) as number[])
+  } catch { /* ignore */ }
+  return new Set([-1])
+}
+
+const expandedGroups = reactive(loadExpandedGroups())
 
 function toggleGroup(id: number) {
-  if (expandedGroups.has(id)) {
-    expandedGroups.delete(id)
-  } else {
-    expandedGroups.add(id)
-  }
+  if (expandedGroups.has(id)) expandedGroups.delete(id)
+  else expandedGroups.add(id)
+  localStorage.setItem(EXPANDED_GROUPS_KEY, JSON.stringify([...expandedGroups]))
 }
 
 // Compute grouped table list
@@ -189,9 +197,10 @@ const groupedTables = computed(() => {
   return groups.value
     .filter(g => g.tables.length > 0)
     .map(g => {
-      // Auto-expand on first appearance
-      if (!expandedGroups.has(g.id) && expandedGroups.size <= 1) {
+      // 首次出现时（localStorage 里没有记录）默认展开
+      if (!expandedGroups.has(g.id) && !localStorage.getItem(EXPANDED_GROUPS_KEY)) {
         expandedGroups.add(g.id)
+        localStorage.setItem(EXPANDED_GROUPS_KEY, JSON.stringify([...expandedGroups]))
       }
       return {
         id: g.id,

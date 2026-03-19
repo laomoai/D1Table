@@ -5,7 +5,7 @@
         <h2 class="dash-title">Tables</h2>
         <p class="dash-desc">Manage all your data tables</p>
       </div>
-      <n-button type="primary" @click="showCreateTable = true">+ New Table</n-button>
+      <button class="new-table-btn" @click="showCreateTable = true">+ New Table</button>
     </div>
 
     <n-spin v-if="isLoading" style="padding: 80px; display: flex; justify-content: center;" />
@@ -69,7 +69,7 @@
         <n-icon :component="GridOutline" :size="48" color="#ccc" />
       </div>
       <p class="empty-text">No tables yet</p>
-      <n-button type="primary" @click="showCreateTable = true">Create your first table</n-button>
+      <button class="new-table-btn" @click="showCreateTable = true">+ New Table</button>
     </div>
 
     <!-- API docs section -->
@@ -231,4 +231,18 @@ async function saveTitle(t: TableMeta) {
 .api-title { font-size: 14px; font-weight: 600; color: #37352f; margin-bottom: 8px; }
 .api-desc { font-size: 13px; color: #787774; line-height: 1.7; margin: 0 0 14px; }
 .api-actions { display: flex; gap: 10px; }
+/* Notion 风格暗色按钮 */
+.new-table-btn {
+  background: #37352f;
+  color: #fff;
+  border: none;
+  border-radius: 3px;
+  padding: 6px 14px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.12s;
+  white-space: nowrap;
+}
+.new-table-btn:hover { background: #2f2d28; }
 </style>

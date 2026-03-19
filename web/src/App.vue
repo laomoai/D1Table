@@ -54,5 +54,21 @@ const themeOverrides = {
   },
   Select: { borderRadius: '3px' },
   Drawer: { borderRadius: '0px' },
+  Dropdown: {
+    borderRadius: '4px',
+    color: '#ffffff',
+    textColor: '#37352f',
+    optionTextColor: '#37352f',
+    optionTextColorHover: '#37352f',
+    optionTextColorActive: '#37352f',
+    optionColorHover: 'rgba(55, 53, 47, 0.06)',
+    optionColorActive: 'rgba(55, 53, 47, 0.08)',
+    dividerColor: '#e9e9e7',
+    boxShadow: '0 4px 16px rgba(0, 0, 0, 0.1), 0 0 0 1px rgba(0,0,0,0.06)',
+    padding: '4px',
+    optionHeight: '32px',
+    optionIconSizeSmall: '14px',
+    fontSize: '14px',
+  },
 }
 </script>
