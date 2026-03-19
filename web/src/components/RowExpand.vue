@@ -77,12 +77,12 @@
                   <div class="editable-content-col">
                     <div
                       class="editable-display"
-                      :class="{ 'longtext-collapsed': field.field_type === 'longtext' && !expandedLongtext.has(field.column_name) }"
+                      :class="{ 'longtext-collapsed': isLongtextTruncated(field.column_name) && !expandedLongtext.has(field.column_name) }"
                     >
                       <CellValue :value="currentRow[field.column_name]" :field-type="field.field_type" :select-options="field.select_options" :detail="true" />
                     </div>
                     <button
-                      v-if="field.field_type === 'longtext' && isLongtextTruncated(field.column_name)"
+                      v-if="isLongtextTruncated(field.column_name)"
                       class="longtext-toggle"
                       @click="toggleLongtext(field.column_name)"
                     >{{ expandedLongtext.has(field.column_name) ? '收起 ▲' : '展开 ▼' }}</button>
@@ -207,7 +207,7 @@ function isLongtextTruncated(columnName: string): boolean {
   const val = currentRow.value?.[columnName]
   if (!val) return false
   const text = String(val)
-  return text.split('\n').length > LONGTEXT_COLLAPSE_LINES || text.length > 200
+  return text.split('\n').length > LONGTEXT_COLLAPSE_LINES || text.length > 120
 }
 
 function toggleLongtext(columnName: string) {
