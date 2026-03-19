@@ -13,9 +13,46 @@ import { NConfigProvider, NMessageProvider, NDialogProvider, zhCN, dateZhCN } fr
 
 const themeOverrides = {
   common: {
-    primaryColor: '#4F6EF7',
-    primaryColorHover: '#6B84F8',
-    primaryColorPressed: '#3A59E6',
+    // 主色：Notion 蓝（仅用于链接/强调，减少蓝色面积）
+    primaryColor: '#2383e2',
+    primaryColorHover: '#0b6bcb',
+    primaryColorPressed: '#0958a8',
+    primaryColorSuppl: '#2383e2',
+    // 字体
+    fontFamily: "-apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif",
+    // 正文颜色：Notion 暖黑
+    textColor1: '#37352f',
+    textColor2: '#37352f',
+    textColor3: '#787774',
+    placeholderColor: '#a3a19d',
+    // 圆角：统一 3px
+    borderRadius: '3px',
+    borderRadiusSmall: '3px',
+    // 边框：极浅，弱化存在感
+    borderColor: '#e9e9e7',
+    dividerColor: '#e9e9e7',
+    // 背景
+    bodyColor: '#ffffff',
+    cardColor: '#ffffff',
+    modalColor: '#ffffff',
+    popoverColor: '#ffffff',
+    tableColor: '#ffffff',
+    tableHeaderColor: '#f7f7f5',
+    inputColor: '#ffffff',
   },
+  Button: {
+    borderRadiusTiny: '3px',
+    borderRadiusSmall: '3px',
+    borderRadiusMedium: '3px',
+    borderRadiusLarge: '3px',
+  },
+  Input: {
+    borderRadius: '3px',
+    borderColor: '#e9e9e7',
+    borderHoverColor: '#b3b0ab',
+    borderFocusColor: '#2383e2',
+  },
+  Select: { borderRadius: '3px' },
+  Drawer: { borderRadius: '0px' },
 }
 </script>

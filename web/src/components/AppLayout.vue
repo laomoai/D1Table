@@ -8,7 +8,7 @@
       collapse-mode="width"
       show-trigger="arrow-circle"
       :native-scrollbar="false"
-      style="background: #1a1d2e;"
+      style="background: #f7f7f5;"
     >
       <div class="sidebar-header" @click="router.push('/')" style="cursor:pointer;">
         <img src="/logo.png" class="logo-img" alt="D1Table" />
@@ -323,7 +323,7 @@ onUnmounted(() => window.removeEventListener('storage', onStorageChange))
 
 const tableItemStyle = computed(() => ({
   fontSize: `${sidebarPrefs.value.fontSize ?? 14}px`,
-  color: sidebarPrefs.value.textColor ?? '#b0bcd4',
+  color: sidebarPrefs.value.textColor ?? '#37352f',
 }))
 
 const currentUser = computed(() => getCachedUser())
@@ -351,7 +351,7 @@ async function logout() {
 <style scoped>
 .sidebar-header {
   padding: 20px 16px 12px;
-  border-bottom: 1px solid #2d3154;
+  border-bottom: 1px solid #e9e9e7;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -360,15 +360,14 @@ async function logout() {
   width: 26px;
   height: 26px;
   object-fit: contain;
-  filter: invert(1);
-  opacity: 0.9;
   flex-shrink: 0;
+  opacity: 0.85;
 }
 .logo {
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 700;
-  color: #ccd6f6;
-  letter-spacing: 1px;
+  color: #37352f;
+  letter-spacing: 0;
 }
 .table-list {
   padding: 8px 0;
@@ -379,7 +378,7 @@ async function logout() {
   gap: 6px;
   padding: 6px 16px;
   cursor: pointer;
-  color: #6b7394;
+  color: #787774;
   font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
@@ -387,7 +386,7 @@ async function logout() {
   user-select: none;
 }
 .group-header:hover {
-  color: #8892b0;
+  color: #37352f;
 }
 .group-arrow {
   font-size: 12px;
@@ -406,31 +405,33 @@ async function logout() {
 }
 .group-count {
   font-size: 10px;
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(55, 53, 47, 0.06);
   padding: 1px 5px;
   border-radius: 8px;
-  color: #6b7394;
+  color: #787774;
 }
 .table-item {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 7px 16px;
+  padding: 6px 16px;
   cursor: pointer;
-  transition: background 0.15s, color 0.15s;
+  border-radius: 3px;
+  margin: 0 6px;
+  transition: background 0.12s;
 }
 .table-item.grouped {
-  padding-left: 32px;
+  padding-left: 28px;
 }
 .table-item:hover {
-  background: rgba(255, 255, 255, 0.07);
-  color: #ccd6f6;
+  background: rgba(55, 53, 47, 0.08);
 }
 .table-item.active {
-  background: rgba(79, 110, 247, 0.2);
-  color: #ffffff;
+  background: rgba(55, 53, 47, 0.1);
+  font-weight: 500;
 }
-.table-icon { flex-shrink: 0; opacity: 0.7; }
+.table-icon { flex-shrink: 0; opacity: 0.5; }
+.table-item.active .table-icon { opacity: 0.8; }
 .table-name {
   flex: 1;
   overflow: hidden;
@@ -439,10 +440,10 @@ async function logout() {
 }
 .table-name-input {
   flex: 1;
-  background: rgba(255, 255, 255, 0.1);
-  border: 1px solid rgba(79, 110, 247, 0.6);
+  background: #fff;
+  border: 1px solid #b3b0ab;
   border-radius: 3px;
-  color: #fff;
+  color: #37352f;
   padding: 2px 6px;
   font-size: 13px;
   outline: none;
@@ -455,7 +456,7 @@ async function logout() {
   bottom: 0;
   left: 0;
   right: 0;
-  border-top: 1px solid #2d3154;
+  border-top: 1px solid #e9e9e7;
 }
 .user-trigger {
   display: flex;
@@ -463,11 +464,11 @@ async function logout() {
   gap: 8px;
   padding: 10px 14px;
   cursor: pointer;
-  transition: background 0.15s;
+  transition: background 0.12s;
   border-radius: 0;
 }
 .user-trigger:hover {
-  background: rgba(255, 255, 255, 0.06);
+  background: rgba(55, 53, 47, 0.06);
 }
 .user-avatar {
   width: 30px;
@@ -481,7 +482,7 @@ async function logout() {
 }
 .user-name {
   font-size: 13px;
-  color: #ccd6f6;
+  color: #37352f;
   font-weight: 500;
   white-space: nowrap;
   overflow: hidden;
@@ -489,14 +490,14 @@ async function logout() {
 }
 .user-email {
   font-size: 11px;
-  color: #6b7394;
+  color: #787774;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .user-chevron {
   font-size: 16px;
-  color: #6b7394;
+  color: #a3a19d;
   flex-shrink: 0;
   letter-spacing: -2px;
 }

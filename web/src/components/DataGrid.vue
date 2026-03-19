@@ -694,10 +694,10 @@ async function refreshAll() {
 }
 /* 行悬停高亮 */
 .ag-theme-alpine .ag-row-hover {
-  background-color: #f0f4ff !important;
+  background-color: #f1f1ef !important;
 }
 .ag-theme-alpine .ag-row-selected {
-  background-color: #e8eeff !important;
+  background-color: #e9f0fb !important;
 }
 /* 展开按钮仅悬浮时可见 */
 .ag-theme-alpine .ag-expand-btn {
