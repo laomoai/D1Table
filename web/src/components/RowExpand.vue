@@ -73,12 +73,21 @@
               <!-- 只读展示 -->
               <template v-if="editingField !== field.column_name">
                 <div class="editable-value-wrap" :class="{ 'is-longtext': field.field_type === 'longtext' }">
-                  <div
-                    class="editable-display"
-                    :class="{ 'longtext-collapsed': field.field_type === 'longtext' && !expandedLongtext.has(field.column_name) }"
-                  >
-                    <CellValue :value="currentRow[field.column_name]" :field-type="field.field_type" :select-options="field.select_options" :detail="true" />
+                  <!-- 内容区 + 折叠按钮（纵向排列） -->
+                  <div class="editable-content-col">
+                    <div
+                      class="editable-display"
+                      :class="{ 'longtext-collapsed': field.field_type === 'longtext' && !expandedLongtext.has(field.column_name) }"
+                    >
+                      <CellValue :value="currentRow[field.column_name]" :field-type="field.field_type" :select-options="field.select_options" :detail="true" />
+                    </div>
+                    <button
+                      v-if="field.field_type === 'longtext' && isLongtextTruncated(field.column_name)"
+                      class="longtext-toggle"
+                      @click="toggleLongtext(field.column_name)"
+                    >{{ expandedLongtext.has(field.column_name) ? '收起 ▲' : '展开 ▼' }}</button>
                   </div>
+                  <!-- 操作按钮（横向，hover 显示） -->
                   <div class="field-actions">
                     <button class="field-btn" @click="startEdit(field.column_name)" title="Edit">✎</button>
                     <button
@@ -90,11 +99,6 @@
                     >{{ copiedCol === field.column_name ? '✓' : '⎘' }}</button>
                   </div>
                 </div>
-                <button
-                  v-if="field.field_type === 'longtext' && isLongtextTruncated(field.column_name)"
-                  class="longtext-toggle"
-                  @click="toggleLongtext(field.column_name)"
-                >{{ expandedLongtext.has(field.column_name) ? '收起 ▲' : '展开 ▼' }}</button>
               </template>
 
               <!-- 编辑中 -->
@@ -138,7 +142,7 @@
                     @blur="commitEdit(field.column_name)"
                     @keyup.escape="cancelEdit"
                     type="textarea"
-                    :rows="4"
+                    :autosize="{ minRows: 4, maxRows: 16 }"
                     style="width:100%"
                   />
                   <!-- text/email/url/default -->
@@ -401,8 +405,16 @@ function typeColor(type: FieldType): string {
   gap: 6px;
   min-height: 28px;
 }
-.editable-display {
+/* 内容列（内容 + 折叠按钮纵向排列） */
+.editable-content-col {
   flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.editable-display {
+  width: 100%;
   min-width: 0;
 }
 .field-actions {
@@ -429,7 +441,6 @@ function typeColor(type: FieldType): string {
 .field-btn.copied { color: #18a058; border-color: #18a058; }
 
 /* longtext 折叠 */
-.editable-value-wrap.is-longtext { flex-direction: column; align-items: stretch; gap: 4px; }
 .longtext-collapsed {
   max-height: calc(1.6em * 4);
   overflow: hidden;

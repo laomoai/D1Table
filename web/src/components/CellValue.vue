@@ -93,7 +93,12 @@ const props = defineProps<{
   detail?: boolean
 }>()
 
-const isEmpty = computed(() => props.value === null || props.value === undefined || props.value === '')
+const isEmpty = computed(() => {
+  const v = props.value
+  if (v === null || v === undefined || v === '') return true
+  if (Array.isArray(v)) return v.length === 0
+  return false
+})
 
 const imageThumb = computed<string | null>(() => {
   if (props.fieldType !== 'image' || !props.value) return null
