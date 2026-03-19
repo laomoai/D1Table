@@ -1,103 +1,99 @@
 <template>
   <n-modal
     v-model:show="visible"
-    title="New Table"
-    preset="card"
-    style="width: 600px;"
-    :mask-closable="false"
+    :mask-closable="true"
+    style="width: 480px; border-radius: 6px; overflow: hidden;"
+    :bordered="false"
+    @after-enter="focusName"
   >
-    <n-form ref="formRef" :model="form" label-placement="left" label-width="80">
-      <n-form-item
-        label="Table Name"
-        path="displayName"
-        :rule="{ required: true, message: 'Please enter a table name', trigger: ['blur', 'input'] }"
-      >
-        <n-input
-          v-model:value="form.displayName"
-          placeholder="e.g. Customer List, Order Management"
-        />
-      </n-form-item>
-    </n-form>
+    <div class="modal-wrap">
+      <!-- Header -->
+      <div class="modal-header">
+        <span class="modal-title">New table</span>
+        <button class="modal-close" @click="visible = false">×</button>
+      </div>
 
-    <!-- Field list -->
-    <div class="section-title">
-      Field Definitions
-      <span class="section-hint">(id and created_at are added automatically)</span>
-    </div>
-
-    <div class="col-header-row">
-      <span style="width:160px">Display Name</span>
-      <span style="width:140px">Type</span>
-      <span style="width:50px">Nullable</span>
-      <span style="width:28px"></span>
-    </div>
-
-    <div v-for="(col, idx) in form.columns" :key="idx" class="col-row">
-      <n-input
-        v-model:value="col.displayName"
-        placeholder="Field display name"
-        style="width: 160px;"
-        size="small"
-      />
-      <n-select
-        v-model:value="col.fieldType"
-        :options="fieldTypeOptions"
-        style="width: 140px;"
-        size="small"
-        @update:value="() => syncSqliteType(col)"
-      />
-      <n-checkbox v-model:checked="col.nullable" size="small" />
-      <n-button
-        size="small"
-        quaternary
-        @click="removeColumn(idx)"
-        :disabled="form.columns.length <= 1"
-        style="width:28px;padding:0"
-      >✕</n-button>
-    </div>
-
-    <n-button dashed size="small" style="margin-top: 8px;" @click="addColumn">
-      + Add Field
-    </n-button>
-
-    <!-- select type option editor -->
-    <template v-for="(col, idx) in form.columns" :key="`opt-${idx}`">
-      <div v-if="col.fieldType === 'select'" class="select-options-section">
-        <div class="section-title" style="margin-top: 12px; margin-bottom: 8px;">
-          Options for field "{{ col.displayName || 'Unnamed' }}"
-        </div>
-        <div v-for="(opt, oi) in col.selectOptions" :key="oi" class="select-opt-row">
-          <n-input
-            v-model:value="opt.label"
-            size="small"
-            placeholder="Option name"
-            style="width: 140px;"
-            @input="opt.value = opt.label"
+      <!-- Body -->
+      <div class="modal-body">
+        <!-- Table Name -->
+        <div class="section">
+          <label class="label">Table name</label>
+          <input
+            ref="nameInputRef"
+            v-model="form.displayName"
+            class="name-input"
+            placeholder="e.g. Customers, Orders, Products..."
+            @keyup.enter="handleSubmit"
           />
-          <input v-model="opt.color" type="color" class="color-picker" title="Choose color" />
-          <n-button size="small" quaternary @click="col.selectOptions.splice(oi, 1)">✕</n-button>
         </div>
-        <n-button size="small" dashed style="margin-top: 4px;" @click="addSelectOption(col)">
-          + Add Option
-        </n-button>
-      </div>
-    </template>
 
-    <template #footer>
-      <div style="display: flex; justify-content: flex-end; gap: 8px;">
-        <n-button @click="visible = false">Cancel</n-button>
-        <n-button type="primary" :loading="submitting" @click="handleSubmit">Create</n-button>
+        <!-- Fields -->
+        <div class="section">
+          <div class="section-head">
+            <span class="label">Fields</span>
+            <span class="hint">id · created_at are added automatically</span>
+          </div>
+
+          <div class="field-list">
+            <div v-for="(col, idx) in form.columns" :key="idx" class="field-row">
+              <n-input
+                v-model:value="col.displayName"
+                placeholder="Field name"
+                size="small"
+                class="col-name"
+              />
+              <n-select
+                v-model:value="col.fieldType"
+                :options="fieldTypeOptions"
+                size="small"
+                class="col-type"
+                @update:value="() => syncSqliteType(col)"
+              />
+              <button
+                class="remove-btn"
+                :disabled="form.columns.length <= 1"
+                @click="removeColumn(idx)"
+                title="Remove field"
+              >×</button>
+            </div>
+          </div>
+
+          <!-- Select options inline -->
+          <template v-for="(col, idx) in form.columns" :key="`opt-${idx}`">
+            <div v-if="col.fieldType === 'select'" class="select-opts-block">
+              <div class="select-opts-title">Options for "{{ col.displayName || 'this field' }}"</div>
+              <div v-for="(opt, oi) in col.selectOptions" :key="oi" class="select-opt-row">
+                <input
+                  v-model="opt.label"
+                  class="opt-input"
+                  placeholder="Option name"
+                  @input="opt.value = opt.label"
+                />
+                <input v-model="opt.color" type="color" class="color-dot" />
+                <button class="remove-btn" @click="col.selectOptions.splice(oi, 1)">×</button>
+              </div>
+              <button class="add-link-btn" @click="addSelectOption(col)">+ Add option</button>
+            </div>
+          </template>
+
+          <button class="add-link-btn" @click="addColumn">+ Add field</button>
+        </div>
       </div>
-    </template>
+
+      <!-- Footer -->
+      <div class="modal-footer">
+        <button class="btn-cancel" @click="visible = false">Cancel</button>
+        <button class="btn-create" :disabled="submitting || !form.displayName.trim()" @click="handleSubmit">
+          {{ submitting ? 'Creating…' : 'Create table' }}
+        </button>
+      </div>
+    </div>
   </n-modal>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
-import {
-  useMessage, NModal, NForm, NFormItem, NInput, NSelect, NCheckbox,
-  NButton, type FormInst,
-} from 'naive-ui'
+import { ref, nextTick } from 'vue'
+import { useMessage, NModal, NInput, NSelect } from 'naive-ui'
 import { http } from '@/api/client'
 import { useQueryClient } from '@tanstack/vue-query'
 import type { FieldType, SelectOption } from '@/api/client'
@@ -107,14 +103,13 @@ const emit = defineEmits<{ created: [name: string] }>()
 
 const message = useMessage()
 const queryClient = useQueryClient()
-const formRef = ref<FormInst>()
+const nameInputRef = ref<HTMLInputElement>()
 const submitting = ref(false)
 
 interface ColDef {
   displayName: string
   fieldType: FieldType
   type: string
-  nullable: boolean
   selectOptions: SelectOption[]
 }
 
@@ -130,16 +125,16 @@ const fieldTypeOptions = [
   { label: '🕐 Datetime', value: 'datetime' },
   { label: '☑  Checkbox', value: 'checkbox' },
   { label: '◉  Select', value: 'select' },
+  { label: '🖼 Image', value: 'image' },
 ]
 
 const fieldTypeToSqlite: Record<string, string> = {
-  text: 'TEXT', longtext: 'TEXT', email: 'TEXT', url: 'TEXT', select: 'TEXT',
+  text: 'TEXT', longtext: 'TEXT', email: 'TEXT', url: 'TEXT', select: 'TEXT', image: 'TEXT',
   number: 'REAL', currency: 'REAL', percent: 'REAL',
   date: 'TEXT', datetime: 'INTEGER',
   checkbox: 'INTEGER',
 }
 
-// Auto-generate API table name: tbl_ + 8 random chars
 function generateTableName(): string {
   const chars = 'abcdefghijklmnopqrstuvwxyz0123456789'
   let id = ''
@@ -147,7 +142,6 @@ function generateTableName(): string {
   return `tbl_${id}`
 }
 
-// Auto-generate column name: col_ + 4 random chars
 function generateColName(): string {
   const chars = 'abcdefghijklmnopqrstuvwxyz0123456789'
   let id = ''
@@ -159,21 +153,21 @@ function syncSqliteType(col: ColDef) {
   col.type = fieldTypeToSqlite[col.fieldType] ?? 'TEXT'
 }
 
-const form = ref({
+const defaultForm = (): typeof form.value => ({
   displayName: '',
   columns: [
-    { displayName: 'Name', fieldType: 'text' as FieldType, type: 'TEXT', nullable: false, selectOptions: [] as SelectOption[] },
-  ] as ColDef[],
+    { displayName: 'Name', fieldType: 'text' as FieldType, type: 'TEXT', selectOptions: [] },
+  ],
 })
 
+const form = ref(defaultForm())
+
+function focusName() {
+  nextTick(() => nameInputRef.value?.focus())
+}
+
 function addColumn() {
-  form.value.columns.push({
-    displayName: '',
-    fieldType: 'text',
-    type: 'TEXT',
-    nullable: true,
-    selectOptions: [],
-  })
+  form.value.columns.push({ displayName: '', fieldType: 'text', type: 'TEXT', selectOptions: [] })
 }
 
 function removeColumn(idx: number) {
@@ -186,7 +180,10 @@ function addSelectOption(col: ColDef) {
 }
 
 async function handleSubmit() {
-  try { await formRef.value?.validate() } catch { return }
+  if (!form.value.displayName.trim()) {
+    nameInputRef.value?.focus()
+    return
+  }
 
   const cols = form.value.columns.filter(c => c.displayName.trim())
   if (cols.length === 0) {
@@ -195,7 +192,6 @@ async function handleSubmit() {
   }
 
   const tableName = generateTableName()
-
   submitting.value = true
   try {
     await http.post('/tables', {
@@ -206,20 +202,16 @@ async function handleSubmit() {
         title: c.displayName.trim(),
         type: c.type,
         field_type: c.fieldType,
-        nullable: c.nullable,
+        nullable: true,
         select_options: c.fieldType === 'select' ? c.selectOptions : undefined,
       })),
     })
-    message.success(`Table "${form.value.displayName}" created successfully`)
+    message.success(`"${form.value.displayName}" created`)
     await queryClient.invalidateQueries({ queryKey: ['tables'] })
     await queryClient.refetchQueries({ queryKey: ['tables'] })
     emit('created', tableName)
     visible.value = false
-    // Reset
-    form.value = {
-      displayName: '',
-      columns: [{ displayName: 'Name', fieldType: 'text', type: 'TEXT', nullable: false, selectOptions: [] }],
-    }
+    form.value = defaultForm()
   } catch (err) {
     message.error((err as Error).message)
   } finally {
@@ -229,52 +221,183 @@ async function handleSubmit() {
 </script>
 
 <style scoped>
-.section-title {
-  font-weight: 600;
-  color: #555;
-  margin-bottom: 8px;
-  font-size: 13px;
-}
-.section-hint {
-  font-weight: 400;
-  color: #aaa;
-  font-size: 12px;
-  margin-left: 6px;
-}
-.col-header-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 6px;
-  font-size: 12px;
-  color: #999;
-  padding-left: 2px;
-}
-.col-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 8px;
-}
-.select-options-section {
-  background: #f8f9fc;
-  border: 1px solid #e8eaf0;
+.modal-wrap {
+  background: #fff;
   border-radius: 6px;
-  padding: 10px 12px;
-  margin-bottom: 8px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
-.select-opt-row {
+
+/* Header */
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px 0;
+}
+.modal-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #37352f;
+}
+.modal-close {
+  background: none;
+  border: none;
+  font-size: 20px;
+  color: #a3a19d;
+  cursor: pointer;
+  padding: 0 2px;
+  line-height: 1;
+  border-radius: 3px;
+  transition: color 0.12s, background 0.12s;
+}
+.modal-close:hover { color: #37352f; background: rgba(55,53,47,0.06); }
+
+/* Body */
+.modal-body {
+  padding: 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.section { display: flex; flex-direction: column; gap: 8px; }
+
+.section-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #37352f;
+}
+.hint {
+  font-size: 12px;
+  color: #a3a19d;
+}
+
+/* Table name input */
+.name-input {
+  width: 100%;
+  padding: 8px 10px;
+  font-size: 15px;
+  color: #37352f;
+  border: 1px solid #e9e9e7;
+  border-radius: 3px;
+  outline: none;
+  transition: border-color 0.12s;
+  font-family: inherit;
+  background: #fff;
+}
+.name-input:focus { border-color: #b3b0ab; }
+.name-input::placeholder { color: #a3a19d; }
+
+/* Field rows */
+.field-list { display: flex; flex-direction: column; gap: 6px; }
+.field-row {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 6px;
 }
-.color-picker {
-  width: 28px;
-  height: 28px;
+.col-name { flex: 1; }
+.col-type { width: 148px; flex-shrink: 0; }
+
+.remove-btn {
+  background: none;
   border: none;
+  font-size: 16px;
+  color: #a3a19d;
+  cursor: pointer;
+  padding: 0 3px;
+  border-radius: 3px;
+  line-height: 1;
+  flex-shrink: 0;
+  transition: color 0.12s, background 0.12s;
+}
+.remove-btn:hover:not(:disabled) { color: #eb5757; background: #fdf2f2; }
+.remove-btn:disabled { opacity: 0.3; cursor: default; }
+
+/* Select options */
+.select-opts-block {
+  background: #f7f7f5;
+  border: 1px solid #e9e9e7;
   border-radius: 4px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.select-opts-title { font-size: 12px; color: #787774; font-weight: 500; }
+.select-opt-row { display: flex; align-items: center; gap: 8px; }
+.opt-input {
+  flex: 1;
+  padding: 4px 8px;
+  font-size: 13px;
+  border: 1px solid #e9e9e7;
+  border-radius: 3px;
+  outline: none;
+  color: #37352f;
+  font-family: inherit;
+}
+.opt-input:focus { border-color: #b3b0ab; }
+.color-dot {
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 50%;
   cursor: pointer;
   padding: 0;
+  flex-shrink: 0;
 }
+
+/* Link-style add buttons */
+.add-link-btn {
+  background: none;
+  border: none;
+  font-size: 13px;
+  color: #787774;
+  cursor: pointer;
+  padding: 4px 0;
+  text-align: left;
+  transition: color 0.12s;
+}
+.add-link-btn:hover { color: #37352f; }
+
+/* Footer */
+.modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 16px 24px;
+  border-top: 1px solid #e9e9e7;
+}
+.btn-cancel {
+  background: none;
+  border: 1px solid #e9e9e7;
+  border-radius: 3px;
+  padding: 6px 16px;
+  font-size: 14px;
+  color: #787774;
+  cursor: pointer;
+  font-family: inherit;
+  transition: border-color 0.12s, color 0.12s;
+}
+.btn-cancel:hover { border-color: #b3b0ab; color: #37352f; }
+.btn-create {
+  background: #37352f;
+  color: #fff;
+  border: none;
+  border-radius: 3px;
+  padding: 6px 16px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.12s;
+}
+.btn-create:hover:not(:disabled) { background: #2f2d28; }
+.btn-create:disabled { opacity: 0.4; cursor: default; }
 </style>
