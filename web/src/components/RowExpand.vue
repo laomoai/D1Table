@@ -1,7 +1,7 @@
 <template>
   <n-drawer
     v-model:show="visible"
-    :width="600"
+    :width="drawerWidth"
     placement="right"
     @after-leave="onClose"
   >
@@ -72,8 +72,11 @@
             <template v-else>
               <!-- 只读展示 -->
               <template v-if="editingField !== field.column_name">
-                <div class="editable-value-wrap">
-                  <div class="editable-display">
+                <div class="editable-value-wrap" :class="{ 'is-longtext': field.field_type === 'longtext' }">
+                  <div
+                    class="editable-display"
+                    :class="{ 'longtext-collapsed': field.field_type === 'longtext' && !expandedLongtext.has(field.column_name) }"
+                  >
                     <CellValue :value="currentRow[field.column_name]" :field-type="field.field_type" :select-options="field.select_options" :detail="true" />
                   </div>
                   <div class="field-actions">
@@ -87,6 +90,11 @@
                     >{{ copiedCol === field.column_name ? '✓' : '⎘' }}</button>
                   </div>
                 </div>
+                <button
+                  v-if="field.field_type === 'longtext' && isLongtextTruncated(field.column_name)"
+                  class="longtext-toggle"
+                  @click="toggleLongtext(field.column_name)"
+                >{{ expandedLongtext.has(field.column_name) ? '收起 ▲' : '展开 ▼' }}</button>
               </template>
 
               <!-- 编辑中 -->
@@ -156,7 +164,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue'
+import { ref, computed, watch, nextTick, onBeforeUnmount, onMounted } from 'vue'
 import { useMessage, NDrawer, NDrawerContent, NButton, NInput, NInputNumber, NSwitch, NSelect, NDatePicker } from 'naive-ui'
 import { api, type FieldMeta, type FieldType } from '@/api/client'
 import { useQueryClient } from '@tanstack/vue-query'
@@ -181,6 +189,32 @@ watch(() => props.initialIndex, (v) => { currentIndex.value = v })
 
 const currentRow = computed(() => props.allRows[currentIndex.value] ?? null)
 const visibleFields = computed(() => props.fields.filter(f => !f.is_hidden))
+
+// ── 抽屉宽度：50vw，最小 480px ──────────────────────────────
+const drawerWidth = ref(Math.max(480, window.innerWidth * 0.5))
+function updateDrawerWidth() { drawerWidth.value = Math.max(480, window.innerWidth * 0.5) }
+onMounted(() => window.addEventListener('resize', updateDrawerWidth))
+
+// ── 长文本折叠 ───────────────────────────────────────────────
+const LONGTEXT_COLLAPSE_LINES = 4
+const expandedLongtext = ref(new Set<string>())
+
+function isLongtextTruncated(columnName: string): boolean {
+  const val = currentRow.value?.[columnName]
+  if (!val) return false
+  const text = String(val)
+  return text.split('\n').length > LONGTEXT_COLLAPSE_LINES || text.length > 200
+}
+
+function toggleLongtext(columnName: string) {
+  const s = new Set(expandedLongtext.value)
+  if (s.has(columnName)) s.delete(columnName)
+  else s.add(columnName)
+  expandedLongtext.value = s
+}
+
+// 切换行时重置展开状态
+watch(currentIndex, () => { expandedLongtext.value = new Set() })
 
 function navigate(dir: -1 | 1) {
   const next = currentIndex.value + dir
@@ -243,7 +277,10 @@ function onClose() {
 // ── 复制 ────────────────────────────────────────────────────
 const copiedCol = ref<string | null>(null)
 let copyTimer: ReturnType<typeof setTimeout> | null = null
-onBeforeUnmount(() => { if (copyTimer) clearTimeout(copyTimer) })
+onBeforeUnmount(() => {
+  if (copyTimer) clearTimeout(copyTimer)
+  window.removeEventListener('resize', updateDrawerWidth)
+})
 
 async function copyValue(colName: string, value: unknown) {
   try {
@@ -390,4 +427,31 @@ function typeColor(type: FieldType): string {
 }
 .field-btn:hover { color: #4f6ef7; border-color: #4f6ef7; }
 .field-btn.copied { color: #18a058; border-color: #18a058; }
+
+/* longtext 折叠 */
+.editable-value-wrap.is-longtext { flex-direction: column; align-items: stretch; gap: 4px; }
+.longtext-collapsed {
+  max-height: calc(1.6em * 4);
+  overflow: hidden;
+  position: relative;
+}
+.longtext-collapsed::after {
+  content: '';
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  height: 24px;
+  background: linear-gradient(transparent, #fff);
+  pointer-events: none;
+}
+.longtext-toggle {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 12px;
+  color: #4f6ef7;
+  cursor: pointer;
+  text-align: left;
+  line-height: 1.8;
+}
+.longtext-toggle:hover { text-decoration: underline; }
 </style>
