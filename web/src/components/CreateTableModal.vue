@@ -9,7 +9,7 @@
     <div class="modal-wrap">
       <!-- Header -->
       <div class="modal-header">
-        <span class="modal-title">New table</span>
+        <span class="modal-title">New Table</span>
         <button class="modal-close" @click="visible = false">×</button>
       </div>
 
@@ -34,49 +34,66 @@
             <span class="hint">id · created_at are added automatically</span>
           </div>
 
-          <div class="field-list">
-            <div v-for="(col, idx) in form.columns" :key="idx" class="field-row">
-              <n-input
-                v-model:value="col.displayName"
-                placeholder="Field name"
-                size="small"
-                class="col-name"
-              />
-              <n-select
-                v-model:value="col.fieldType"
-                :options="fieldTypeOptions"
-                :render-label="renderTypeLabel"
-                :render-tag="renderTypeTag"
-                size="small"
-                class="col-type"
-                @update:value="() => syncSqliteType(col)"
-              />
-              <button
-                class="remove-btn"
-                :disabled="form.columns.length <= 1"
-                @click="removeColumn(idx)"
-                title="Remove field"
-              >×</button>
+          <div class="field-list" @click="closeTypePicker">
+            <div v-for="(col, idx) in form.columns" :key="idx" class="field-block">
+              <div class="field-row">
+                <input
+                  v-model="col.displayName"
+                  class="col-name-input"
+                  placeholder="Field name"
+                />
+                <!-- Type picker button -->
+                <button
+                  class="type-btn"
+                  :class="{ open: openTypePicker === idx }"
+                  @click.stop="toggleTypePicker(idx)"
+                >
+                  <span
+                    class="type-icon"
+                    :style="`color: ${TYPE_META[col.fieldType]?.color}`"
+                  >{{ TYPE_META[col.fieldType]?.icon }}</span>
+                  <span class="type-label">{{ TYPE_META[col.fieldType]?.label }}</span>
+                  <span class="type-arrow">▾</span>
+                </button>
+                <button
+                  class="remove-btn"
+                  :disabled="form.columns.length <= 1"
+                  @click="removeColumn(idx)"
+                  title="Remove field"
+                >×</button>
+              </div>
+
+              <!-- Inline type picker panel -->
+              <div v-if="openTypePicker === idx" class="type-picker-panel" @click.stop>
+                <button
+                  v-for="(meta, typeKey) in TYPE_META"
+                  :key="typeKey"
+                  class="type-option"
+                  :class="{ active: col.fieldType === typeKey }"
+                  @click="selectType(col, typeKey as FieldType)"
+                >
+                  <span class="type-option-icon" :style="`color: ${meta.color}`">{{ meta.icon }}</span>
+                  <span class="type-option-label">{{ meta.label }}</span>
+                </button>
+              </div>
+
+              <!-- Select options inline -->
+              <div v-if="col.fieldType === 'select'" class="select-opts-block">
+                <div class="select-opts-title">Options for "{{ col.displayName || 'this field' }}"</div>
+                <div v-for="(opt, oi) in col.selectOptions" :key="oi" class="select-opt-row">
+                  <input
+                    v-model="opt.label"
+                    class="opt-input"
+                    placeholder="Option name"
+                    @input="opt.value = opt.label"
+                  />
+                  <input v-model="opt.color" type="color" class="color-dot" />
+                  <button class="remove-btn" @click="col.selectOptions.splice(oi, 1)">×</button>
+                </div>
+                <button class="add-link-btn" @click="addSelectOption(col)">+ Add option</button>
+              </div>
             </div>
           </div>
-
-          <!-- Select options inline -->
-          <template v-for="(col, idx) in form.columns" :key="`opt-${idx}`">
-            <div v-if="col.fieldType === 'select'" class="select-opts-block">
-              <div class="select-opts-title">Options for "{{ col.displayName || 'this field' }}"</div>
-              <div v-for="(opt, oi) in col.selectOptions" :key="oi" class="select-opt-row">
-                <input
-                  v-model="opt.label"
-                  class="opt-input"
-                  placeholder="Option name"
-                  @input="opt.value = opt.label"
-                />
-                <input v-model="opt.color" type="color" class="color-dot" />
-                <button class="remove-btn" @click="col.selectOptions.splice(oi, 1)">×</button>
-              </div>
-              <button class="add-link-btn" @click="addSelectOption(col)">+ Add option</button>
-            </div>
-          </template>
 
           <button class="add-link-btn" @click="addColumn">+ Add field</button>
         </div>
@@ -94,9 +111,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, nextTick, h } from 'vue'
-import { useMessage, NModal, NInput, NSelect } from 'naive-ui'
-import type { SelectOption as NSelectOption } from 'naive-ui'
+import { ref, computed, nextTick } from 'vue'
+import { useMessage, NModal } from 'naive-ui'
 import { http } from '@/api/client'
 import { useQueryClient } from '@tanstack/vue-query'
 import type { FieldType, SelectOption } from '@/api/client'
@@ -108,13 +124,9 @@ const message = useMessage()
 const queryClient = useQueryClient()
 const nameInputRef = ref<HTMLInputElement>()
 const submitting = ref(false)
+const openTypePicker = ref<number | null>(null)
 
-// 响应式弹窗尺寸：50vw，限制在 [440px, 640px]
-const modalStyle = computed(() => ({
-  width: `clamp(440px, 50vw, 640px)`,
-  borderRadius: '6px',
-  overflow: 'hidden',
-}))
+const modalStyle = computed(() => ({}))
 
 interface ColDef {
   displayName: string
@@ -124,45 +136,18 @@ interface ColDef {
 }
 
 const TYPE_META: Record<string, { label: string; icon: string; color: string }> = {
-  text:     { label: 'Text',     icon: 'T',  color: '#787774' },
-  longtext: { label: 'Long text',icon: '¶',  color: '#a3a19d' },
-  number:   { label: 'Number',   icon: '#',  color: '#4f6ef7' },
-  currency: { label: 'Currency', icon: '¥',  color: '#18a058' },
-  percent:  { label: 'Percent',  icon: '%',  color: '#f0a020' },
-  email:    { label: 'Email',    icon: '@',  color: '#00adb5' },
-  url:      { label: 'URL',      icon: '🔗', color: '#4f6ef7' },
-  date:     { label: 'Date',     icon: '📅', color: '#8a2be2' },
-  datetime: { label: 'Datetime', icon: '🕐', color: '#d03050' },
-  checkbox: { label: 'Checkbox', icon: '☑',  color: '#18a058' },
-  select:   { label: 'Select',   icon: '◉',  color: '#f0a020' },
-  image:    { label: 'Image',    icon: '🖼', color: '#e91e8c' },
-}
-
-const fieldTypeOptions = Object.entries(TYPE_META).map(([value, m]) => ({
-  label: m.label,
-  value,
-}))
-
-function renderTypeLabel(option: NSelectOption) {
-  const m = TYPE_META[option.value as string]
-  if (!m) return option.label as string
-  return h('span', { style: 'display:flex;align-items:center;gap:8px' }, [
-    h('span', {
-      style: `width:18px;text-align:center;font-size:12px;font-weight:700;color:${m.color};flex-shrink:0`,
-    }, m.icon),
-    h('span', { style: 'font-size:13px;color:#37352f' }, m.label),
-  ])
-}
-
-function renderTypeTag({ option }: { option: NSelectOption }) {
-  const m = TYPE_META[option.value as string]
-  if (!m) return h('span', option.label as string)
-  return h('span', { style: 'display:flex;align-items:center;gap:6px' }, [
-    h('span', {
-      style: `font-size:11px;font-weight:700;color:${m.color}`,
-    }, m.icon),
-    h('span', { style: 'font-size:13px;color:#37352f' }, m.label),
-  ])
+  text:     { label: 'Text',      icon: 'T',  color: '#787774' },
+  longtext: { label: 'Long text', icon: '¶',  color: '#a3a19d' },
+  number:   { label: 'Number',    icon: '#',  color: '#4f6ef7' },
+  currency: { label: 'Currency',  icon: '¥',  color: '#18a058' },
+  percent:  { label: 'Percent',   icon: '%',  color: '#f0a020' },
+  email:    { label: 'Email',     icon: '@',  color: '#00adb5' },
+  url:      { label: 'URL',       icon: '🔗', color: '#4f6ef7' },
+  date:     { label: 'Date',      icon: '📅', color: '#8a2be2' },
+  datetime: { label: 'Datetime',  icon: '🕐', color: '#d03050' },
+  checkbox: { label: 'Checkbox',  icon: '☑',  color: '#18a058' },
+  select:   { label: 'Select',    icon: '◉',  color: '#f0a020' },
+  image:    { label: 'Image',     icon: '🖼', color: '#e91e8c' },
 }
 
 const fieldTypeToSqlite: Record<string, string> = {
@@ -188,6 +173,20 @@ function generateColName(): string {
 
 function syncSqliteType(col: ColDef) {
   col.type = fieldTypeToSqlite[col.fieldType] ?? 'TEXT'
+}
+
+function toggleTypePicker(idx: number) {
+  openTypePicker.value = openTypePicker.value === idx ? null : idx
+}
+
+function closeTypePicker() {
+  openTypePicker.value = null
+}
+
+function selectType(col: ColDef, typeKey: FieldType) {
+  col.fieldType = typeKey
+  syncSqliteType(col)
+  openTypePicker.value = null
 }
 
 interface FormData {
@@ -266,6 +265,8 @@ async function handleSubmit() {
 
 <style scoped>
 .modal-wrap {
+  width: clamp(520px, 40vw, 960px);
+  height: clamp(520px, 65vh, 820px);
   background: #fff;
   border-radius: 6px;
   overflow: hidden;
@@ -305,7 +306,8 @@ async function handleSubmit() {
   flex-direction: column;
   gap: 20px;
   overflow-y: auto;
-  max-height: calc(80vh - 120px);
+  flex: 1;
+  min-height: 0;
 }
 .section { display: flex; flex-direction: column; gap: 8px; }
 
@@ -327,6 +329,7 @@ async function handleSubmit() {
 /* Table name input */
 .name-input {
   width: 100%;
+  box-sizing: border-box;
   padding: 8px 10px;
   font-size: 15px;
   color: #37352f;
@@ -340,16 +343,88 @@ async function handleSubmit() {
 .name-input:focus { border-color: #b3b0ab; }
 .name-input::placeholder { color: #a3a19d; }
 
-/* Field rows */
-.field-list { display: flex; flex-direction: column; gap: 6px; }
+/* Field blocks */
+.field-list { display: flex; flex-direction: column; gap: 4px; }
+.field-block { display: flex; flex-direction: column; gap: 0; }
+
 .field-row {
   display: grid;
-  grid-template-columns: 1fr 185px 24px;
+  grid-template-columns: 1fr auto 28px;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
+  padding: 3px 0;
 }
-.col-name { min-width: 0; }
-.col-type { min-width: 0; }
+
+/* Plain field name input */
+.col-name-input {
+  min-width: 0;
+  padding: 6px 8px;
+  font-size: 13px;
+  color: #37352f;
+  border: 1px solid #e9e9e7;
+  border-radius: 3px;
+  outline: none;
+  font-family: inherit;
+  background: #fff;
+  transition: border-color 0.12s;
+}
+.col-name-input:focus { border-color: #b3b0ab; }
+.col-name-input::placeholder { color: #a3a19d; }
+
+/* Type picker button */
+.type-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border: 1px solid #e9e9e7;
+  border-radius: 3px;
+  background: #fff;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 13px;
+  color: #37352f;
+  white-space: nowrap;
+  min-width: 130px;
+  transition: border-color 0.12s, background 0.12s;
+}
+.type-btn:hover, .type-btn.open { border-color: #b3b0ab; background: #f7f7f5; }
+.type-icon { font-size: 12px; font-weight: 700; flex-shrink: 0; width: 16px; text-align: center; }
+.type-label { flex: 1; }
+.type-arrow { font-size: 10px; color: #a3a19d; flex-shrink: 0; }
+
+/* Type picker panel */
+.type-picker-panel {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+  padding: 10px;
+  background: #fff;
+  border: 1px solid #e9e9e7;
+  border-radius: 4px;
+  margin-top: 4px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+}
+
+.type-option {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  background: none;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12px;
+  color: #37352f;
+  text-align: left;
+  transition: background 0.1s, border-color 0.1s;
+}
+.type-option:hover { background: rgba(55,53,47,0.06); }
+.type-option.active { background: rgba(55,53,47,0.08); border-color: #b3b0ab; }
+.type-option-icon { font-size: 12px; font-weight: 700; flex-shrink: 0; width: 14px; text-align: center; }
+.type-option-label { white-space: nowrap; }
 
 .remove-btn {
   background: none;
@@ -375,6 +450,7 @@ async function handleSubmit() {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  margin-top: 4px;
 }
 .select-opts-title { font-size: 12px; color: #787774; font-weight: 500; }
 .select-opt-row { display: flex; align-items: center; gap: 8px; }
