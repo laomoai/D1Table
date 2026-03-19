@@ -153,14 +153,21 @@ function syncSqliteType(col: ColDef) {
   col.type = fieldTypeToSqlite[col.fieldType] ?? 'TEXT'
 }
 
-const defaultForm = (): typeof form.value => ({
-  displayName: '',
-  columns: [
-    { displayName: 'Name', fieldType: 'text' as FieldType, type: 'TEXT', selectOptions: [] },
-  ],
-})
+interface FormData {
+  displayName: string
+  columns: ColDef[]
+}
 
-const form = ref(defaultForm())
+function defaultForm(): FormData {
+  return {
+    displayName: '',
+    columns: [
+      { displayName: 'Name', fieldType: 'text' as FieldType, type: 'TEXT', selectOptions: [] },
+    ],
+  }
+}
+
+const form = ref<FormData>(defaultForm())
 
 function focusName() {
   nextTick(() => nameInputRef.value?.focus())
