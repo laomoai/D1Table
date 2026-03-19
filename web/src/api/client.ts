@@ -32,6 +32,7 @@ export interface ImageValue {
 }
 
 export interface SelectOption {
+  id?: string
   value: string
   label: string
   color: string

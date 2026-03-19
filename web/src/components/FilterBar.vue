@@ -19,7 +19,7 @@
         placeholder="Value"
         style="width: 160px;"
         size="small"
-        @keyup.enter="emit('change', filters)"
+        @keyup.enter="emitFilters()"
       />
       <n-button size="small" quaternary @click="removeFilter(idx)">✕</n-button>
     </div>
@@ -30,7 +30,7 @@
         v-if="filters.length"
         size="small"
         type="primary"
-        @click="emit('change', filters)"
+        @click="emitFilters()"
       >
         Apply
       </n-button>
@@ -61,6 +61,10 @@ export interface Filter {
 
 const filters = ref<Filter[]>([])
 
+function emitFilters() {
+  emit('change', filters.value.map(f => ({ ...f })))
+}
+
 const columnOptions = computed(() =>
   props.columns
     .filter((c) => !c.isPrimaryKey)
@@ -88,7 +92,7 @@ function addFilter() {
 
 function removeFilter(idx: number) {
   filters.value.splice(idx, 1)
-  emit('change', filters.value)
+  emitFilters()
 }
 
 function clearFilters() {

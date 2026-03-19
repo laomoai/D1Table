@@ -1,120 +1,104 @@
 <template>
-  <n-modal
-    v-model:show="visible"
-    :mask-closable="true"
-    :bordered="false"
-    @after-enter="focusName"
-  >
-    <div class="modal-wrap">
-      <!-- Header -->
-      <div class="modal-header">
-        <span class="modal-title">New Table</span>
-        <button class="modal-close" @click="visible = false">×</button>
-      </div>
-
-      <!-- Body -->
-      <div class="modal-body">
-        <!-- Table Name -->
-        <div class="section">
-          <label class="label">Table name</label>
-          <input
-            ref="nameInputRef"
-            v-model="form.displayName"
-            class="name-input"
-            placeholder="e.g. Customers, Orders, Products..."
-            @keyup.enter="handleSubmit"
-          />
-        </div>
-
-        <!-- Fields -->
-        <div class="section">
-          <div class="section-head">
-            <span class="label">Fields</span>
-            <span class="hint">id · created_at are added automatically</span>
-          </div>
-
-          <div class="field-list" @click="closeTypePicker">
-            <div v-for="(col, idx) in form.columns" :key="idx" class="field-block">
-              <div class="field-row">
-                <input
-                  v-model="col.displayName"
-                  class="col-name-input"
-                  placeholder="Field name"
-                />
-                <!-- Type picker button -->
-                <button
-                  class="type-btn"
-                  :class="{ open: openTypePicker === idx }"
-                  @click.stop="toggleTypePicker(idx)"
-                >
-                  <span
-                    class="type-icon"
-                    :style="`color: ${TYPE_META[col.fieldType]?.color}`"
-                  >{{ TYPE_META[col.fieldType]?.icon }}</span>
-                  <span class="type-label">{{ TYPE_META[col.fieldType]?.label }}</span>
-                  <span class="type-arrow">▾</span>
-                </button>
-                <button
-                  class="remove-btn"
-                  :disabled="form.columns.length <= 1"
-                  @click="removeColumn(idx)"
-                  title="Remove field"
-                >×</button>
-              </div>
-
-              <!-- Inline type picker panel -->
-              <div v-if="openTypePicker === idx" class="type-picker-panel" @click.stop>
-                <button
-                  v-for="(meta, typeKey) in TYPE_META"
-                  :key="typeKey"
-                  class="type-option"
-                  :class="{ active: col.fieldType === typeKey }"
-                  @click="selectType(col, typeKey as FieldType)"
-                >
-                  <span class="type-option-icon" :style="`color: ${meta.color}`">{{ meta.icon }}</span>
-                  <span class="type-option-label">{{ meta.label }}</span>
-                </button>
-              </div>
-
-              <!-- Select options inline -->
-              <div v-if="col.fieldType === 'select'" class="select-opts-block">
-                <div class="select-opts-title">Options for "{{ col.displayName || 'this field' }}"</div>
-                <div v-for="(opt, oi) in col.selectOptions" :key="oi" class="select-opt-row">
-                  <input
-                    v-model="opt.label"
-                    class="opt-input"
-                    placeholder="Option name"
-                    @input="opt.value = opt.label"
-                  />
-                  <input v-model="opt.color" type="color" class="color-dot" />
-                  <button class="remove-btn" @click="col.selectOptions.splice(oi, 1)">×</button>
-                </div>
-                <button class="add-link-btn" @click="addSelectOption(col)">+ Add option</button>
-              </div>
-            </div>
-          </div>
-
-          <button class="add-link-btn" @click="addColumn">+ Add field</button>
-        </div>
-      </div>
-
-      <!-- Footer -->
-      <div class="modal-footer">
-        <button class="btn-cancel" @click="visible = false">Cancel</button>
-        <button class="btn-create" :disabled="submitting || !form.displayName.trim()" @click="handleSubmit">
-          {{ submitting ? 'Creating…' : 'Create table' }}
-        </button>
-      </div>
+  <AppModal v-model:show="visible" title="New Table" @after-enter="focusName">
+    <!-- Table Name -->
+    <div class="section">
+      <label class="label">Table name</label>
+      <input
+        ref="nameInputRef"
+        v-model="form.displayName"
+        class="name-input"
+        placeholder="e.g. Customers, Orders, Products..."
+        @keyup.enter="handleSubmit"
+      />
     </div>
-  </n-modal>
+
+    <!-- Fields -->
+    <div class="section">
+      <div class="section-head">
+        <span class="label">Fields</span>
+        <span class="hint">id · created_at are added automatically</span>
+      </div>
+
+      <div class="field-list" @click="closeTypePicker">
+        <div v-for="(col, idx) in form.columns" :key="idx" class="field-block">
+          <div class="field-row">
+            <input
+              v-model="col.displayName"
+              class="col-name-input"
+              placeholder="Field name"
+            />
+            <!-- Type picker button -->
+            <button
+              class="type-btn"
+              :class="{ open: openTypePicker === idx }"
+              @click.stop="toggleTypePicker(idx)"
+            >
+              <span
+                class="type-icon"
+                :style="`color: ${TYPE_META[col.fieldType]?.color}`"
+              >{{ TYPE_META[col.fieldType]?.icon }}</span>
+              <span class="type-label">{{ TYPE_META[col.fieldType]?.label }}</span>
+              <span class="type-arrow">▾</span>
+            </button>
+            <button
+              class="remove-btn"
+              :disabled="form.columns.length <= 1"
+              @click="removeColumn(idx)"
+              title="Remove field"
+            >×</button>
+          </div>
+
+          <!-- Inline type picker panel -->
+          <div v-if="openTypePicker === idx" class="type-picker-panel" @click.stop>
+            <button
+              v-for="(meta, typeKey) in TYPE_META"
+              :key="typeKey"
+              class="type-option"
+              :class="{ active: col.fieldType === typeKey }"
+              @click="selectType(col, typeKey as FieldType)"
+            >
+              <span class="type-option-icon" :style="`color: ${meta.color}`">{{ meta.icon }}</span>
+              <span class="type-option-label">{{ meta.label }}</span>
+            </button>
+          </div>
+
+          <!-- Select options inline -->
+          <div v-if="col.fieldType === 'select'" class="select-opts-block">
+            <div class="select-opts-title">Options for "{{ col.displayName || 'this field' }}"</div>
+            <div v-for="(opt, oi) in col.selectOptions" :key="oi" class="select-opt-row">
+              <input
+                v-model="opt.label"
+                class="opt-input"
+                placeholder="Option name"
+                @input="opt.value = opt.label"
+              />
+              <input v-model="opt.color" type="color" class="color-dot" />
+              <button class="remove-btn" @click="col.selectOptions.splice(oi, 1)">×</button>
+            </div>
+            <button class="add-link-btn" @click="addSelectOption(col)">+ Add option</button>
+          </div>
+        </div>
+      </div>
+
+      <button class="add-link-btn" @click="addColumn">+ Add field</button>
+    </div>
+
+    <template #footer>
+      <button class="btn-cancel" @click="visible = false">Cancel</button>
+      <button class="btn-create" :disabled="submitting || !form.displayName.trim()" @click="handleSubmit">
+        {{ submitting ? 'Creating…' : 'Create table' }}
+      </button>
+    </template>
+  </AppModal>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, nextTick } from 'vue'
-import { useMessage, NModal } from 'naive-ui'
+import { ref, nextTick } from 'vue'
+import { useMessage } from 'naive-ui'
 import { http } from '@/api/client'
 import { useQueryClient } from '@tanstack/vue-query'
 import type { FieldType, SelectOption } from '@/api/client'
+import AppModal from './AppModal.vue'
 
 const visible = defineModel<boolean>('show', { default: false })
 const emit = defineEmits<{ created: [name: string] }>()
@@ -214,9 +198,16 @@ function removeColumn(idx: number) {
   form.value.columns.splice(idx, 1)
 }
 
+function generateOptId(): string {
+  const chars = 'abcdefghijklmnopqrstuvwxyz0123456789'
+  let id = ''
+  for (let i = 0; i < 6; i++) id += chars[Math.floor(Math.random() * chars.length)]
+  return `opt_${id}`
+}
+
 function addSelectOption(col: ColDef) {
   const colors = ['#4f6ef7', '#18a058', '#f0a020', '#d03050', '#8a2be2', '#00ced1']
-  col.selectOptions.push({ value: '', label: '', color: colors[col.selectOptions.length % colors.length] })
+  col.selectOptions.push({ id: generateOptId(), value: '', label: '', color: colors[col.selectOptions.length % colors.length] })
 }
 
 async function handleSubmit() {
@@ -261,51 +252,6 @@ async function handleSubmit() {
 </script>
 
 <style scoped>
-.modal-wrap {
-  width: clamp(520px, 40vw, 960px);
-  height: clamp(520px, 65vh, 820px);
-  background: #fff;
-  border-radius: 6px;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-}
-
-/* Header */
-.modal-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 20px 24px 0;
-}
-.modal-title {
-  font-size: 16px;
-  font-weight: 600;
-  color: #37352f;
-}
-.modal-close {
-  background: none;
-  border: none;
-  font-size: 20px;
-  color: #a3a19d;
-  cursor: pointer;
-  padding: 0 2px;
-  line-height: 1;
-  border-radius: 3px;
-  transition: color 0.12s, background 0.12s;
-}
-.modal-close:hover { color: #37352f; background: rgba(55,53,47,0.06); }
-
-/* Body */
-.modal-body {
-  padding: 20px 24px;
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-  overflow-y: auto;
-  flex: 1;
-  min-height: 0;
-}
 .section { display: flex; flex-direction: column; gap: 8px; }
 
 .section-head {
@@ -323,7 +269,6 @@ async function handleSubmit() {
   color: #a3a19d;
 }
 
-/* Table name input */
 .name-input {
   width: 100%;
   box-sizing: border-box;
@@ -340,7 +285,6 @@ async function handleSubmit() {
 .name-input:focus { border-color: #b3b0ab; }
 .name-input::placeholder { color: #a3a19d; }
 
-/* Field blocks */
 .field-list { display: flex; flex-direction: column; gap: 4px; }
 .field-block { display: flex; flex-direction: column; gap: 0; }
 
@@ -352,7 +296,6 @@ async function handleSubmit() {
   padding: 3px 0;
 }
 
-/* Plain field name input */
 .col-name-input {
   min-width: 0;
   padding: 6px 8px;
@@ -368,7 +311,6 @@ async function handleSubmit() {
 .col-name-input:focus { border-color: #b3b0ab; }
 .col-name-input::placeholder { color: #a3a19d; }
 
-/* Type picker button */
 .type-btn {
   display: flex;
   align-items: center;
@@ -390,7 +332,6 @@ async function handleSubmit() {
 .type-label { flex: 1; }
 .type-arrow { font-size: 10px; color: #a3a19d; flex-shrink: 0; }
 
-/* Type picker panel */
 .type-picker-panel {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -438,7 +379,6 @@ async function handleSubmit() {
 .remove-btn:hover:not(:disabled) { color: #eb5757; background: #fdf2f2; }
 .remove-btn:disabled { opacity: 0.3; cursor: default; }
 
-/* Select options */
 .select-opts-block {
   background: #f7f7f5;
   border: 1px solid #e9e9e7;
@@ -472,7 +412,6 @@ async function handleSubmit() {
   flex-shrink: 0;
 }
 
-/* Link-style add buttons */
 .add-link-btn {
   background: none;
   border: none;
@@ -485,15 +424,6 @@ async function handleSubmit() {
 }
 .add-link-btn:hover { color: #37352f; }
 
-/* Footer */
-.modal-footer {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 8px;
-  padding: 16px 24px;
-  border-top: 1px solid #e9e9e7;
-}
 .btn-cancel {
   background: none;
   border: 1px solid #e9e9e7;

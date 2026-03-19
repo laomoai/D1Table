@@ -122,10 +122,15 @@ fields.get('/:tableName/fields', async (c) => {
 fields.patch('/:tableName/fields/:colName', requireWriteMiddleware, async (c) => {
   const { tableName, colName } = c.req.param()
 
+  // 校验标识符，防止 SQL 注入
+  if (!isValidIdentifier(tableName) || !isValidIdentifier(colName)) {
+    return c.json({ error: { code: 'INVALID_NAME', message: 'Invalid table or column name' } }, 400)
+  }
+
   const body = await c.req.json<{
     title?: string
     field_type?: string
-    select_options?: Array<{ value: string; label: string; color: string }>
+    select_options?: Array<{ id?: string; value: string; label: string; color: string }>
     width?: number
     is_hidden?: boolean
     order_index?: number
@@ -145,13 +150,58 @@ fields.patch('/:tableName/fields/:colName', requireWriteMiddleware, async (c) =>
     return c.json({ error: { code: 'NO_CHANGES', message: 'No fields to update' } }, 400)
   }
 
+  // 如果 select_options 有变化，通过稳定 ID 匹配新旧选项，找出 value 被重命名的项
+  const valueRenames: Array<{ oldVal: string; newVal: string }> = []
+  if (body.select_options !== undefined) {
+    const oldMeta = await c.env.DB.prepare(
+      `SELECT select_options FROM _field_meta WHERE table_name = ? AND column_name = ?`
+    ).bind(tableName, colName).first<{ select_options: string | null }>()
+
+    if (oldMeta?.select_options) {
+      const oldOpts = JSON.parse(oldMeta.select_options) as Array<{ id?: string; value: string; label: string }>
+      const oldById = new Map(oldOpts.filter(o => o.id).map(o => [o.id!, o]))
+
+      for (const newOpt of body.select_options) {
+        if (!newOpt.id) continue
+        const oldOpt = oldById.get(newOpt.id)
+        if (oldOpt && oldOpt.value && newOpt.value && oldOpt.value !== newOpt.value) {
+          valueRenames.push({ oldVal: oldOpt.value, newVal: newOpt.value })
+        }
+      }
+    }
+  }
+
   params.push(tableName, colName)
 
-  const result = await c.env.DB.prepare(
-    `UPDATE _field_meta SET ${updates.join(', ')} WHERE table_name = ? AND column_name = ?`
-  ).bind(...params).run()
+  // 构建批量语句：meta 更新 + 数据行值迁移放进同一个 batch 保证原子性
+  const stmts: D1PreparedStatement[] = []
 
-  if (result.meta.changes === 0) {
+  stmts.push(
+    c.env.DB.prepare(
+      `UPDATE _field_meta SET ${updates.join(', ')} WHERE table_name = ? AND column_name = ?`
+    ).bind(...params)
+  )
+
+  // 用单条 CASE WHEN 合并所有重命名，避免链式碰撞（A→B, B→C 不会导致 A→C）
+  if (valueRenames.length > 0) {
+    const whenClauses = valueRenames.map(() => `WHEN "${colName}" = ? THEN ?`).join(' ')
+    const whereIn = valueRenames.map(() => '?').join(', ')
+    const caseParams: string[] = []
+    const whereParams: string[] = []
+    for (const { oldVal, newVal } of valueRenames) {
+      caseParams.push(oldVal, newVal)
+      whereParams.push(oldVal)
+    }
+    stmts.push(
+      c.env.DB.prepare(
+        `UPDATE "${tableName}" SET "${colName}" = CASE ${whenClauses} ELSE "${colName}" END WHERE "${colName}" IN (${whereIn})`
+      ).bind(...caseParams, ...whereParams)
+    )
+  }
+
+  const results = await c.env.DB.batch(stmts)
+
+  if (results[0].meta.changes === 0) {
     // 可能是懒初始化的字段，先 ensure 再 update
     await ensureFieldMeta(c.env.DB, tableName)
     await c.env.DB.prepare(

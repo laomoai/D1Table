@@ -120,6 +120,15 @@
             </n-button>
           </template>
 
+          <!-- Export Schema -->
+          <div class="section" style="margin-top: 32px; padding-top: 24px; border-top: 1px solid #f0f0f0;">
+            <div class="section-label">Schema Export</div>
+            <div style="margin-top: 8px;">
+              <n-button size="small" @click="showExportSchema = true">Export Schema CSV</n-button>
+            </div>
+            <div class="hint" style="margin-top: 8px;">Download table and field name mappings as a CSV file</div>
+          </div>
+
           <!-- API Docs link -->
           <div class="section" style="margin-top: 32px; padding-top: 24px; border-top: 1px solid #f0f0f0;">
             <div class="section-label">API Documentation</div>
@@ -281,6 +290,13 @@
     </template>
   </n-modal>
 
+  <!-- Export Schema modal -->
+  <ExportSchemaModal
+    v-model:show="showExportSchema"
+    :tables="allTables ?? []"
+    :groups="groupList ?? []"
+  />
+
   <!-- Edit group modal (rename + edit tables) -->
   <n-modal v-model:show="showGroupTableEditor" preset="card" style="width: 480px;" title="Edit Group">
     <template v-if="editingGroupData">
@@ -320,12 +336,14 @@ import {
   NSlider, useMessage,
 } from 'naive-ui'
 import { api, type ApiKeyInfo, type Group, type TableMeta, type TrashItem } from '@/api/client'
+import ExportSchemaModal from '@/components/ExportSchemaModal.vue'
 
 const message = useMessage()
 const queryClient = useQueryClient()
 const router = useRouter()
 
 const showCreate = ref(false)
+const showExportSchema = ref(false)
 const showNewKey = ref(false)
 const newKeyValue = ref('')
 const creating = ref(false)

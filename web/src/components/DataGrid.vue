@@ -657,8 +657,9 @@ function openExpand(row: Record<string, unknown>, _agIdx: number) {
 }
 
 function handleFilterChange(filters: Filter[]) {
-  activeFilters.value = filters
-  invalidate()
+  // 浅克隆断开与 FilterBar 内部数组的引用共享
+  // 否则第二次 Apply 时同一引用导致 Vue ref setter 不触发更新
+  activeFilters.value = filters.map(f => ({ ...f }))
 }
 
 function invalidate() {

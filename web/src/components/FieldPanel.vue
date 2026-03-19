@@ -229,8 +229,15 @@ function selectType(type: FieldType) {
 
 const SELECT_COLORS = ['#4f6ef7', '#18a058', '#f0a020', '#d03050', '#8a2be2', '#00ced1']
 
+function generateOptId(): string {
+  const chars = 'abcdefghijklmnopqrstuvwxyz0123456789'
+  let id = ''
+  for (let i = 0; i < 6; i++) id += chars[Math.floor(Math.random() * chars.length)]
+  return `opt_${id}`
+}
+
 function addSelectOption(options: SelectOption[]) {
-  options.push({ value: '', label: '', color: SELECT_COLORS[options.length % SELECT_COLORS.length] })
+  options.push({ id: generateOptId(), value: '', label: '', color: SELECT_COLORS[options.length % SELECT_COLORS.length] })
 }
 
 async function saveFieldEdit(field: FieldMeta) {
