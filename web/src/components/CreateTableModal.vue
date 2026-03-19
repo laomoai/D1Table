@@ -2,7 +2,7 @@
   <n-modal
     v-model:show="visible"
     :mask-closable="true"
-    style="width: 480px; border-radius: 6px; overflow: hidden;"
+    :style="modalStyle"
     :bordered="false"
     @after-enter="focusName"
   >
@@ -45,6 +45,8 @@
               <n-select
                 v-model:value="col.fieldType"
                 :options="fieldTypeOptions"
+                :render-label="renderTypeLabel"
+                :render-tag="renderTypeTag"
                 size="small"
                 class="col-type"
                 @update:value="() => syncSqliteType(col)"
@@ -92,8 +94,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, nextTick } from 'vue'
+import { ref, computed, nextTick, h } from 'vue'
 import { useMessage, NModal, NInput, NSelect } from 'naive-ui'
+import type { SelectOption as NSelectOption } from 'naive-ui'
 import { http } from '@/api/client'
 import { useQueryClient } from '@tanstack/vue-query'
 import type { FieldType, SelectOption } from '@/api/client'
@@ -106,6 +109,13 @@ const queryClient = useQueryClient()
 const nameInputRef = ref<HTMLInputElement>()
 const submitting = ref(false)
 
+// 响应式弹窗尺寸：50vw，限制在 [440px, 640px]
+const modalStyle = computed(() => ({
+  width: `clamp(440px, 50vw, 640px)`,
+  borderRadius: '6px',
+  overflow: 'hidden',
+}))
+
 interface ColDef {
   displayName: string
   fieldType: FieldType
@@ -113,20 +123,47 @@ interface ColDef {
   selectOptions: SelectOption[]
 }
 
-const fieldTypeOptions = [
-  { label: 'T  Text', value: 'text' },
-  { label: '¶  Long text', value: 'longtext' },
-  { label: '#  Number', value: 'number' },
-  { label: '¥  Currency', value: 'currency' },
-  { label: '%  Percent', value: 'percent' },
-  { label: '@  Email', value: 'email' },
-  { label: '🔗 URL', value: 'url' },
-  { label: '📅 Date', value: 'date' },
-  { label: '🕐 Datetime', value: 'datetime' },
-  { label: '☑  Checkbox', value: 'checkbox' },
-  { label: '◉  Select', value: 'select' },
-  { label: '🖼 Image', value: 'image' },
-]
+const TYPE_META: Record<string, { label: string; icon: string; color: string }> = {
+  text:     { label: 'Text',     icon: 'T',  color: '#787774' },
+  longtext: { label: 'Long text',icon: '¶',  color: '#a3a19d' },
+  number:   { label: 'Number',   icon: '#',  color: '#4f6ef7' },
+  currency: { label: 'Currency', icon: '¥',  color: '#18a058' },
+  percent:  { label: 'Percent',  icon: '%',  color: '#f0a020' },
+  email:    { label: 'Email',    icon: '@',  color: '#00adb5' },
+  url:      { label: 'URL',      icon: '🔗', color: '#4f6ef7' },
+  date:     { label: 'Date',     icon: '📅', color: '#8a2be2' },
+  datetime: { label: 'Datetime', icon: '🕐', color: '#d03050' },
+  checkbox: { label: 'Checkbox', icon: '☑',  color: '#18a058' },
+  select:   { label: 'Select',   icon: '◉',  color: '#f0a020' },
+  image:    { label: 'Image',    icon: '🖼', color: '#e91e8c' },
+}
+
+const fieldTypeOptions = Object.entries(TYPE_META).map(([value, m]) => ({
+  label: m.label,
+  value,
+}))
+
+function renderTypeLabel(option: NSelectOption) {
+  const m = TYPE_META[option.value as string]
+  if (!m) return option.label as string
+  return h('span', { style: 'display:flex;align-items:center;gap:8px' }, [
+    h('span', {
+      style: `width:18px;text-align:center;font-size:12px;font-weight:700;color:${m.color};flex-shrink:0`,
+    }, m.icon),
+    h('span', { style: 'font-size:13px;color:#37352f' }, m.label),
+  ])
+}
+
+function renderTypeTag({ option }: { option: NSelectOption }) {
+  const m = TYPE_META[option.value as string]
+  if (!m) return h('span', option.label as string)
+  return h('span', { style: 'display:flex;align-items:center;gap:6px' }, [
+    h('span', {
+      style: `font-size:11px;font-weight:700;color:${m.color}`,
+    }, m.icon),
+    h('span', { style: 'font-size:13px;color:#37352f' }, m.label),
+  ])
+}
 
 const fieldTypeToSqlite: Record<string, string> = {
   text: 'TEXT', longtext: 'TEXT', email: 'TEXT', url: 'TEXT', select: 'TEXT', image: 'TEXT',
@@ -267,6 +304,8 @@ async function handleSubmit() {
   display: flex;
   flex-direction: column;
   gap: 20px;
+  overflow-y: auto;
+  max-height: calc(80vh - 120px);
 }
 .section { display: flex; flex-direction: column; gap: 8px; }
 
@@ -304,12 +343,13 @@ async function handleSubmit() {
 /* Field rows */
 .field-list { display: flex; flex-direction: column; gap: 6px; }
 .field-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr 185px 24px;
   align-items: center;
   gap: 8px;
 }
-.col-name { flex: 1; }
-.col-type { width: 148px; flex-shrink: 0; }
+.col-name { min-width: 0; }
+.col-type { min-width: 0; }
 
 .remove-btn {
   background: none;
