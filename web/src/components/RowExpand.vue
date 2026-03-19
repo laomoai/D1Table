@@ -133,9 +133,9 @@
                     style="width:100%"
                     clearable
                   />
-                  <!-- longtext -->
+                  <!-- longtext 或内容很长的 text：多行 textarea -->
                   <n-input
-                    v-else-if="field.field_type === 'longtext'"
+                    v-else-if="field.field_type === 'longtext' || isLongtextTruncated(field.column_name)"
                     ref="activeInputRef"
                     :value="draft as string"
                     @update:value="(v: string) => draft = v"
@@ -145,7 +145,7 @@
                     :autosize="{ minRows: 4, maxRows: 16 }"
                     style="width:100%"
                   />
-                  <!-- text/email/url/default -->
+                  <!-- text/email/url/default：单行 -->
                   <n-input
                     v-else
                     ref="activeInputRef"

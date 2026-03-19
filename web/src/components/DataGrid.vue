@@ -393,7 +393,7 @@ function expandCellRenderer(params: { data: Record<string, unknown>; rowIndex: n
 
 function typedCellRenderer(params: { value: unknown; fieldType: FieldType; selectOptions: SelectOption[] | null }): HTMLElement | string {
   const { value, fieldType, selectOptions } = params
-  if (value == null || value === '') return '<span class="ag-cell-empty">—</span>'
+  if (value == null || value === '' || (Array.isArray(value) && value.length === 0)) return '<span class="ag-cell-empty">—</span>'
 
   switch (fieldType) {
     case 'checkbox':
@@ -678,11 +678,15 @@ async function refreshAll() {
 
 <!-- 全局样式：AG Grid 内部元素无法用 scoped 穿透 -->
 <style>
-/* 单元格垂直居中 + 内容溢出裁剪 */
+/* 单元格垂直居中 + 内容溢出裁剪 + 列分割线 */
 .ag-theme-alpine .ag-cell {
   display: flex !important;
   align-items: center;
   overflow: hidden;
+  border-right: 1px solid #eef0f4 !important;
+}
+.ag-theme-alpine .ag-header-cell {
+  border-right: 1px solid #eef0f4 !important;
 }
 .ag-theme-alpine .ag-header-cell-label {
   display: flex;
