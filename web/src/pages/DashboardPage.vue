@@ -18,7 +18,7 @@
             <span class="group-section-name">{{ section.name }}</span>
             <span class="group-section-count">{{ section.tables.length }} tables</span>
           </div>
-          <div class="table-cards">
+          <div :class="['table-cards', section.tables.length > 6 ? 'table-cards--grid' : '']">
             <TableCard
               v-for="t in section.tables"
               :key="t.name"
@@ -44,7 +44,7 @@
           <span class="group-section-name">Ungrouped</span>
           <span class="group-section-count">{{ ungroupedTables.length }} tables</span>
         </div>
-        <div class="table-cards">
+        <div :class="['table-cards', ungroupedTables.length > 6 ? 'table-cards--grid' : '']">
           <TableCard
             v-for="t in ungroupedTables"
             :key="t.name"
@@ -203,8 +203,8 @@ async function saveTitle(t: TableMeta) {
   justify-content: space-between;
   margin-bottom: 28px;
 }
-.dash-title { font-size: 22px; font-weight: 700; color: #1a1d2e; margin: 0; }
-.dash-desc { font-size: 13px; color: #999; margin: 4px 0 0; }
+.dash-title { font-size: 22px; font-weight: 700; color: #37352f; margin: 0; }
+.dash-desc { font-size: 13px; color: #787774; margin: 4px 0 0; }
 .group-section { margin-bottom: 24px; }
 .group-section-header {
   display: flex;
@@ -212,28 +212,23 @@ async function saveTitle(t: TableMeta) {
   gap: 8px;
   margin-bottom: 10px;
   padding-bottom: 6px;
-  border-bottom: 1px solid #e8eaf0;
+  border-bottom: 1px solid #e9e9e7;
 }
-.group-section-name {
-  font-size: 14px;
-  font-weight: 600;
-  color: #1a1d2e;
-}
-.group-section-count {
-  font-size: 12px;
-  color: #999;
-}
-.table-cards { display: flex; flex-direction: column; gap: 10px; }
+.group-section-name { font-size: 13px; font-weight: 600; color: #37352f; }
+.group-section-count { font-size: 12px; color: #a3a19d; }
+/* ≤6 张：列表；>6 张：2 列网格 */
+.table-cards { display: flex; flex-direction: column; gap: 8px; }
+.table-cards--grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
 .empty-state { text-align: center; padding: 80px 20px; }
 .empty-icon { margin-bottom: 16px; }
-.empty-text { font-size: 15px; color: #999; margin-bottom: 20px; }
+.empty-text { font-size: 15px; color: #a3a19d; margin-bottom: 20px; }
 /* API section */
 .api-section { margin-top: 40px; }
 .api-card {
-  background: #f8f9fc; border: 1px solid #e8eaf0; border-radius: 10px;
+  background: #f7f7f5; border: 1px solid #e9e9e7; border-radius: 4px;
   padding: 20px 24px;
 }
-.api-title { font-size: 15px; font-weight: 600; color: #1a1d2e; margin-bottom: 8px; }
-.api-desc { font-size: 13px; color: #666; line-height: 1.7; margin: 0 0 14px; }
+.api-title { font-size: 14px; font-weight: 600; color: #37352f; margin-bottom: 8px; }
+.api-desc { font-size: 13px; color: #787774; line-height: 1.7; margin: 0 0 14px; }
 .api-actions { display: flex; gap: 10px; }
 </style>

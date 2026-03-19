@@ -1,7 +1,7 @@
 <template>
   <div class="table-card" @click="$emit('click')">
     <div class="card-icon">
-      <n-icon :component="GridOutline" :size="24" color="#4F6EF7" />
+      <n-icon :component="GridOutline" :size="20" color="#787774" />
     </div>
     <div class="card-body">
       <template v-if="editingTable === table.name">
@@ -69,53 +69,53 @@ watch(() => props.editingTable, (val) => {
 
 <style scoped>
 .table-card {
-  display: flex; align-items: center; gap: 16px;
-  padding: 18px 20px; background: #fff;
-  border: 1px solid #e8eaf0; border-radius: 10px;
-  cursor: pointer; transition: border-color 0.15s, box-shadow 0.15s;
+  display: flex; align-items: center; gap: 14px;
+  padding: 14px 16px; background: #fff;
+  border: 1px solid #e9e9e7; border-radius: 4px;
+  cursor: pointer; transition: background 0.12s, border-color 0.12s;
 }
-.table-card:hover { border-color: #4F6EF7; box-shadow: 0 2px 12px rgba(79, 110, 247, 0.1); }
+.table-card:hover { background: #f7f7f5; border-color: #b3b0ab; }
 .card-icon {
-  width: 44px; height: 44px; background: #f0f3ff; border-radius: 10px;
+  width: 36px; height: 36px; background: #f1f1ef; border-radius: 4px;
   display: flex; align-items: center; justify-content: center; flex-shrink: 0;
 }
 .card-body { flex: 1; min-width: 0; }
 .card-title {
-  font-size: 15px; font-weight: 600; color: #1a1d2e;
+  font-size: 14px; font-weight: 600; color: #37352f;
   display: flex; align-items: center; gap: 6px;
 }
 .card-edit-btn {
   background: none; border: none; cursor: pointer;
-  font-size: 13px; color: #bbb; padding: 2px 4px; border-radius: 3px;
+  font-size: 12px; color: #a3a19d; padding: 2px 4px; border-radius: 3px;
   opacity: 0; transition: opacity .15s;
 }
 .table-card:hover .card-edit-btn { opacity: 1; }
-.card-edit-btn:hover { color: #4F6EF7; background: #f0f3ff; }
+.card-edit-btn:hover { color: #37352f; background: #e9e9e7; }
 .card-title-input {
-  font-size: 15px; font-weight: 600; color: #1a1d2e;
-  border: 1px solid #4F6EF7; border-radius: 4px;
+  font-size: 14px; font-weight: 600; color: #37352f;
+  border: 1px solid #b3b0ab; border-radius: 3px;
   padding: 2px 8px; outline: none; width: 200px;
 }
 .card-id-row {
   display: flex; align-items: center; gap: 4px; margin-top: 3px;
 }
 .card-id {
-  font-size: 11px; color: #aaa; font-family: monospace;
-  background: #f5f6f8; padding: 1px 6px; border-radius: 3px;
+  font-size: 11px; color: #a3a19d; font-family: monospace;
+  background: #f1f1ef; padding: 1px 6px; border-radius: 3px;
 }
 .card-copy-btn {
   background: none; border: none; cursor: pointer;
-  font-size: 13px; color: #bbb; padding: 0 3px; border-radius: 3px;
+  font-size: 12px; color: #a3a19d; padding: 0 3px; border-radius: 3px;
 }
-.card-copy-btn:hover { color: #4F6EF7; background: #f0f3ff; }
-.card-stats { font-size: 12px; color: #999; margin-top: 4px; }
+.card-copy-btn:hover { color: #37352f; background: #e9e9e7; }
+.card-stats { font-size: 12px; color: #a3a19d; margin-top: 3px; }
 .card-delete-btn {
   background: none; border: none; cursor: pointer;
-  font-size: 16px; color: #ccc; padding: 4px 6px; border-radius: 4px;
+  font-size: 16px; color: #ccc; padding: 4px 6px; border-radius: 3px;
   opacity: 0; transition: opacity .15s, color .15s;
   flex-shrink: 0;
 }
 .table-card:hover .card-delete-btn { opacity: 1; }
-.card-delete-btn:hover { color: #e53e3e; background: #fff5f5; }
-.card-arrow { font-size: 20px; color: #ccc; flex-shrink: 0; }
+.card-delete-btn:hover { color: #eb5757; background: #fdf2f2; }
+.card-arrow { font-size: 18px; color: #a3a19d; flex-shrink: 0; }
 </style>

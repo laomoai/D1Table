@@ -95,7 +95,7 @@ const props = defineProps<{
 
 const isEmpty = computed(() => {
   const v = props.value
-  if (v === null || v === undefined || v === '') return true
+  if (v === null || v === undefined || v === '' || v === '[]' || v === 'null') return true
   if (Array.isArray(v)) return v.length === 0
   return false
 })
