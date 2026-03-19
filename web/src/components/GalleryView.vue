@@ -39,6 +39,11 @@
             <rect x="8" y="8" width="5" height="5" rx="1"/>
           </svg>
         </button>
+        <button class="view-btn" title="Chart view" @click="emit('switchView', 'chart')">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="1,11 4,6 7,9 10,3 13,6"/>
+          </svg>
+        </button>
       </div>
     </div>
 
@@ -160,7 +165,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   refresh: []
-  switchView: [view: 'grid']
+  switchView: [view: string]
 }>()
 
 const message = useMessage()

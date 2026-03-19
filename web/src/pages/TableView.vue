@@ -14,7 +14,7 @@
       :table-title="tableTitle"
       :total-count="totalCount"
       @refresh="refetchTables"
-      @switch-view="viewMode = 'gallery'"
+      @switch-view="switchView"
     />
     <GalleryView
       v-else-if="fields && viewMode === 'gallery'"
@@ -23,7 +23,15 @@
       :table-title="tableTitle"
       :total-count="totalCount"
       @refresh="refetchTables"
-      @switch-view="viewMode = 'grid'"
+      @switch-view="switchView"
+    />
+    <ChartView
+      v-else-if="fields && viewMode === 'chart'"
+      :table-name="tableName"
+      :fields="fields"
+      :table-title="tableTitle"
+      :total-count="totalCount"
+      @switch-view="switchView"
     />
   </div>
 </template>
@@ -36,15 +44,20 @@ import { NSpin, NResult } from 'naive-ui'
 import { api } from '@/api/client'
 import DataGrid from '@/components/DataGrid.vue'
 import GalleryView from '@/components/GalleryView.vue'
+import ChartView from '@/components/ChartView.vue'
 
 const route = useRoute()
 const queryClient = useQueryClient()
 
 const tableName = computed(() => route.params.tableName as string)
-const viewMode = ref<'grid' | 'gallery'>('grid')
+const viewMode = ref<'grid' | 'gallery' | 'chart'>('grid')
 
 // 切换表时重置视图
 watch(tableName, () => { viewMode.value = 'grid' })
+
+function switchView(v: string) {
+  viewMode.value = v as 'grid' | 'gallery' | 'chart'
+}
 
 const {
   data: fields,

@@ -186,6 +186,12 @@ export const api = {
   emptyTrash: () =>
     http.delete('/trash'),
 
+  /** Dashboard 配置 */
+  getDashboard: (tableName: string) =>
+    http.get<{ data: { config: unknown[] } }>(`/tables/${tableName}/dashboard`).then(r => r.data.data.config),
+  saveDashboard: (tableName: string, config: unknown[]) =>
+    http.put<{ data: { success: boolean } }>(`/tables/${tableName}/dashboard`, { config }).then(r => r.data.data),
+
   /** 分组管理 */
   getGroups: () =>
     http.get<{ data: Group[] }>('/groups').then((r) => r.data.data),
