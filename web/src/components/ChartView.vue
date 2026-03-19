@@ -391,9 +391,17 @@ async function loadWidgets() {
 watch(() => props.tableName, loadWidgets, { immediate: true })
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null
+function flushSave() {
+  if (saveTimer) {
+    clearTimeout(saveTimer)
+    saveTimer = null
+    api.saveDashboard(props.tableName, widgets.value)
+  }
+}
 function persistWidgets() {
   if (saveTimer) clearTimeout(saveTimer)
   saveTimer = setTimeout(() => {
+    saveTimer = null
     api.saveDashboard(props.tableName, widgets.value)
   }, 600)
 }
@@ -449,19 +457,23 @@ function toggleYCol(widget: Widget, key: string, mode: 'raw' | 'agg') {
 // ── 数据加载 ──────────────────────────────────────────────
 const allRecords = ref<RecordRow[]>([])
 const loadingRecords = ref(false)
+let fetchVersion = 0
 
 async function fetchAllRecords() {
+  const thisVersion = ++fetchVersion
   loadingRecords.value = true
   allRecords.value = []
   let cursor: string | null = null
   try {
     do {
+      if (thisVersion !== fetchVersion) return // 表已切换，丢弃旧请求
       const res = await api.getRecords(props.tableName, { page_size: 500, ...(cursor ? { cursor } : {}) })
+      if (thisVersion !== fetchVersion) return
       allRecords.value.push(...res.data)
       cursor = res.meta.next_cursor
       if (allRecords.value.length >= 10000) break
     } while (cursor)
-  } finally { loadingRecords.value = false }
+  } finally { if (thisVersion === fetchVersion) loadingRecords.value = false }
 }
 watch(() => props.tableName, fetchAllRecords, { immediate: true })
 
@@ -538,7 +550,7 @@ function computeChartPayload(widget: Widget): ChartPayload {
       if (vk === '__count__') {
         byKey.get(vk)!.push(1)
       } else {
-        const fieldCol = vk.slice(vk.indexOf('_') + 1)
+        const fieldCol = vk.replace(/^(sum|avg|max|__count)_/, '')
         const v = parseFloat(String(row[fieldCol] ?? 0))
         byKey.get(vk)!.push(isNaN(v) ? 0 : v)
       }
@@ -561,11 +573,12 @@ function computeChartPayload(widget: Widget): ChartPayload {
     const color = PALETTE[(colorIdx >= 0 ? colorIdx : i) % PALETTE.length]
     let name = 'Count'
     if (vk !== '__count__') {
-      const sep = vk.indexOf('_')
-      const agg = vk.slice(0, sep)
-      const fieldCol = vk.slice(sep + 1)
-      const f = props.fields.find(x => x.column_name === fieldCol)
-      name = `${AGG_LABEL[agg] ?? agg} ${f?.title || fieldCol}`
+      const match = vk.match(/^(sum|avg|max)_(.+)$/)
+      if (match) {
+        const [, agg, fieldCol] = match
+        const f = props.fields.find(x => x.column_name === fieldCol)
+        name = `${AGG_LABEL[agg] ?? agg} ${f?.title || fieldCol}`
+      }
     }
     const data = sortedLabels.map(label => {
       const byKey = labelSet.get(label)
@@ -586,7 +599,7 @@ function computeKpi(widget: Widget): number {
   const vk = widget.kpiKey ?? '__count__'
   if (allRecords.value.length === 0) return 0
   if (vk === '__count__') return allRecords.value.length
-  const col = vk.slice(vk.indexOf('_') + 1)
+  const col = vk.replace(/^(sum|avg|max|__count)_/, '')
   const nums = allRecords.value.map(r => parseFloat(String(r[col] ?? 0))).filter(n => !isNaN(n))
   if (vk.startsWith('sum_')) return Math.round(nums.reduce((a,b)=>a+b,0)*100)/100
   if (vk.startsWith('avg_')) return nums.length ? Math.round(nums.reduce((a,b)=>a+b,0)/nums.length*100)/100 : 0
@@ -604,7 +617,7 @@ function formatKpi(n: number): string {
 function kpiDesc(widget: Widget): string {
   const vk = widget.kpiKey ?? '__count__'
   if (vk === '__count__') return 'Total records'
-  const col = vk.slice(vk.indexOf('_') + 1)
+  const col = vk.replace(/^(sum|avg|max|__count)_/, '')
   const f = props.fields.find(x => x.column_name === col)
   const fname = f?.title || col
   if (vk.startsWith('sum_')) return `Sum of ${fname}`
@@ -623,7 +636,10 @@ function defaultTitle(widget: Widget): string {
 // 关闭 add menu
 function onDocClick() { showAddMenu.value = false }
 onMounted(() => document.addEventListener('click', onDocClick))
-onUnmounted(() => document.removeEventListener('click', onDocClick))
+onUnmounted(() => {
+  document.removeEventListener('click', onDocClick)
+  flushSave()
+})
 </script>
 
 <style scoped>

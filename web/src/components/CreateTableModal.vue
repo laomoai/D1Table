@@ -2,7 +2,6 @@
   <n-modal
     v-model:show="visible"
     :mask-closable="true"
-    :style="modalStyle"
     :bordered="false"
     @after-enter="focusName"
   >
@@ -125,8 +124,6 @@ const queryClient = useQueryClient()
 const nameInputRef = ref<HTMLInputElement>()
 const submitting = ref(false)
 const openTypePicker = ref<number | null>(null)
-
-const modalStyle = computed(() => ({}))
 
 interface ColDef {
   displayName: string

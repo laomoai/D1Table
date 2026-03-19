@@ -263,6 +263,7 @@ tables.delete('/:tableName', requireWriteMiddleware, async (c) => {
     c.env.DB.prepare(`DELETE FROM _meta WHERE table_name = ?`).bind(tableName),
     c.env.DB.prepare(`DELETE FROM _field_meta WHERE table_name = ?`).bind(tableName),
     c.env.DB.prepare(`DELETE FROM _group_tables WHERE table_name = ?`).bind(tableName),
+    c.env.DB.prepare(`DELETE FROM _dashboards WHERE table_name = ?`).bind(tableName),
   ])
 
   return c.json({ data: { success: true } })

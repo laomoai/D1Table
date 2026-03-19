@@ -18,7 +18,11 @@ dashboards.get('/:tableName/dashboard', async (c) => {
     .bind(tableName)
     .first<{ config: string }>()
 
-  return c.json({ data: { config: row ? JSON.parse(row.config) : [] } })
+  let config: unknown[] = []
+  if (row) {
+    try { config = JSON.parse(row.config) } catch { /* corrupted data, return empty */ }
+  }
+  return c.json({ data: { config } })
 })
 
 // PUT /api/tables/:tableName/dashboard
@@ -31,6 +35,11 @@ dashboards.put('/:tableName/dashboard', requireWriteMiddleware, async (c) => {
 
   const body = await c.req.json<{ config: unknown[] }>()
   const config = JSON.stringify(body.config ?? [])
+
+  // 限制 config 大小（50KB）
+  if (config.length > 50_000) {
+    return c.json({ error: { code: 'PAYLOAD_TOO_LARGE', message: 'Dashboard config exceeds 50KB limit' } }, 400)
+  }
 
   await c.env.DB
     .prepare(`
