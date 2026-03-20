@@ -95,9 +95,9 @@ notes.post('/', requireWriteMiddleware, async (c) => {
     parent_id?: string
   }>()
 
-  const MAX_CONTENT = 5 * 1024 * 1024 // 5MB
+  const MAX_CONTENT = 1024 * 1024 // 1MB — D1 row size limit // 5MB
   if (body.content && body.content.length > MAX_CONTENT) {
-    return c.json({ error: { code: 'CONTENT_TOO_LARGE', message: 'Note content exceeds 5MB limit' } }, 413)
+    return c.json({ error: { code: 'CONTENT_TOO_LARGE', message: 'Note content exceeds 1MB limit' } }, 413)
   }
 
   const id = generateId()
@@ -141,9 +141,9 @@ notes.patch('/:id', requireWriteMiddleware, async (c) => {
     params.push(body.title.trim() || 'Untitled')
   }
   if (body.content !== undefined) {
-    const MAX_CONTENT = 5 * 1024 * 1024
+    const MAX_CONTENT = 1024 * 1024 // 1MB — D1 row size limit
     if (body.content.length > MAX_CONTENT) {
-      return c.json({ error: { code: 'CONTENT_TOO_LARGE', message: 'Note content exceeds 5MB limit' } }, 413)
+      return c.json({ error: { code: 'CONTENT_TOO_LARGE', message: 'Note content exceeds 1MB limit' } }, 413)
     }
     sets.push('content = ?')
     params.push(body.content)
