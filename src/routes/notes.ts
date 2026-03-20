@@ -66,6 +66,23 @@ notes.get('/tree', async (c) => {
 })
 
 /**
+ * GET /api/notes/trash
+ * List soft-deleted notes
+ */
+notes.get('/trash', async (c) => {
+  const userId = c.get('userId')
+  const { clause, params } = ownerFilter(userId)
+
+  const rows = await c.env.DB.prepare(
+    `SELECT id, title, icon, deleted_at FROM _notes WHERE ${clause} AND deleted_at IS NOT NULL AND parent_id IS NULL
+     ORDER BY deleted_at DESC`
+  ).bind(...params)
+    .all<{ id: string; title: string; icon: string | null; deleted_at: number }>()
+
+  return c.json({ data: rows.results })
+})
+
+/**
  * GET /api/notes/:id
  * 获取单个笔记（含 content）
  */
@@ -270,23 +287,6 @@ notes.post('/:id/restore', requireWriteMiddleware, async (c) => {
   await c.env.DB.prepare(sql).bind(...params).run()
 
   return c.json({ data: { success: true } })
-})
-
-/**
- * GET /api/notes/trash
- * List soft-deleted notes
- */
-notes.get('/trash', async (c) => {
-  const userId = c.get('userId')
-  const { clause, params } = ownerFilter(userId)
-
-  const rows = await c.env.DB.prepare(
-    `SELECT id, title, icon, deleted_at FROM _notes WHERE ${clause} AND deleted_at IS NOT NULL AND parent_id IS NULL
-     ORDER BY deleted_at DESC`
-  ).bind(...params)
-    .all<{ id: string; title: string; icon: string | null; deleted_at: number }>()
-
-  return c.json({ data: rows.results })
 })
 
 export default notes
