@@ -7,14 +7,26 @@ const groups = new Hono<{ Bindings: Env; Variables: AuthVariables }>()
 // 所有分组管理路由都需要读写权限
 groups.use('*', requireWriteMiddleware)
 
+/** owner 过滤条件辅助 */
+function ownerFilter(userId: number | undefined): { clause: string; params: unknown[] } {
+  if (userId !== undefined) {
+    return { clause: `(owner_id = ? OR owner_id IS NULL)`, params: [userId] }
+  }
+  return { clause: '1=1', params: [] }
+}
+
 /**
  * GET /api/groups
  * 获取所有分组（含分组内的表名列表）
  */
 groups.get('/', async (c) => {
+  const userId = c.get('userId')
+  const { clause, params } = ownerFilter(userId)
+
   const [groupRows, gtRows] = await Promise.all([
     c.env.DB
-      .prepare(`SELECT id, name, sort_order, created_at FROM _groups ORDER BY sort_order ASC, id ASC`)
+      .prepare(`SELECT id, name, sort_order, created_at FROM _groups WHERE ${clause} ORDER BY sort_order ASC, id ASC`)
+      .bind(...params)
       .all<{ id: number; name: string; sort_order: number; created_at: number }>(),
     c.env.DB
       .prepare(`SELECT group_id, table_name FROM _group_tables`)
@@ -50,8 +62,8 @@ groups.post('/', async (c) => {
 
   try {
     const result = await c.env.DB
-      .prepare(`INSERT INTO _groups (name, sort_order) VALUES (?, ?)`)
-      .bind(body.name.trim(), body.sort_order ?? 0)
+      .prepare(`INSERT INTO _groups (name, sort_order, owner_id) VALUES (?, ?, ?)`)
+      .bind(body.name.trim(), body.sort_order ?? 0, c.get('userId') ?? null)
       .run()
 
     return c.json({ data: { id: result.meta.last_row_id, name: body.name.trim() } }, 201)
@@ -71,6 +83,7 @@ groups.post('/', async (c) => {
 groups.patch('/:id', async (c) => {
   const { id } = c.req.param()
   const body = await c.req.json<{ name?: string; sort_order?: number }>()
+  const userId = c.get('userId')
 
   const sets: string[] = []
   const params: unknown[] = []
@@ -89,10 +102,13 @@ groups.patch('/:id', async (c) => {
   }
 
   params.push(id)
-  const result = await c.env.DB
-    .prepare(`UPDATE _groups SET ${sets.join(', ')} WHERE id = ?`)
-    .bind(...params)
-    .run()
+  let sql = `UPDATE _groups SET ${sets.join(', ')} WHERE id = ?`
+  if (userId !== undefined) {
+    sql += ` AND (owner_id = ? OR owner_id IS NULL)`
+    params.push(userId)
+  }
+
+  const result = await c.env.DB.prepare(sql).bind(...params).run()
 
   if (result.meta.changes === 0) {
     return c.json({ error: { code: 'NOT_FOUND', message: 'Group not found' } }, 404)
@@ -107,11 +123,16 @@ groups.patch('/:id', async (c) => {
  */
 groups.delete('/:id', async (c) => {
   const { id } = c.req.param()
+  const userId = c.get('userId')
 
-  const result = await c.env.DB
-    .prepare(`DELETE FROM _groups WHERE id = ?`)
-    .bind(id)
-    .run()
+  let sql = `DELETE FROM _groups WHERE id = ?`
+  const params: unknown[] = [id]
+  if (userId !== undefined) {
+    sql += ` AND (owner_id = ? OR owner_id IS NULL)`
+    params.push(userId)
+  }
+
+  const result = await c.env.DB.prepare(sql).bind(...params).run()
 
   if (result.meta.changes === 0) {
     return c.json({ error: { code: 'NOT_FOUND', message: 'Group not found' } }, 404)
@@ -123,22 +144,25 @@ groups.delete('/:id', async (c) => {
 /**
  * PUT /api/groups/:id/tables
  * 设置分组内的表（全量替换）
- * body: { tables: ["tbl_xxx", "tbl_yyy"] }
  */
 groups.put('/:id/tables', async (c) => {
   const { id } = c.req.param()
   const body = await c.req.json<{ tables: string[] }>()
+  const userId = c.get('userId')
 
   if (!Array.isArray(body.tables)) {
     return c.json({ error: { code: 'INVALID_BODY', message: 'tables must be an array' } }, 400)
   }
 
-  // 验证分组存在
-  const group = await c.env.DB
-    .prepare(`SELECT id FROM _groups WHERE id = ?`)
-    .bind(id)
-    .first()
+  // 验证分组存在且属于当前用户
+  let checkSql = `SELECT id FROM _groups WHERE id = ?`
+  const checkParams: unknown[] = [id]
+  if (userId !== undefined) {
+    checkSql += ` AND (owner_id = ? OR owner_id IS NULL)`
+    checkParams.push(userId)
+  }
 
+  const group = await c.env.DB.prepare(checkSql).bind(...checkParams).first()
   if (!group) {
     return c.json({ error: { code: 'NOT_FOUND', message: 'Group not found' } }, 404)
   }
@@ -161,21 +185,24 @@ groups.put('/:id/tables', async (c) => {
 /**
  * PUT /api/groups/:id/keys
  * 设置分组关联的 API Keys（全量替换）
- * body: { key_ids: [1, 2, 3] }
  */
 groups.put('/:id/keys', async (c) => {
   const { id } = c.req.param()
   const body = await c.req.json<{ key_ids: number[] }>()
+  const userId = c.get('userId')
 
   if (!Array.isArray(body.key_ids)) {
     return c.json({ error: { code: 'INVALID_BODY', message: 'key_ids must be an array' } }, 400)
   }
 
-  const group = await c.env.DB
-    .prepare(`SELECT id FROM _groups WHERE id = ?`)
-    .bind(id)
-    .first()
+  let checkSql = `SELECT id FROM _groups WHERE id = ?`
+  const checkParams: unknown[] = [id]
+  if (userId !== undefined) {
+    checkSql += ` AND (owner_id = ? OR owner_id IS NULL)`
+    checkParams.push(userId)
+  }
 
+  const group = await c.env.DB.prepare(checkSql).bind(...checkParams).first()
   if (!group) {
     return c.json({ error: { code: 'NOT_FOUND', message: 'Group not found' } }, 404)
   }

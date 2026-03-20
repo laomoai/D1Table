@@ -190,6 +190,62 @@
         </div>
       </n-tab-pane>
 
+      <!-- ─── Tab: Users (admin only) ──────────────────────────── -->
+      <n-tab-pane v-if="currentUserRole === 'admin'" name="users" tab="Users">
+        <div class="tab-content">
+          <div class="hint" style="margin-bottom: 16px;">
+            Manage who can access this application. Only admins can manage users.
+          </div>
+
+          <!-- Add user form -->
+          <div style="display: flex; gap: 8px; margin-bottom: 16px;">
+            <n-input v-model:value="newUserEmail" size="small" placeholder="Email address" style="width: 260px;" @keyup.enter="handleAddUser" />
+            <n-radio-group v-model:value="newUserRole" size="small">
+              <n-radio value="user">User</n-radio>
+              <n-radio value="admin">Admin</n-radio>
+            </n-radio-group>
+            <n-button size="small" type="primary" :loading="addingUser" @click="handleAddUser">Add</n-button>
+          </div>
+
+          <n-spin :show="usersLoading">
+            <div v-if="userList?.length" class="user-list">
+              <div v-for="u in userList" :key="u.id" class="user-row">
+                <img v-if="u.picture" :src="u.picture" class="user-avatar" referrerpolicy="no-referrer" />
+                <div v-else class="user-avatar-placeholder">{{ (u.name || u.email)[0] }}</div>
+                <div class="user-info">
+                  <div class="user-name">{{ u.name || u.email }}</div>
+                  <div class="user-email">{{ u.email }}</div>
+                </div>
+                <n-tag :type="u.role === 'admin' ? 'warning' : 'info'" size="small">{{ u.role }}</n-tag>
+                <n-tag :type="u.status === 'active' ? 'success' : 'error'" size="small">{{ u.status }}</n-tag>
+                <div class="user-actions">
+                  <n-button
+                    v-if="u.status === 'active' && u.id !== currentUserId"
+                    size="tiny"
+                    quaternary
+                    @click="handleToggleUser(u.id, 'disabled')"
+                  >Disable</n-button>
+                  <n-button
+                    v-if="u.status === 'disabled'"
+                    size="tiny"
+                    type="primary"
+                    quaternary
+                    @click="handleToggleUser(u.id, 'active')"
+                  >Enable</n-button>
+                  <n-button
+                    v-if="u.id !== currentUserId"
+                    size="tiny"
+                    quaternary
+                    @click="handleToggleRole(u)"
+                  >{{ u.role === 'admin' ? 'Set User' : 'Set Admin' }}</n-button>
+                </div>
+              </div>
+            </div>
+            <div v-else class="empty-hint">No users yet</div>
+          </n-spin>
+        </div>
+      </n-tab-pane>
+
       <!-- ─── Tab: Appearance ──────────────────────────────────── -->
       <n-tab-pane name="appearance" tab="Appearance">
         <div class="tab-content">
@@ -335,12 +391,21 @@ import {
   NSpin, NModal, NAlert, NRadioGroup, NRadio, NCheckboxGroup, NCheckbox,
   NSlider, useMessage,
 } from 'naive-ui'
-import { api, type ApiKeyInfo, type Group, type TableMeta, type TrashItem } from '@/api/client'
+import { api, userApi, getCurrentUser, type ApiKeyInfo, type Group, type TableMeta, type TrashItem, type UserInfo } from '@/api/client'
 import ExportSchemaModal from '@/components/ExportSchemaModal.vue'
 
 const message = useMessage()
 const queryClient = useQueryClient()
 const router = useRouter()
+
+// ── Current User ─────────────────────────────────────────────
+const currentUserId = ref<number>()
+const currentUserRole = ref<'admin' | 'user'>('user')
+
+getCurrentUser().then(u => {
+  currentUserId.value = u.id
+  currentUserRole.value = u.role
+}).catch(() => {})
 
 const showCreate = ref(false)
 const showExportSchema = ref(false)
@@ -582,6 +647,59 @@ function resetSidebarPrefs() {
   sidebarTextColor.value = '#b0bcd4'
   saveSidebarPrefs()
 }
+
+// ── User Management ──────────────────────────────────────────
+const newUserEmail = ref('')
+const newUserRole = ref<'admin' | 'user'>('user')
+const addingUser = ref(false)
+
+const { data: userList, isLoading: usersLoading } = useQuery({
+  queryKey: ['admin-users'],
+  queryFn: userApi.getUsers,
+  retry: false,
+  enabled: () => currentUserRole.value === 'admin',
+})
+
+async function handleAddUser() {
+  const email = newUserEmail.value.trim()
+  if (!email) {
+    message.warning('Please enter an email')
+    return
+  }
+  addingUser.value = true
+  try {
+    await userApi.addUser({ email, role: newUserRole.value })
+    message.success(`User "${email}" added`)
+    newUserEmail.value = ''
+    newUserRole.value = 'user'
+    queryClient.invalidateQueries({ queryKey: ['admin-users'] })
+  } catch (err) {
+    message.error((err as Error).message)
+  } finally {
+    addingUser.value = false
+  }
+}
+
+async function handleToggleUser(id: number, status: 'active' | 'disabled') {
+  try {
+    await userApi.updateUser(id, { status })
+    message.success(status === 'disabled' ? 'User disabled' : 'User enabled')
+    queryClient.invalidateQueries({ queryKey: ['admin-users'] })
+  } catch (err) {
+    message.error((err as Error).message)
+  }
+}
+
+async function handleToggleRole(u: UserInfo) {
+  const newRole = u.role === 'admin' ? 'user' : 'admin'
+  try {
+    await userApi.updateUser(u.id, { role: newRole })
+    message.success(`Role updated to ${newRole}`)
+    queryClient.invalidateQueries({ queryKey: ['admin-users'] })
+  } catch (err) {
+    message.error((err as Error).message)
+  }
+}
 </script>
 
 <style scoped>
@@ -822,4 +940,40 @@ function resetSidebarPrefs() {
   cursor: pointer;
   background: none;
 }
+
+/* User management */
+.user-list { display: flex; flex-direction: column; gap: 4px; }
+.user-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  transition: background 0.12s;
+}
+.user-row:hover { background: #f5f6fa; }
+.user-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  object-fit: cover;
+}
+.user-avatar-placeholder {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #e8eaf0;
+  color: #6b7280;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+.user-info { flex: 1; min-width: 0; }
+.user-name { font-size: 14px; font-weight: 500; color: #1a1d2e; }
+.user-email { font-size: 12px; color: #8b92a5; }
+.user-actions { display: flex; gap: 4px; flex-shrink: 0; }
 </style>

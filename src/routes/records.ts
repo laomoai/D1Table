@@ -278,8 +278,8 @@ records.delete('/:tableName/records/:id', requireWriteMiddleware, async (c) => {
   await c.env.DB.batch([
     // 存入回收站
     c.env.DB.prepare(
-      `INSERT INTO _trash (table_name, record_id, record_data) VALUES (?, ?, ?)`
-    ).bind(tableName, id, JSON.stringify(existing)),
+      `INSERT INTO _trash (table_name, record_id, record_data, owner_id) VALUES (?, ?, ?, ?)`
+    ).bind(tableName, id, JSON.stringify(existing), c.get('userId') ?? null),
     // 从原表删除
     c.env.DB.prepare(`DELETE FROM "${tableName}" WHERE id = ?`).bind(id),
     c.env.DB.prepare(

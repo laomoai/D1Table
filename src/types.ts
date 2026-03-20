@@ -7,13 +7,24 @@ export type Env = {
   GOOGLE_CLIENT_ID: string
   GOOGLE_CLIENT_SECRET: string
   SESSION_SECRET: string
-  ALLOWED_EMAILS: string  // 逗号分隔的邮箱列表
+  ALLOWED_EMAILS: string  // 仅用于引导首个 admin，之后通过 _users 表管理
 }
 
 export type SessionUser = {
   email: string
   name: string
   picture: string
+}
+
+export type UserRow = {
+  id: number
+  email: string
+  name: string
+  picture: string
+  role: 'admin' | 'user'
+  status: 'active' | 'disabled'
+  created_at: number
+  last_login: number | null
 }
 
 export type ColumnInfo = {
@@ -41,4 +52,6 @@ export type AuthVariables = {
   keyScope: 'all' | 'groups'
   allowedTables: string[] | null // null = all tables, string[] = restricted
   user?: SessionUser
+  userId?: number               // _users.id，ADMIN_KEY 时为 undefined
+  userRole?: 'admin' | 'user'   // _users.role
 }

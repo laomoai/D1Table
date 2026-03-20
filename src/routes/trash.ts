@@ -12,10 +12,11 @@ trash.use('*', requireWriteMiddleware)
 
 /**
  * GET /api/trash
- * 获取回收站列表（按删除时间倒序）
- * 同时自动清理超过 30 天的记录
+ * 获取回收站列表（按删除时间倒序，按 owner 过滤）
  */
 trash.get('/', async (c) => {
+  const userId = c.get('userId')
+
   // 自动清理过期记录
   c.executionCtx.waitUntil(
     c.env.DB.prepare(
@@ -23,13 +24,15 @@ trash.get('/', async (c) => {
     ).bind(RETENTION_DAYS * 86400).run()
   )
 
-  const rows = await c.env.DB
-    .prepare(
-      `SELECT id, table_name, record_id, record_data, deleted_at
-       FROM _trash
-       ORDER BY deleted_at DESC
-       LIMIT 200`
-    )
+  let sql = `SELECT id, table_name, record_id, record_data, deleted_at FROM _trash`
+  const params: unknown[] = []
+  if (userId !== undefined) {
+    sql += ` WHERE owner_id = ? OR owner_id IS NULL`
+    params.push(userId)
+  }
+  sql += ` ORDER BY deleted_at DESC LIMIT 200`
+
+  const rows = await c.env.DB.prepare(sql).bind(...params)
     .all<{ id: number; table_name: string; record_id: number; record_data: string; deleted_at: number }>()
 
   const data = rows.results.map(r => ({
@@ -50,10 +53,16 @@ trash.get('/', async (c) => {
  */
 trash.post('/:id/restore', async (c) => {
   const { id } = c.req.param()
+  const userId = c.get('userId')
 
-  const row = await c.env.DB
-    .prepare(`SELECT table_name, record_id, record_data FROM _trash WHERE id = ?`)
-    .bind(id)
+  let selectSql = `SELECT table_name, record_id, record_data FROM _trash WHERE id = ?`
+  const selectParams: unknown[] = [id]
+  if (userId !== undefined) {
+    selectSql += ` AND (owner_id = ? OR owner_id IS NULL)`
+    selectParams.push(userId)
+  }
+
+  const row = await c.env.DB.prepare(selectSql).bind(...selectParams)
     .first<{ table_name: string; record_id: number; record_data: string }>()
 
   if (!row) {
@@ -108,11 +117,16 @@ trash.post('/:id/restore', async (c) => {
  */
 trash.delete('/:id', async (c) => {
   const { id } = c.req.param()
+  const userId = c.get('userId')
 
-  const result = await c.env.DB
-    .prepare(`DELETE FROM _trash WHERE id = ?`)
-    .bind(id)
-    .run()
+  let sql = `DELETE FROM _trash WHERE id = ?`
+  const params: unknown[] = [id]
+  if (userId !== undefined) {
+    sql += ` AND (owner_id = ? OR owner_id IS NULL)`
+    params.push(userId)
+  }
+
+  const result = await c.env.DB.prepare(sql).bind(...params).run()
 
   if (result.meta.changes === 0) {
     return c.json({ error: { code: 'NOT_FOUND', message: 'Record not found' } }, 404)
@@ -123,10 +137,15 @@ trash.delete('/:id', async (c) => {
 
 /**
  * DELETE /api/trash
- * 清空回收站
+ * 清空回收站（仅清空自己的）
  */
 trash.delete('/', async (c) => {
-  await c.env.DB.prepare(`DELETE FROM _trash`).run()
+  const userId = c.get('userId')
+  if (userId !== undefined) {
+    await c.env.DB.prepare(`DELETE FROM _trash WHERE owner_id = ? OR owner_id IS NULL`).bind(userId).run()
+  } else {
+    await c.env.DB.prepare(`DELETE FROM _trash`).run()
+  }
   return c.json({ data: { success: true } })
 })
 

@@ -40,15 +40,26 @@ tables.get('/', async (c) => {
     tableNames = tableNames.filter(name => allowedTables.includes(name))
   }
 
+  // owner 过滤：有 userId 时只查自己的表
+  const userId = c.get('userId')
+  const metaQuery = userId !== undefined
+    ? c.env.DB.prepare(`SELECT table_name, title, row_count FROM _meta WHERE owner_id = ? OR owner_id IS NULL`).bind(userId)
+    : c.env.DB.prepare(`SELECT table_name, title, row_count FROM _meta`)
+  const groupQuery = userId !== undefined
+    ? c.env.DB.prepare(
+        `SELECT gt.table_name, gt.group_id, g.name as group_name
+         FROM _group_tables gt JOIN _groups g ON g.id = gt.group_id
+         WHERE g.owner_id = ? OR g.owner_id IS NULL`
+      ).bind(userId)
+    : c.env.DB.prepare(
+        `SELECT gt.table_name, gt.group_id, g.name as group_name
+         FROM _group_tables gt JOIN _groups g ON g.id = gt.group_id`
+      )
+
   // 并行获取 _meta（行数+显示名）和分组信息，避免串行等待
   const [metaRows, gtRows] = await Promise.all([
-    c.env.DB
-      .prepare(`SELECT table_name, title, row_count FROM _meta`)
-      .all<{ table_name: string; title: string | null; row_count: number | null }>(),
-    c.env.DB
-      .prepare(`SELECT gt.table_name, gt.group_id, g.name as group_name
-                FROM _group_tables gt JOIN _groups g ON g.id = gt.group_id`)
-      .all<{ table_name: string; group_id: number; group_name: string }>(),
+    metaQuery.all<{ table_name: string; title: string | null; row_count: number | null }>(),
+    groupQuery.all<{ table_name: string; group_id: number; group_name: string }>(),
   ])
 
   const titleMap = Object.fromEntries(
@@ -64,6 +75,12 @@ tables.get('/', async (c) => {
     const arr = groupsByTable.get(r.table_name) ?? []
     arr.push({ id: r.group_id, name: r.group_name })
     groupsByTable.set(r.table_name, arr)
+  }
+
+  // owner 过滤：如果有 userId，只返回 _meta 中属于自己的表
+  const ownedSet = userId !== undefined ? new Set(metaRows.results.map(r => r.table_name)) : null
+  if (ownedSet) {
+    tableNames = tableNames.filter(name => ownedSet.has(name))
   }
 
   const result = tableNames.map((name) => ({
@@ -195,8 +212,8 @@ tables.post('/', requireWriteMiddleware, async (c) => {
   ]
   const fieldMetaStmts = allColumnsForMeta.map((col, idx) =>
     c.env.DB.prepare(
-      `INSERT OR IGNORE INTO _field_meta (table_name, column_name, title, field_type, select_options, order_index, width)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`
+      `INSERT OR IGNORE INTO _field_meta (table_name, column_name, title, field_type, select_options, order_index, width, is_hidden)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
     ).bind(
       body.name,
       col.name,
@@ -204,7 +221,8 @@ tables.post('/', requireWriteMiddleware, async (c) => {
       col.field_type,
       col.select_options ? JSON.stringify(col.select_options) : null,
       idx * 10,
-      col.name === 'id' ? 80 : 180
+      col.name === 'id' ? 80 : 180,
+      col.name === 'created_at' ? 1 : 0
     )
   )
 
@@ -213,8 +231,8 @@ tables.post('/', requireWriteMiddleware, async (c) => {
   await c.env.DB.batch([
     c.env.DB.prepare(createSQL),
     c.env.DB.prepare(
-      `INSERT OR IGNORE INTO _meta (table_name, row_count, title) VALUES (?, 0, ?)`
-    ).bind(body.name, displayTitle),
+      `INSERT OR IGNORE INTO _meta (table_name, row_count, title, owner_id) VALUES (?, 0, ?, ?)`
+    ).bind(body.name, displayTitle, c.get('userId') ?? null),
     ...fieldMetaStmts,
   ])
 

@@ -98,11 +98,10 @@ export function clearSessionCookie(): string {
   return 'd1t_session=; Path=/; Max-Age=0'
 }
 
-/** 验证 session cookie，返回 SessionUser 或 null */
+/** 验证 session cookie，返回 SessionUser 或 null（仅校验签名和过期，不检查白名单） */
 export async function verifySession(
   cookieHeader: string,
   secret: string,
-  allowedEmails: string[]
 ): Promise<SessionUser | null> {
   const raw = getCookieValue(cookieHeader, 'd1t_session')
   if (!raw) return null
@@ -128,9 +127,6 @@ export async function verifySession(
 
   // 检查过期时间
   if (!payload.exp || payload.exp < Math.floor(Date.now() / 1000)) return null
-
-  // 检查邮箱白名单
-  if (!allowedEmails.includes(payload.email)) return null
 
   return { email: payload.email, name: payload.name, picture: payload.picture }
 }

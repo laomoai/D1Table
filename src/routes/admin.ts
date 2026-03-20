@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import type { AuthVariables, Env } from '../types'
-import { requireWriteMiddleware } from '../middleware/auth'
+import { requireWriteMiddleware, requireAdminMiddleware } from '../middleware/auth'
 import { generateApiKey, sha256 } from '../utils/crypto'
 
 const admin = new Hono<{ Bindings: Env; Variables: AuthVariables }>()
@@ -8,17 +8,22 @@ const admin = new Hono<{ Bindings: Env; Variables: AuthVariables }>()
 // 所有 admin 路由都需要读写权限
 admin.use('*', requireWriteMiddleware)
 
+// ── API Key 管理 ──────────────────────────────────────────────
+
 /**
  * GET /api/admin/keys
- * 获取所有 API Key 列表（不返回明文和完整哈希）
- * 包含每个 Key 关联的分组信息
+ * 获取当前用户的 API Key 列表
  */
 admin.get('/keys', async (c) => {
-  const rows = await c.env.DB
-    .prepare(
-      `SELECT id, key_prefix, name, type, scope, created_at, is_active FROM _api_keys ORDER BY created_at DESC LIMIT 200`
-    )
-    .all<{ id: number; key_prefix: string; name: string; type: string; scope: string; created_at: number; is_active: number }>()
+  const userId = c.get('userId')
+
+  const keySql = userId !== undefined
+    ? `SELECT id, key_prefix, name, type, scope, created_at, is_active FROM _api_keys WHERE (user_id = ? OR user_id IS NULL) ORDER BY created_at DESC LIMIT 200`
+    : `SELECT id, key_prefix, name, type, scope, created_at, is_active FROM _api_keys ORDER BY created_at DESC LIMIT 200`
+
+  const rows = userId !== undefined
+    ? await c.env.DB.prepare(keySql).bind(userId).all<{ id: number; key_prefix: string; name: string; type: string; scope: string; created_at: number; is_active: number }>()
+    : await c.env.DB.prepare(keySql).all<{ id: number; key_prefix: string; name: string; type: string; scope: string; created_at: number; is_active: number }>()
 
   // 获取每个 key 关联的分组
   const akgRows = await c.env.DB
@@ -46,8 +51,6 @@ admin.get('/keys', async (c) => {
 /**
  * POST /api/admin/keys
  * 创建新 API Key
- * 明文只返回一次，之后无法查看
- * 支持 scope + group_ids
  */
 admin.post('/keys', async (c) => {
   const body = await c.req.json<{
@@ -68,8 +71,8 @@ admin.post('/keys', async (c) => {
   const keyPrefix = plainKey.slice(0, 10)
 
   const insertResult = await c.env.DB
-    .prepare(`INSERT INTO _api_keys (key_prefix, key_hash, name, type, scope) VALUES (?, ?, ?, ?, ?)`)
-    .bind(keyPrefix, keyHash, body.name.trim(), keyType, scope)
+    .prepare(`INSERT INTO _api_keys (key_prefix, key_hash, name, type, scope, user_id) VALUES (?, ?, ?, ?, ?, ?)`)
+    .bind(keyPrefix, keyHash, body.name.trim(), keyType, scope, c.get('userId') ?? null)
     .run()
 
   const newKeyId = insertResult.meta.last_row_id
@@ -103,10 +106,19 @@ admin.post('/keys', async (c) => {
  */
 admin.patch('/keys/:id', async (c) => {
   const { id } = c.req.param()
+  const userId = c.get('userId')
   const body = await c.req.json<{
     scope?: 'all' | 'groups'
     group_ids?: number[]
   }>()
+
+  // 验证 key 归属
+  if (userId !== undefined) {
+    const key = await c.env.DB.prepare(
+      `SELECT id FROM _api_keys WHERE id = ? AND (user_id = ? OR user_id IS NULL)`
+    ).bind(id, userId).first()
+    if (!key) return c.json({ error: { code: 'NOT_FOUND', message: 'Key not found' } }, 404)
+  }
 
   const stmts: D1PreparedStatement[] = []
 
@@ -138,18 +150,135 @@ admin.patch('/keys/:id', async (c) => {
 
 /**
  * DELETE /api/admin/keys/:id
- * 撤销 API Key（软删除，设置 is_active=0）
+ * 撤销 API Key（软删除）
  */
 admin.delete('/keys/:id', async (c) => {
   const { id } = c.req.param()
+  const userId = c.get('userId')
+
+  let sql = `UPDATE _api_keys SET is_active = 0 WHERE id = ?`
+  const params: unknown[] = [id]
+  if (userId !== undefined) {
+    sql += ` AND (user_id = ? OR user_id IS NULL)`
+    params.push(userId)
+  }
+
+  const result = await c.env.DB.prepare(sql).bind(...params).run()
+
+  if (result.meta.changes === 0) {
+    return c.json({ error: { code: 'NOT_FOUND', message: 'Key not found' } }, 404)
+  }
+
+  return c.json({ data: { success: true } })
+})
+
+// ── 用户管理（仅 Admin） ────────────────────────────────────────
+
+/**
+ * GET /api/admin/users
+ * 获取所有用户列表
+ */
+admin.get('/users', requireAdminMiddleware, async (c) => {
+  const rows = await c.env.DB
+    .prepare(`SELECT id, email, name, picture, role, status, created_at, last_login FROM _users ORDER BY id ASC`)
+    .all<{ id: number; email: string; name: string; picture: string; role: string; status: string; created_at: number; last_login: number | null }>()
+
+  return c.json({ data: rows.results })
+})
+
+/**
+ * POST /api/admin/users
+ * 添加新用户
+ */
+admin.post('/users', requireAdminMiddleware, async (c) => {
+  const body = await c.req.json<{ email: string; name?: string; role?: 'admin' | 'user' }>()
+
+  if (!body.email?.trim()) {
+    return c.json({ error: { code: 'INVALID_BODY', message: 'Email is required' } }, 400)
+  }
+
+  const email = body.email.trim().toLowerCase()
+  const name = body.name?.trim() || email
+  const role = body.role === 'admin' ? 'admin' : 'user'
+
+  try {
+    const result = await c.env.DB
+      .prepare(`INSERT INTO _users (email, name, role) VALUES (?, ?, ?)`)
+      .bind(email, name, role)
+      .run()
+
+    return c.json({ data: { id: result.meta.last_row_id, email, name, role, status: 'active' } }, 201)
+  } catch (err) {
+    const msg = (err as Error).message ?? ''
+    if (msg.includes('UNIQUE constraint')) {
+      return c.json({ error: { code: 'USER_EXISTS', message: `User "${email}" already exists` } }, 409)
+    }
+    throw err
+  }
+})
+
+/**
+ * PATCH /api/admin/users/:id
+ * 更新用户（角色、状态）
+ */
+admin.patch('/users/:id', requireAdminMiddleware, async (c) => {
+  const { id } = c.req.param()
+  const body = await c.req.json<{ role?: 'admin' | 'user'; status?: 'active' | 'disabled' }>()
+  const currentUserId = c.get('userId')
+
+  // 不能禁用自己
+  if (body.status === 'disabled' && Number(id) === currentUserId) {
+    return c.json({ error: { code: 'FORBIDDEN', message: 'Cannot disable your own account' } }, 400)
+  }
+
+  const sets: string[] = []
+  const params: unknown[] = []
+
+  if (body.role && ['admin', 'user'].includes(body.role)) {
+    sets.push('role = ?')
+    params.push(body.role)
+  }
+  if (body.status && ['active', 'disabled'].includes(body.status)) {
+    sets.push('status = ?')
+    params.push(body.status)
+  }
+
+  if (sets.length === 0) {
+    return c.json({ error: { code: 'INVALID_BODY', message: 'No valid fields provided' } }, 400)
+  }
+
+  params.push(id)
+  const result = await c.env.DB
+    .prepare(`UPDATE _users SET ${sets.join(', ')} WHERE id = ?`)
+    .bind(...params)
+    .run()
+
+  if (result.meta.changes === 0) {
+    return c.json({ error: { code: 'NOT_FOUND', message: 'User not found' } }, 404)
+  }
+
+  return c.json({ data: { success: true } })
+})
+
+/**
+ * DELETE /api/admin/users/:id
+ * 禁用用户（软删除）
+ */
+admin.delete('/users/:id', requireAdminMiddleware, async (c) => {
+  const { id } = c.req.param()
+  const currentUserId = c.get('userId')
+
+  if (Number(id) === currentUserId) {
+    return c.json({ error: { code: 'FORBIDDEN', message: 'Cannot disable your own account' } }, 400)
+  }
 
   const result = await c.env.DB
-    .prepare(`UPDATE _api_keys SET is_active = 0 WHERE id = ?`)
+    .prepare(`UPDATE _users SET status = 'disabled' WHERE id = ?`)
     .bind(id)
     .run()
 
   if (result.meta.changes === 0) {
-    return c.json({ error: { code: 'NOT_FOUND', message: 'Key not found' } }, 404)
+    return c.json({ error: { code: 'NOT_FOUND', message: 'User not found' } }, 404)
   }
 
   return c.json({ data: { success: true } })

@@ -43,11 +43,11 @@ dashboards.put('/:tableName/dashboard', requireWriteMiddleware, async (c) => {
 
   await c.env.DB
     .prepare(`
-      INSERT INTO _dashboards (table_name, config, updated_at)
-      VALUES (?, ?, unixepoch())
+      INSERT INTO _dashboards (table_name, config, updated_at, owner_id)
+      VALUES (?, ?, unixepoch(), ?)
       ON CONFLICT(table_name) DO UPDATE SET config = excluded.config, updated_at = unixepoch()
     `)
-    .bind(tableName, config)
+    .bind(tableName, config, c.get('userId') ?? null)
     .run()
 
   return c.json({ data: { success: true } })

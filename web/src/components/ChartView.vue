@@ -487,9 +487,9 @@ function formatDateKey(val: unknown, gran: string): string {
   if (gran === 'week') {
     const dd = new Date(d); const day = dd.getDay()
     dd.setDate(dd.getDate() - day + (day === 0 ? -6 : 1))
-    return dd.toISOString().slice(0, 10)
+    return `${dd.getFullYear()}-${String(dd.getMonth()+1).padStart(2,'0')}-${String(dd.getDate()).padStart(2,'0')}`
   }
-  return d.toISOString().slice(0, 10)
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
 }
 
 function computeChartPayload(widget: Widget): ChartPayload {
@@ -513,9 +513,11 @@ function computeChartPayload(widget: Widget): ChartPayload {
     const labels = records.map((r, i) => {
       if (!xCol) return String(i + 1)
       const xRaw = r[xCol]
-      return isDateField(xCol)
-        ? new Date(typeof xRaw === 'number' ? xRaw * 1000 : String(xRaw)).toISOString().slice(0, 10)
-        : String(xRaw)
+      if (isDateField(xCol)) {
+        const dd = new Date(typeof xRaw === 'number' ? xRaw * 1000 : String(xRaw))
+        return `${dd.getFullYear()}-${String(dd.getMonth()+1).padStart(2,'0')}-${String(dd.getDate()).padStart(2,'0')}`
+      }
+      return String(xRaw)
     })
 
     const series: SeriesData[] = yCols.map((col, i) => {

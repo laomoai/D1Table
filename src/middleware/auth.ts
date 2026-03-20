@@ -4,14 +4,12 @@ import { sha256 } from '../utils/crypto'
 import { verifySession } from '../utils/session'
 
 /**
- * API Key 认证中间件
+ * API Key / Session 认证中间件
  *
  * 优先级：
- * 1. X-API-Key 匹配环境变量 ADMIN_KEY → readwrite（用于初始化）
- * 2. X-API-Key 在 _api_keys 表中存在且 is_active=1 → 返回对应 type
- * 3. 否则 → 401
- *
- * scope=groups 时额外查询允许的表列表，存入 context
+ * 1. Session cookie → 查 _users 表获取 userId
+ * 2. ADMIN_KEY → 超级管理员（无 userId，绕过 owner 校验）
+ * 3. _api_keys 表 → 继承 key 的 user_id
  */
 export const authMiddleware: MiddlewareHandler<{
   Bindings: Env
@@ -20,24 +18,35 @@ export const authMiddleware: MiddlewareHandler<{
   // 1. 尝试 session cookie 认证（web UI）
   const cookieHeader = c.req.header('Cookie')
   if (cookieHeader) {
-    const allowedEmails = (c.env.ALLOWED_EMAILS ?? '').split(',').map(e => e.trim()).filter(Boolean)
-    const user = await verifySession(cookieHeader, c.env.SESSION_SECRET, allowedEmails)
+    const user = await verifySession(cookieHeader, c.env.SESSION_SECRET)
     if (user) {
+      // 查 _users 表确认用户存在且未禁用
+      const userRow = await c.env.DB.prepare(
+        `SELECT id, role FROM _users WHERE email = ? AND status = 'active' LIMIT 1`
+      ).bind(user.email).first<{ id: number; role: 'admin' | 'user' }>()
+
+      if (!userRow) {
+        return c.json({ error: { code: 'UNAUTHORIZED', message: 'User account not found or disabled' } }, 401)
+      }
+
       c.set('keyType', 'readwrite')
       c.set('keyScope', 'all')
       c.set('allowedTables', null)
       c.set('user', user)
+      c.set('userId', userRow.id)
+      c.set('userRole', userRow.role)
       return next()
     }
   }
-  // 2. 继续 API Key 认证（AI Agent，现有逻辑不变）
+
+  // 2. API Key 认证
   const apiKey = c.req.header('X-API-Key') ?? c.req.query('api_key')
 
   if (!apiKey) {
     return c.json({ error: { code: 'UNAUTHORIZED', message: 'Missing API Key. Include it in the X-API-Key request header' } }, 401)
   }
 
-  // 1. 检查环境变量中的 ADMIN_KEY
+  // 2a. ADMIN_KEY：超级管理员，不设 userId，绕过所有 owner 校验
   if (c.env.ADMIN_KEY && apiKey === c.env.ADMIN_KEY) {
     c.set('keyType', 'readwrite')
     c.set('keyScope', 'all')
@@ -45,13 +54,13 @@ export const authMiddleware: MiddlewareHandler<{
     return next()
   }
 
-  // 2. 查数据库
+  // 2b. 数据库 API Key
   const hash = await sha256(apiKey)
   const row = await c.env.DB.prepare(
-    `SELECT id, type, scope FROM _api_keys WHERE key_hash = ? AND is_active = 1 LIMIT 1`
+    `SELECT id, type, scope, user_id FROM _api_keys WHERE key_hash = ? AND is_active = 1 LIMIT 1`
   )
     .bind(hash)
-    .first<{ id: number; type: 'readonly' | 'readwrite'; scope: 'all' | 'groups' }>()
+    .first<{ id: number; type: 'readonly' | 'readwrite'; scope: 'all' | 'groups'; user_id: number | null }>()
 
   if (!row) {
     return c.json({ error: { code: 'UNAUTHORIZED', message: 'Invalid or disabled API Key' } }, 401)
@@ -60,7 +69,12 @@ export const authMiddleware: MiddlewareHandler<{
   c.set('keyType', row.type)
   c.set('keyScope', row.scope)
 
-  // 3. scope=groups → 查询允许访问的表列表
+  // 设置 userId（API Key 继承创建者的 user_id）
+  if (row.user_id) {
+    c.set('userId', row.user_id)
+  }
+
+  // scope=groups → 查询允许访问的表列表
   if (row.scope === 'groups') {
     const allowed = await c.env.DB.prepare(
       `SELECT DISTINCT gt.table_name
@@ -81,7 +95,6 @@ export const authMiddleware: MiddlewareHandler<{
 
 /**
  * 写操作保护中间件：readonly key 不允许写操作
- * 在需要写权限的路由上叠加此中间件
  */
 export const requireWriteMiddleware: MiddlewareHandler<{
   Bindings: Env
@@ -97,22 +110,57 @@ export const requireWriteMiddleware: MiddlewareHandler<{
 }
 
 /**
- * 表访问控制中间件：检查请求的表名是否在 allowedTables 中
- * 用于 scope=groups 的 Key 限制表访问
+ * 表访问控制中间件：
+ * 1. scope=groups 的 Key 只能访问关联分组内的表
+ * 2. 有 userId 时验证表的 owner_id 匹配
  */
 export const tableAccessMiddleware: MiddlewareHandler<{
   Bindings: Env
   Variables: AuthVariables
 }> = async (c, next) => {
-  const allowedTables = c.get('allowedTables')
-  if (allowedTables === null) return next() // scope=all，不限制
-
   const tableName = c.req.param('tableName')
-  if (!tableName) return next() // 没有表名参数的路由不需要检查（如 GET /tables）
+  if (!tableName) return next()
 
-  if (!allowedTables.includes(tableName)) {
+  // scope=groups 限制
+  const allowedTables = c.get('allowedTables')
+  if (allowedTables !== null && allowedTables !== undefined) {
+    if (!allowedTables.includes(tableName)) {
+      return c.json(
+        { error: { code: 'FORBIDDEN', message: `Access to table "${tableName}" is not allowed` } },
+        403
+      )
+    }
+  }
+
+  // owner 校验：有 userId 时检查表归属
+  const userId = c.get('userId')
+  if (userId !== undefined) {
+    const meta = await c.env.DB.prepare(
+      `SELECT owner_id FROM _meta WHERE table_name = ?`
+    ).bind(tableName).first<{ owner_id: number | null }>()
+
+    // 表存在于 _meta 且有 owner_id 且不匹配 → 拒绝
+    if (meta && meta.owner_id !== null && meta.owner_id !== userId) {
+      return c.json(
+        { error: { code: 'FORBIDDEN', message: `Access to table "${tableName}" is not allowed` } },
+        403
+      )
+    }
+  }
+
+  return next()
+}
+
+/**
+ * Admin 角色保护中间件
+ */
+export const requireAdminMiddleware: MiddlewareHandler<{
+  Bindings: Env
+  Variables: AuthVariables
+}> = async (c, next) => {
+  if (c.get('userRole') !== 'admin') {
     return c.json(
-      { error: { code: 'FORBIDDEN', message: `Access to table "${tableName}" is not allowed` } },
+      { error: { code: 'FORBIDDEN', message: 'Admin access required' } },
       403
     )
   }

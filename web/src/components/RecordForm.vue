@@ -219,7 +219,8 @@ function dateToTs(v: unknown): number | null {
 
 function tsToDateStr(ts: number | null): string | null {
   if (!ts) return null
-  return new Date(ts).toISOString().slice(0, 10)
+  const d = new Date(ts)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
 function datetimeToTs(v: unknown): number | null {

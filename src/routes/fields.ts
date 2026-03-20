@@ -39,15 +39,16 @@ async function ensureFieldMeta(db: D1Database, tableName: string) {
   if (toInsert.length > 0) {
     const stmts = toInsert.map((c, i) =>
       db.prepare(
-        `INSERT OR IGNORE INTO _field_meta (table_name, column_name, title, field_type, order_index, width)
-         VALUES (?, ?, ?, ?, ?, ?)`
+        `INSERT OR IGNORE INTO _field_meta (table_name, column_name, title, field_type, order_index, width, is_hidden)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`
       ).bind(
         tableName,
         c.name,
         c.name,
         inferFieldType(c.name, c.type),
         (existing.results.length + i) * 10,
-        c.name === 'id' ? 80 : 180
+        c.name === 'id' ? 80 : 180,
+        c.name === 'created_at' ? 1 : 0
       )
     )
     await db.batch(stmts)

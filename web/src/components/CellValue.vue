@@ -167,7 +167,8 @@ const dateVal = computed(() => {
   const s = String(props.value)
   if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10)
   const d = toDate(props.value)
-  return d ? d.toISOString().slice(0, 10) : s
+  if (!d) return s
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 })
 
 const datetimeVal = computed(() => {

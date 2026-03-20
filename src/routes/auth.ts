@@ -85,10 +85,40 @@ auth.get('/callback', async (c) => {
     return c.redirect('/login?error=userinfo_failed')
   }
 
-  // 5. 检查邮箱白名单
-  const allowedEmails = (c.env.ALLOWED_EMAILS ?? '').split(',').map(e => e.trim()).filter(Boolean)
-  if (!allowedEmails.includes(userInfo.email)) {
-    return c.redirect('/login?error=unauthorized_email')
+  // 5. 检查 _users 表
+  const existingUser = await c.env.DB.prepare(
+    `SELECT id, status FROM _users WHERE email = ? LIMIT 1`
+  ).bind(userInfo.email).first<{ id: number; status: string }>()
+
+  if (existingUser) {
+    // 用户已存在
+    if (existingUser.status === 'disabled') {
+      return c.redirect('/login?error=account_disabled')
+    }
+    // 更新 last_login、name、picture
+    await c.env.DB.prepare(
+      `UPDATE _users SET last_login = unixepoch(), name = ?, picture = ? WHERE id = ?`
+    ).bind(userInfo.name, userInfo.picture, existingUser.id).run()
+  } else {
+    // 用户不存在，检查是否为引导模式（_users 表空）
+    const userCount = await c.env.DB.prepare(
+      `SELECT COUNT(*) as cnt FROM _users`
+    ).first<{ cnt: number }>()
+
+    if (userCount && userCount.cnt === 0) {
+      // 引导模式：用 ALLOWED_EMAILS 验证，首个用户成为 admin
+      const allowedEmails = (c.env.ALLOWED_EMAILS ?? '').split(',').map(e => e.trim()).filter(Boolean)
+      if (allowedEmails.length > 0 && !allowedEmails.includes(userInfo.email)) {
+        return c.redirect('/login?error=unauthorized_email')
+      }
+      // 创建为 admin
+      await c.env.DB.prepare(
+        `INSERT INTO _users (email, name, picture, role, last_login) VALUES (?, ?, ?, 'admin', unixepoch())`
+      ).bind(userInfo.email, userInfo.name, userInfo.picture).run()
+    } else {
+      // _users 表非空，但该邮箱不在其中 → 拒绝
+      return c.redirect('/login?error=unauthorized_email')
+    }
   }
 
   // 6. 生成 session cookie
@@ -101,9 +131,7 @@ auth.get('/callback', async (c) => {
     status: 302,
     headers: { 'Location': '/' },
   })
-  // 清除 state cookie
   response.headers.append('Set-Cookie', 'd1t_oauth_state=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax')
-  // 设置 session cookie
   response.headers.append('Set-Cookie', sessionCookie)
   return response
 })
@@ -119,21 +147,27 @@ auth.post('/logout', (c) => {
   })
 })
 
-// GET /me — 返回当前登录用户信息
+// GET /me — 返回当前登录用户信息（含 id 和 role）
 auth.get('/me', async (c) => {
   const cookieHeader = c.req.header('Cookie') ?? ''
   if (!cookieHeader) {
     return c.json({ error: { code: 'UNAUTHORIZED', message: 'Not authenticated' } }, 401)
   }
 
-  const allowedEmails = (c.env.ALLOWED_EMAILS ?? '').split(',').map(e => e.trim()).filter(Boolean)
-  const user = await verifySession(cookieHeader, c.env.SESSION_SECRET, allowedEmails)
-
+  const user = await verifySession(cookieHeader, c.env.SESSION_SECRET)
   if (!user) {
     return c.json({ error: { code: 'UNAUTHORIZED', message: 'Not authenticated' } }, 401)
   }
 
-  return c.json({ data: { email: user.email, name: user.name, picture: user.picture } })
+  const userRow = await c.env.DB.prepare(
+    `SELECT id, role, status FROM _users WHERE email = ? LIMIT 1`
+  ).bind(user.email).first<{ id: number; role: string; status: string }>()
+
+  if (!userRow || userRow.status !== 'active') {
+    return c.json({ error: { code: 'UNAUTHORIZED', message: 'User account not found or disabled' } }, 401)
+  }
+
+  return c.json({ data: { id: userRow.id, email: user.email, name: user.name, picture: user.picture, role: userRow.role } })
 })
 
 export default auth

@@ -226,6 +226,36 @@ export interface ApiKeyInfo {
   groups: GroupInfo[]
 }
 
-export const getCurrentUser = (): Promise<{ email: string; name: string; picture: string }> =>
-  http.get<{ data: { email: string; name: string; picture: string } }>('/auth/me')
+export interface CurrentUser {
+  id: number
+  email: string
+  name: string
+  picture: string
+  role: 'admin' | 'user'
+}
+
+export interface UserInfo {
+  id: number
+  email: string
+  name: string
+  picture: string
+  role: 'admin' | 'user'
+  status: 'active' | 'disabled'
+  created_at: number
+  last_login: number | null
+}
+
+export const getCurrentUser = (): Promise<CurrentUser> =>
+  http.get<{ data: CurrentUser }>('/auth/me')
     .then(r => r.data.data)
+
+export const userApi = {
+  getUsers: () =>
+    http.get<{ data: UserInfo[] }>('/admin/users').then(r => r.data.data),
+  addUser: (data: { email: string; name?: string; role?: 'admin' | 'user' }) =>
+    http.post<{ data: UserInfo }>('/admin/users', data).then(r => r.data.data),
+  updateUser: (id: number, data: { role?: string; status?: string }) =>
+    http.patch<{ data: { success: boolean } }>(`/admin/users/${id}`, data).then(r => r.data.data),
+  disableUser: (id: number) =>
+    http.delete(`/admin/users/${id}`),
+}

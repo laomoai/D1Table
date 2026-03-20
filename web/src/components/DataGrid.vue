@@ -546,6 +546,10 @@ function esc(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 }
 
+function localDateStr(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
 function formatDate(v: unknown): string {
   if (!v) return ''
   const s = String(v)
@@ -553,10 +557,10 @@ function formatDate(v: unknown): string {
   const n = Number(s)
   if (!isNaN(n) && n > 0) {
     const d = new Date(n < 1e10 ? n * 1000 : n)
-    if (!isNaN(d.getTime())) return d.toISOString().slice(0, 10)
+    if (!isNaN(d.getTime())) return localDateStr(d)
   }
   const d = new Date(s)
-  return isNaN(d.getTime()) ? esc(s) : d.toISOString().slice(0, 10)
+  return isNaN(d.getTime()) ? esc(s) : localDateStr(d)
 }
 
 function formatDatetime(v: unknown): string {
