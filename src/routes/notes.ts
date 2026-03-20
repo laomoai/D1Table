@@ -30,13 +30,12 @@ notes.get('/', async (c) => {
 
   const parentId = c.req.query('parent_id')
 
-  let sql = `SELECT id, title, icon, parent_id, sort_order, created_by, created_at, updated_at FROM _notes WHERE ${clause}`
+  let sql = `SELECT id, title, icon, parent_id, sort_order, created_by, created_at, updated_at FROM _notes WHERE ${clause} AND deleted_at IS NULL`
 
   if (parentId && parentId !== 'root') {
     sql += ` AND parent_id = ?`
     params.push(parentId)
   } else {
-    // Top-level notes
     sql += ` AND parent_id IS NULL`
   }
 
@@ -58,7 +57,7 @@ notes.get('/tree', async (c) => {
 
   const rows = await c.env.DB.prepare(
     `SELECT id, title, icon, parent_id, sort_order, created_at, updated_at
-     FROM _notes WHERE ${clause}
+     FROM _notes WHERE ${clause} AND deleted_at IS NULL
      ORDER BY sort_order ASC, created_at DESC`
   ).bind(...params)
     .all<{ id: string; title: string; icon: string | null; parent_id: string | null; sort_order: number; created_at: number; updated_at: number }>()
@@ -77,7 +76,7 @@ notes.get('/:id', async (c) => {
 
   const row = await c.env.DB.prepare(
     `SELECT id, title, content, icon, parent_id, sort_order, created_by, owner_id, created_at, updated_at
-     FROM _notes WHERE id = ? AND ${clause}`
+     FROM _notes WHERE id = ? AND ${clause} AND deleted_at IS NULL`
   ).bind(id, ...params)
     .first<{ id: string; title: string; content: string; icon: string | null; parent_id: string | null; sort_order: number; created_by: number | null; owner_id: number | null; created_at: number; updated_at: number }>()
 
@@ -205,31 +204,33 @@ notes.patch('/:id', requireWriteMiddleware, async (c) => {
 
 /**
  * DELETE /api/notes/:id
- * 删除笔记（级联删除子笔记）
+ * Soft delete: set deleted_at on note and all descendants
  */
 notes.delete('/:id', requireWriteMiddleware, async (c) => {
   const { id } = c.req.param()
   const userId = c.get('userId')
 
-  // 递归获取所有子笔记 ID
-  async function getDescendantIds(parentId: string): Promise<string[]> {
+  // Recursively collect all descendant IDs (max depth 50)
+  async function getDescendantIds(parentId: string, depth = 0): Promise<string[]> {
+    if (depth > 50) return []
     const children = await c.env.DB.prepare(
-      `SELECT id FROM _notes WHERE parent_id = ?`
+      `SELECT id FROM _notes WHERE parent_id = ? AND deleted_at IS NULL`
     ).bind(parentId).all<{ id: string }>()
 
     const ids: string[] = []
     for (const child of children.results) {
       ids.push(child.id)
-      ids.push(...await getDescendantIds(child.id))
+      ids.push(...await getDescendantIds(child.id, depth + 1))
     }
     return ids
   }
 
   const allIds = [id, ...await getDescendantIds(id)]
+  const now = Math.floor(Date.now() / 1000)
 
   const stmts = allIds.map(noteId => {
-    let sql = `DELETE FROM _notes WHERE id = ?`
-    const params: unknown[] = [noteId]
+    let sql = `UPDATE _notes SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL`
+    const params: unknown[] = [now, noteId]
     if (userId !== undefined) {
       sql += ` AND owner_id = ?`
       params.push(userId)
@@ -240,6 +241,52 @@ notes.delete('/:id', requireWriteMiddleware, async (c) => {
   await c.env.DB.batch(stmts)
 
   return c.json({ data: { success: true } })
+})
+
+/**
+ * POST /api/notes/:id/restore
+ * Restore a soft-deleted note (and its descendants)
+ */
+notes.post('/:id/restore', requireWriteMiddleware, async (c) => {
+  const { id } = c.req.param()
+  const userId = c.get('userId')
+
+  // Restore note and all descendants that were deleted at the same time
+  const note = await c.env.DB.prepare(
+    `SELECT deleted_at FROM _notes WHERE id = ?`
+  ).bind(id).first<{ deleted_at: number | null }>()
+
+  if (!note || !note.deleted_at) {
+    return c.json({ error: { code: 'NOT_FOUND', message: 'Deleted note not found' } }, 404)
+  }
+
+  let sql = `UPDATE _notes SET deleted_at = NULL WHERE deleted_at = ? AND (id = ? OR parent_id = ?)`
+  const params: unknown[] = [note.deleted_at, id, id]
+  if (userId !== undefined) {
+    sql += ` AND owner_id = ?`
+    params.push(userId)
+  }
+
+  await c.env.DB.prepare(sql).bind(...params).run()
+
+  return c.json({ data: { success: true } })
+})
+
+/**
+ * GET /api/notes/trash
+ * List soft-deleted notes
+ */
+notes.get('/trash', async (c) => {
+  const userId = c.get('userId')
+  const { clause, params } = ownerFilter(userId)
+
+  const rows = await c.env.DB.prepare(
+    `SELECT id, title, icon, deleted_at FROM _notes WHERE ${clause} AND deleted_at IS NOT NULL AND parent_id IS NULL
+     ORDER BY deleted_at DESC`
+  ).bind(...params)
+    .all<{ id: string; title: string; icon: string | null; deleted_at: number }>()
+
+  return c.json({ data: rows.results })
 })
 
 export default notes

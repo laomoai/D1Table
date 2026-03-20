@@ -10,6 +10,7 @@
       draggable="true"
       @click="emit('select', note.id)"
       @dragstart="onDragStart"
+      @dragend="onDragEnd"
       @dragover.prevent="onDragOver"
       @dragleave="onDragLeave"
       @drop.prevent="onDrop"
@@ -93,6 +94,10 @@ function onDragOver(e: DragEvent) {
   // Top 1/3 = above, bottom 2/3 = child
   const position: 'above' | 'child' = ratio < 0.35 ? 'above' : 'child'
   emit('update:drop-state', { id: props.note.id, position })
+}
+
+function onDragEnd() {
+  emit('update:drop-state', { id: null, position: null })
 }
 
 function onDragLeave() {

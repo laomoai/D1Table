@@ -264,14 +264,28 @@ async function handleReorder({ dragId, dropId, mode }: { dragId: string; dropId:
       expandedFolders.value.add(dropId)
     } else {
       // Place before the drop target at same level
-      const siblings = allNotes.filter(n => n.parent_id === dropNote.parent_id)
-      const dropIndex = siblings.indexOf(dropNote)
-      const newOrder = dropIndex > 0
-        ? Math.floor((siblings[dropIndex - 1].sort_order + dropNote.sort_order) / 2)
-        : dropNote.sort_order - 1
+      const siblings = allNotes
+        .filter(n => n.parent_id === dropNote.parent_id)
+        .sort((a, b) => a.sort_order - b.sort_order)
+      const dropIndex = siblings.findIndex(n => n.id === dropId)
+      const prevOrder = dropIndex > 0 ? siblings[dropIndex - 1].sort_order : dropNote.sort_order - 1000
+      const gap = dropNote.sort_order - prevOrder
 
-      const updates: Record<string, unknown> = { sort_order: newOrder, parent_id: dropNote.parent_id ?? null }
-      await notesApi.updateNote(dragId, updates)
+      if (gap <= 1) {
+        // No room — rebalance all siblings with spacing of 1000
+        for (let i = 0; i < siblings.length; i++) {
+          if (siblings[i].id !== dragId) {
+            await notesApi.updateNote(siblings[i].id, { sort_order: (i + 1) * 1000 })
+          }
+        }
+        // Insert before drop target
+        const newDropIndex = siblings.findIndex(n => n.id === dropId)
+        const newOrder = newDropIndex > 0 ? newDropIndex * 1000 - 500 : 500
+        await notesApi.updateNote(dragId, { sort_order: newOrder, parent_id: dropNote.parent_id ?? null })
+      } else {
+        const newOrder = Math.floor((prevOrder + dropNote.sort_order) / 2)
+        await notesApi.updateNote(dragId, { sort_order: newOrder, parent_id: dropNote.parent_id ?? null })
+      }
     }
     queryClient.invalidateQueries({ queryKey: ['notes', 'tree'] })
   } catch (err) {

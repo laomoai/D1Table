@@ -309,9 +309,17 @@ export const notesApi = {
   updateNote: (id: string, data: NoteUpdate) =>
     http.patch<{ data: { success: boolean } }>(`/notes/${id}`, data).then(r => r.data.data),
 
-  /** 删除笔记 */
+  /** 删除笔记（软删除） */
   deleteNote: (id: string) =>
     http.delete(`/notes/${id}`),
+
+  /** 恢复已删除的笔记 */
+  restoreNote: (id: string) =>
+    http.post<{ data: { success: boolean } }>(`/notes/${id}/restore`).then(r => r.data.data),
+
+  /** 获取已删除的笔记 */
+  getTrash: () =>
+    http.get<{ data: { id: string; title: string; icon: string | null; deleted_at: number }[] }>('/notes/trash').then(r => r.data.data),
 }
 
 export const getCurrentUser = (): Promise<CurrentUser> =>
