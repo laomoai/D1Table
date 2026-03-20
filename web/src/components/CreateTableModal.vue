@@ -129,10 +129,11 @@ const TYPE_META: Record<string, { label: string; icon: string; color: string }> 
   checkbox: { label: 'Checkbox',  icon: '☑',  color: '#18a058' },
   select:   { label: 'Select',    icon: '◉',  color: '#f0a020' },
   image:    { label: 'Image',     icon: '🖼', color: '#e91e8c' },
+  note:     { label: 'Note',      icon: '📄', color: '#8a6d3b' },
 }
 
 const fieldTypeToSqlite: Record<string, string> = {
-  text: 'TEXT', longtext: 'TEXT', email: 'TEXT', url: 'TEXT', select: 'TEXT', image: 'TEXT',
+  text: 'TEXT', longtext: 'TEXT', email: 'TEXT', url: 'TEXT', select: 'TEXT', image: 'TEXT', note: 'TEXT',
   number: 'REAL', currency: 'REAL', percent: 'REAL',
   date: 'TEXT', datetime: 'INTEGER',
   checkbox: 'INTEGER',

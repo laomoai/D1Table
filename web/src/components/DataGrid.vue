@@ -480,6 +480,22 @@ function typedCellRenderer(params: { value: unknown; fieldType: FieldType; selec
       }
     }
 
+    case 'note': {
+      const s = String(value)
+      const parts = s.split('|')
+      const noteId = parts[0]
+      const noteTitle = parts.length >= 2 ? parts[1] : (s.startsWith('n_') ? 'Note ' + s.slice(2, 8) : s)
+      const noteIcon = parts.length >= 3 && parts[2] ? parts[2] : '📄'
+      const span = document.createElement('span')
+      span.className = 'ag-cell-note'
+      span.textContent = `${noteIcon} ${noteTitle}`
+      span.onclick = (e) => {
+        e.stopPropagation()
+        import('@/router').then(m => m.default.push(`/notes/${noteId}`))
+      }
+      return span
+    }
+
     case 'text':
     case 'longtext':
     default: {
@@ -741,6 +757,15 @@ async function refreshAll() {
 .ag-cell-link { color: #4f6ef7; text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ag-cell-link:hover { text-decoration: underline; }
 .ag-cell-badge { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 12px; border: 1px solid; font-weight: 500; }
+.ag-cell-note {
+  display: inline-flex; align-items: center; gap: 2px;
+  padding: 1px 8px 1px 4px; background: rgba(55,53,47,0.06);
+  border: 1px solid #e9e9e7; border-radius: 4px;
+  font-size: 12px; color: #37352f; font-weight: 500;
+  cursor: pointer; max-width: 100%; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap;
+}
+.ag-cell-note:hover { background: rgba(55,53,47,0.1); }
 /* "···" 操作按钮 */
 .ag-actions-wrap { display: flex; align-items: center; justify-content: center; height: 100%; }
 .ag-act-menu-btn {

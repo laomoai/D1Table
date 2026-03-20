@@ -15,6 +15,16 @@
         <span class="logo">D1Table</span>
       </div>
 
+      <!-- Notes entry -->
+      <div
+        class="nav-item"
+        :class="{ active: route.path.startsWith('/notes') }"
+        @click="router.push('/notes')"
+      >
+        <n-icon :component="NotesIcon" size="16" style="opacity: 0.7" />
+        <span>Notes</span>
+      </div>
+
       <!-- Groups + table list -->
       <div class="table-list">
         <!-- Grouped tables -->
@@ -159,7 +169,7 @@ import { computed, ref, nextTick, reactive, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import { NLayout, NLayoutSider, NLayoutContent, NButton, NIcon } from 'naive-ui'
-import { GridOutline as TableIcon, SettingsOutline as SettingsIcon, LogOutOutline as LogoutIcon } from '@vicons/ionicons5'
+import { GridOutline as TableIcon, SettingsOutline as SettingsIcon, LogOutOutline as LogoutIcon, DocumentTextOutline as NotesIcon } from '@vicons/ionicons5'
 import { api, http, type TableMeta } from '@/api/client'
 import { useMessage } from 'naive-ui'
 import { getCachedUser, resetAuthState } from '@/router'
@@ -422,6 +432,27 @@ async function logout() {
   font-weight: 700;
   color: #37352f;
   letter-spacing: 0;
+}
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 16px;
+  margin: 4px 6px 0;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  color: #787774;
+  transition: background 0.12s, color 0.12s;
+}
+.nav-item:hover {
+  background: rgba(55, 53, 47, 0.08);
+  color: #37352f;
+}
+.nav-item.active {
+  background: rgba(55, 53, 47, 0.1);
+  color: #37352f;
 }
 .table-list {
   padding: 8px 0;

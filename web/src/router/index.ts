@@ -32,6 +32,8 @@ const router = createRouter({
         { path: '', component: () => import('@/pages/DashboardPage.vue') },
         { path: 'tables/:tableName', component: () => import('@/pages/TableView.vue') },
         { path: 'settings', component: () => import('@/pages/Settings.vue') },
+        { path: 'notes', component: () => import('@/pages/NotesPage.vue') },
+        { path: 'notes/:noteId', component: () => import('@/pages/NotesPage.vue') },
       ],
     },
   ],

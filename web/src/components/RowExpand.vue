@@ -46,6 +46,29 @@
               />
             </template>
 
+            <!-- 即时交互：note (stored as "id|title|icon") -->
+            <template v-else-if="field.field_type === 'note'">
+              <div class="note-field-wrap">
+                <a
+                  v-if="currentRow[field.column_name]"
+                  class="note-field-link"
+                  :href="`/notes/${parseNoteValue(currentRow[field.column_name] as string).id}`"
+                  @click.prevent="$router.push(`/notes/${parseNoteValue(currentRow[field.column_name] as string).id}`)"
+                >{{ parseNoteValue(currentRow[field.column_name] as string).icon || '📄' }} {{ parseNoteValue(currentRow[field.column_name] as string).title }}</a>
+                <div class="note-field-actions">
+                  <button class="note-field-btn" @click="openNotePicker(field.column_name)" title="Select note">
+                    {{ currentRow[field.column_name] ? 'Change' : 'Select note' }}
+                  </button>
+                  <button
+                    v-if="currentRow[field.column_name]"
+                    class="note-field-btn danger"
+                    @click="saveField(field.column_name, null)"
+                    title="Clear"
+                  >Clear</button>
+                </div>
+              </div>
+            </template>
+
             <!-- 即时交互：select -->
             <template v-else-if="field.field_type === 'select'">
               <n-select
@@ -165,13 +188,46 @@
       </div>
     </n-drawer-content>
   </n-drawer>
+
+  <!-- Note picker modal -->
+  <n-modal v-model:show="showNotePicker" :mask-closable="true">
+    <div class="note-picker-modal">
+      <div class="np-header">
+        <span class="np-title">Select a note</span>
+        <button class="np-close" @click="showNotePicker = false">×</button>
+      </div>
+      <div class="np-search">
+        <input v-model="notePickerSearch" class="np-input" placeholder="Search notes..." />
+      </div>
+      <div class="np-list">
+        <div v-if="!filteredPickerNotes.length" class="np-empty">No notes found</div>
+        <div
+          v-for="item in filteredPickerNotes"
+          :key="item.note.id"
+          class="np-item"
+          :style="{ paddingLeft: `${10 + item.depth * 20}px` }"
+          @click="pickNote(item.note.id)"
+        >
+          <span
+            v-if="item.hasChildren"
+            class="np-arrow"
+            :class="{ expanded: pickerExpanded.has(item.note.id) }"
+            @click.stop="togglePickerExpand(item.note.id)"
+          >›</span>
+          <span v-else class="np-arrow-ph" />
+          <span class="np-icon">{{ item.note.icon || (item.hasChildren ? '📁' : '📄') }}</span>
+          <span class="np-name">{{ item.note.title || 'Untitled' }}</span>
+        </div>
+      </div>
+    </div>
+  </n-modal>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, nextTick, onBeforeUnmount, onMounted } from 'vue'
-import { useMessage, NDrawer, NDrawerContent, NButton, NInput, NInputNumber, NSwitch, NSelect, NDatePicker } from 'naive-ui'
-import { api, type FieldMeta, type FieldType } from '@/api/client'
-import { useQueryClient } from '@tanstack/vue-query'
+import { ref, computed, watch, nextTick, onBeforeUnmount, onMounted, shallowRef } from 'vue'
+import { useMessage, NDrawer, NDrawerContent, NButton, NInput, NInputNumber, NSwitch, NSelect, NDatePicker, NModal } from 'naive-ui'
+import { api, notesApi, type FieldMeta, type FieldType, type NoteListItem } from '@/api/client'
+import { useQueryClient, useQuery } from '@tanstack/vue-query'
 import CellValue from './CellValue.vue'
 import ImageUpload from './ImageUpload.vue'
 
@@ -322,11 +378,111 @@ function datetimeToTs(v: unknown): number | null {
   return isNaN(d.getTime()) ? null : d.getTime()
 }
 
+
+// ── Note value parser ───────────────────────────────────────
+function parseNoteValue(val: string): { id: string; title: string; icon: string } {
+  const parts = val.split('|')
+  if (parts.length >= 2) return { id: parts[0], title: parts[1], icon: parts[2] || '' }
+  return { id: val, title: val, icon: '' }
+}
+
+// ── Note picker ─────────────────────────────────────────────
+const showNotePicker = ref(false)
+const notePickerSearch = ref('')
+const notePickerField = ref<string | null>(null)
+
+const { data: allNotes } = useQuery({
+  queryKey: ['notes', 'tree'],
+  queryFn: notesApi.getTree,
+  enabled: computed(() => showNotePicker.value),
+})
+
+// Cache note titles for display
+const noteTitleCache = ref(new Map<string, string>())
+
+function noteTitle(noteId: string): string {
+  if (noteTitleCache.value.has(noteId)) return noteTitleCache.value.get(noteId)!
+  // Trigger async fetch
+  notesApi.getNote(noteId).then(n => {
+    noteTitleCache.value.set(noteId, n.title)
+  }).catch(() => {
+    noteTitleCache.value.set(noteId, '(deleted)')
+  })
+  return noteId // Show ID while loading
+}
+
+// Build tree structures for picker
+interface NoteTreeNode { note: NoteListItem; depth: number; hasChildren: boolean }
+
+const pickerExpanded = ref(new Set<string>())
+
+const pickerChildrenMap = computed(() => {
+  const map = new Map<string | null, NoteListItem[]>()
+  for (const n of allNotes.value ?? []) {
+    const key = n.parent_id ?? null
+    const arr = map.get(key) ?? []
+    arr.push(n)
+    map.set(key, arr)
+  }
+  return map
+})
+
+const filteredPickerNotes = computed<NoteTreeNode[]>(() => {
+  const q = notePickerSearch.value.toLowerCase()
+  const cm = pickerChildrenMap.value
+
+  // Searching: flat results, no tree
+  if (q) {
+    return (allNotes.value ?? [])
+      .filter(n => n.title.toLowerCase().includes(q))
+      .map(n => ({ note: n, depth: 0, hasChildren: !!cm.get(n.id)?.length }))
+  }
+
+  // Tree: respect expanded state
+  const result: NoteTreeNode[] = []
+  function walk(parentId: string | null, depth: number) {
+    for (const child of cm.get(parentId) ?? []) {
+      const hasChildren = !!cm.get(child.id)?.length
+      result.push({ note: child, depth, hasChildren })
+      if (hasChildren && pickerExpanded.value.has(child.id)) {
+        walk(child.id, depth + 1)
+      }
+    }
+  }
+  walk(null, 0)
+  return result
+})
+
+function togglePickerExpand(id: string) {
+  const s = new Set(pickerExpanded.value)
+  if (s.has(id)) s.delete(id); else s.add(id)
+  pickerExpanded.value = s
+}
+
+function openNotePicker(columnName: string) {
+  notePickerField.value = columnName
+  notePickerSearch.value = ''
+  showNotePicker.value = true
+}
+
+function pickNote(noteId: string) {
+  if (notePickerField.value) {
+    const note = (allNotes.value ?? []).find(n => n.id === noteId)
+    const title = note?.title || 'Untitled'
+    const icon = note?.icon || ''
+    // Store as "id|title|icon" so CellValue can display without async fetch
+    saveField(notePickerField.value, `${noteId}|${title}|${icon}`)
+    // Update title cache
+    noteTitleCache.value.set(noteId, title)
+  }
+  showNotePicker.value = false
+}
+
 // ── 类型图标 & 颜色 ─────────────────────────────────────────
 function typeIcon(type: FieldType): string {
   const map: Record<string, string> = {
     text: 'T', longtext: '¶', number: '#', currency: '¥', percent: '%',
-    email: '@', url: '🔗', date: '📅', datetime: '🕐', checkbox: '☑', select: '◉', image: '🖼',
+    email: '@', url: '🔗', date: '📅', datetime: '🕐', checkbox: '☑', select: '◉', image: '🖼', note: '📄',
   }
   return map[type] ?? 'T'
 }
@@ -334,7 +490,7 @@ function typeIcon(type: FieldType): string {
 function typeColor(type: FieldType): string {
   const map: Record<string, string> = {
     text: '#666', longtext: '#888', number: '#4f6ef7', currency: '#18a058', percent: '#f0a020',
-    email: '#00adb5', url: '#4f6ef7', date: '#8a2be2', datetime: '#d03050', checkbox: '#18a058', select: '#f0a020', image: '#e91e8c',
+    email: '#00adb5', url: '#4f6ef7', date: '#8a2be2', datetime: '#d03050', checkbox: '#18a058', select: '#f0a020', image: '#e91e8c', note: '#8a6d3b',
   }
   return map[type] ?? '#666'
 }
@@ -466,4 +622,60 @@ function typeColor(type: FieldType): string {
   line-height: 1.8;
 }
 .longtext-toggle:hover { text-decoration: underline; }
+/* Note field */
+.note-field-wrap { display: flex; flex-direction: column; gap: 6px; width: 100%; }
+.note-field-link {
+  display: inline-flex; align-items: center; gap: 2px;
+  padding: 3px 10px 3px 6px; background: rgba(55,53,47,0.06);
+  border: 1px solid #e9e9e7; border-radius: 4px;
+  font-size: 13px; color: #37352f; text-decoration: none; font-weight: 500;
+}
+.note-field-link:hover { background: rgba(55,53,47,0.1); }
+.note-field-actions { display: flex; gap: 6px; }
+.note-field-btn {
+  background: none; border: 1px solid #e9e9e7; border-radius: 4px;
+  padding: 3px 10px; font-size: 12px; color: #787774; cursor: pointer; transition: all 0.1s;
+}
+.note-field-btn:hover { background: rgba(55,53,47,0.06); color: #37352f; }
+.note-field-btn.danger { color: #e03e3e; border-color: #f0d0d0; }
+.note-field-btn.danger:hover { background: rgba(224,62,62,0.06); }
+/* Note picker modal */
+.note-picker-modal {
+  background: #fff; border-radius: 8px; width: 400px; max-height: 480px;
+  display: flex; flex-direction: column; overflow: hidden;
+}
+.np-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 16px 20px 8px;
+}
+.np-title { font-size: 15px; font-weight: 600; color: #37352f; }
+.np-close {
+  background: none; border: none; font-size: 20px; color: #a3a19d;
+  cursor: pointer; padding: 0 2px; line-height: 1; border-radius: 3px;
+}
+.np-close:hover { color: #37352f; background: rgba(55,53,47,0.06); }
+.np-search { padding: 8px 20px; }
+.np-input {
+  width: 100%; padding: 8px 12px; border: 1px solid #e9e9e7;
+  border-radius: 4px; font-size: 13px; outline: none; color: #37352f;
+}
+.np-input:focus { border-color: #b3b0ab; }
+.np-list { flex: 1; overflow-y: auto; padding: 0 12px 12px; }
+.np-empty { padding: 20px; text-align: center; color: #a3a19d; font-size: 13px; }
+.np-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 10px; border-radius: 4px; cursor: pointer; transition: background 0.1s;
+  font-size: 13px; color: #37352f;
+}
+.np-item:hover { background: rgba(55,53,47,0.06); }
+.np-arrow {
+  font-size: 11px; color: #a3a19d; cursor: pointer;
+  width: 14px; text-align: center; flex-shrink: 0;
+  transition: transform 0.12s; display: inline-block;
+}
+.np-arrow.expanded { transform: rotate(90deg); }
+.np-arrow:hover { color: #37352f; }
+.np-arrow-ph { width: 14px; flex-shrink: 0; }
+.np-icon { font-size: 14px; flex-shrink: 0; }
+.np-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 </style>

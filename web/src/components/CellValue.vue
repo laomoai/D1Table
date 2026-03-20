@@ -57,6 +57,14 @@
   >{{ value }}</a>
   <span v-else-if="fieldType === 'longtext'" :class="detail ? 'cell-longtext--full' : 'cell-longtext'">{{ value }}</span>
 
+  <!-- note (stored as "id|title|icon") -->
+  <span
+    v-else-if="fieldType === 'note' && noteInfo"
+    class="cell-note"
+    @click.stop="goToNote(noteInfo!.id)"
+  >{{ noteInfo.icon || '📄' }} {{ noteInfo.title }}</span>
+  <span v-else-if="fieldType === 'note'" class="cell-empty">—</span>
+
   <!-- image -->
   <img
     v-else-if="fieldType === 'image' && imageThumb"
@@ -85,6 +93,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { FieldType, SelectOption } from '@/api/client'
+import router from '@/router'
 
 const props = defineProps<{
   value: unknown
@@ -98,6 +107,17 @@ const isEmpty = computed(() => {
   if (v === null || v === undefined || v === '' || v === '[]' || v === 'null') return true
   if (Array.isArray(v)) return v.length === 0
   return false
+})
+
+const noteInfo = computed<{ id: string; title: string; icon: string } | null>(() => {
+  if (props.fieldType !== 'note' || !props.value) return null
+  const s = String(props.value)
+  const parts = s.split('|')
+  if (parts.length >= 2) {
+    return { id: parts[0], title: parts[1], icon: parts[2] || '' }
+  }
+  // Fallback: raw ID — show shortened
+  return { id: s, title: s.startsWith('n_') ? 'Note ' + s.slice(2, 8) : s, icon: '' }
 })
 
 const imageThumb = computed<string | null>(() => {
@@ -144,6 +164,10 @@ function isUrl(v: unknown): boolean {
     const u = new URL(String(v))
     return u.protocol === 'http:' || u.protocol === 'https:'
   } catch { return false }
+}
+
+function goToNote(noteId: string) {
+  router.push(`/notes/${noteId}`)
 }
 
 function isEmail(v: unknown): boolean {
@@ -248,6 +272,26 @@ const datetimeVal = computed(() => {
   font-size: 12px;
   border: 1px solid;
   font-weight: 500;
+}
+.cell-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 1px 8px 1px 4px;
+  background: rgba(55, 53, 47, 0.06);
+  border: 1px solid #e9e9e7;
+  border-radius: 4px;
+  font-size: 12px;
+  color: #37352f;
+  font-weight: 500;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.cell-note:hover {
+  background: rgba(55, 53, 47, 0.1);
 }
 .cell-image {
   width: 24px;

@@ -22,7 +22,7 @@ http.interceptors.response.use(
 
 // ── 类型定义 ──────────────────────────────────────────────────
 
-export type FieldType = 'text' | 'longtext' | 'number' | 'currency' | 'percent' | 'email' | 'url' | 'date' | 'datetime' | 'checkbox' | 'select' | 'image'
+export type FieldType = 'text' | 'longtext' | 'number' | 'currency' | 'percent' | 'email' | 'url' | 'date' | 'datetime' | 'checkbox' | 'select' | 'image' | 'note'
 
 export interface ImageValue {
   thumb: string    // R2 key，如 images/uuid/thumb.webp
@@ -255,6 +255,63 @@ export interface UserInfo {
   created_at: number
   last_login: number | null
   table_count: number
+}
+
+// ── Notes 类型定义 ──────────────────────────────────────────────────
+
+export interface Note {
+  id: string
+  title: string
+  content: string
+  icon: string | null
+  parent_id: string | null
+  sort_order: number
+  created_by: number | null
+  owner_id: number | null
+  created_at: number
+  updated_at: number
+}
+
+export type NoteListItem = Omit<Note, 'content' | 'owner_id'>
+
+export interface NoteCreate {
+  title?: string
+  content?: string
+  parent_id?: string
+}
+
+export interface NoteUpdate {
+  title?: string
+  content?: string
+  icon?: string | null
+  parent_id?: string | null
+  sort_order?: number
+}
+
+export const notesApi = {
+  /** 获取笔记列表 */
+  getNotes: (params?: { parent_id?: string }) =>
+    http.get<{ data: NoteListItem[] }>('/notes', { params }).then(r => r.data.data),
+
+  /** 获取笔记树（独立笔记） */
+  getTree: () =>
+    http.get<{ data: NoteListItem[] }>('/notes/tree').then(r => r.data.data),
+
+  /** 获取单个笔记（含 content） */
+  getNote: (id: string) =>
+    http.get<{ data: Note }>(`/notes/${id}`).then(r => r.data.data),
+
+  /** 创建笔记 */
+  createNote: (data: NoteCreate) =>
+    http.post<{ data: { id: string; title: string } }>('/notes', data).then(r => r.data.data),
+
+  /** 更新笔记 */
+  updateNote: (id: string, data: NoteUpdate) =>
+    http.patch<{ data: { success: boolean } }>(`/notes/${id}`, data).then(r => r.data.data),
+
+  /** 删除笔记 */
+  deleteNote: (id: string) =>
+    http.delete(`/notes/${id}`),
 }
 
 export const getCurrentUser = (): Promise<CurrentUser> =>

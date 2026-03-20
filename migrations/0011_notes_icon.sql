@@ -1,0 +1,1 @@
+ALTER TABLE _notes ADD COLUMN icon TEXT;

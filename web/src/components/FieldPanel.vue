@@ -190,6 +190,7 @@ const fieldTypes = [
   { value: 'checkbox', label: 'Checkbox',  icon: '☑',  color: '#18a058' },
   { value: 'select',   label: 'Select',    icon: '◉',  color: '#f0a020' },
   { value: 'image',    label: 'Image',     icon: '🖼',  color: '#e91e8c' },
+  { value: 'note',     label: 'Note',      icon: '📄',  color: '#8a6d3b' },
 ]
 
 // ── 展开编辑 ──────────────────────────────────────────────────
