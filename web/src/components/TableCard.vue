@@ -1,7 +1,9 @@
 <template>
   <div class="table-card" @click="$emit('click')">
-    <div class="card-icon">
-      <n-icon :component="GridOutline" :size="20" color="#787774" />
+    <div class="card-icon" @click.stop="$emit('changeIcon', table)" title="Click to change icon">
+      <span v-if="table.icon && !table.icon.startsWith('ion:')" class="card-icon-emoji">{{ table.icon }}</span>
+      <IonIcon v-else-if="table.icon" :name="table.icon.slice(4)" :size="20" />
+      <n-icon v-else :component="GridOutline" :size="20" color="#787774" />
     </div>
     <div class="card-body">
       <template v-if="editingTable === table.name">
@@ -40,6 +42,7 @@ import { ref, watch, nextTick } from 'vue'
 import { NIcon } from 'naive-ui'
 import { GridOutline } from '@vicons/ionicons5'
 import type { TableMeta } from '@/api/client'
+import IonIcon from './IonIcon.vue'
 
 const props = defineProps<{
   table: TableMeta
@@ -55,6 +58,7 @@ defineEmits<{
   delete: [table: TableMeta]
   saveTitle: [table: TableMeta]
   cancelEdit: []
+  changeIcon: [table: TableMeta]
   'update:editTitle': [value: string]
 }>()
 
@@ -78,7 +82,11 @@ watch(() => props.editingTable, (val) => {
 .card-icon {
   width: 36px; height: 36px; background: #f1f1ef; border-radius: 4px;
   display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+  color: #37352f;
+  transition: background 0.12s;
 }
+.card-icon:hover { background: #e3e3e1; }
+.card-icon-emoji { font-size: 20px; line-height: 1; }
 .card-body { flex: 1; min-width: 0; }
 .card-title {
   font-size: 14px; font-weight: 600; color: #37352f;

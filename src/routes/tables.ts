@@ -43,8 +43,8 @@ tables.get('/', async (c) => {
   // owner 过滤：有 userId 时只查自己的表
   const userId = c.get('userId')
   const metaQuery = userId !== undefined
-    ? c.env.DB.prepare(`SELECT table_name, title, row_count FROM _meta WHERE owner_id = ? OR owner_id IS NULL`).bind(userId)
-    : c.env.DB.prepare(`SELECT table_name, title, row_count FROM _meta`)
+    ? c.env.DB.prepare(`SELECT table_name, title, row_count, icon FROM _meta WHERE owner_id = ? OR owner_id IS NULL`).bind(userId)
+    : c.env.DB.prepare(`SELECT table_name, title, row_count, icon FROM _meta`)
   const groupQuery = userId !== undefined
     ? c.env.DB.prepare(
         `SELECT gt.table_name, gt.group_id, g.name as group_name
@@ -58,7 +58,7 @@ tables.get('/', async (c) => {
 
   // 并行获取 _meta（行数+显示名）和分组信息，避免串行等待
   const [metaRows, gtRows] = await Promise.all([
-    metaQuery.all<{ table_name: string; title: string | null; row_count: number | null }>(),
+    metaQuery.all<{ table_name: string; title: string | null; row_count: number | null; icon: string | null }>(),
     groupQuery.all<{ table_name: string; group_id: number; group_name: string }>(),
   ])
 
@@ -68,6 +68,9 @@ tables.get('/', async (c) => {
   // 使用 _meta 缓存的行数（由 API 的 insert/delete 实时维护，成本为零）
   const countMap = Object.fromEntries(
     metaRows.results.map((r) => [r.table_name, r.row_count ?? 0])
+  )
+  const iconMap = Object.fromEntries(
+    metaRows.results.map((r) => [r.table_name, r.icon])
   )
 
   const groupsByTable = new Map<string, Array<{ id: number; name: string }>>()
@@ -88,6 +91,7 @@ tables.get('/', async (c) => {
     title: titleMap[name] ?? null,
     row_count: countMap[name] ?? 0,
     groups: groupsByTable.get(name) ?? [],
+    icon: iconMap[name] ?? null,
   }))
 
   return c.json({ data: result })
@@ -115,15 +119,16 @@ tables.get('/:tableName', async (c) => {
   const fieldMeta = await ensureFieldMeta(c.env.DB, tableName)
   const metaByCol = Object.fromEntries(fieldMeta.map(f => [f.column_name, f]))
 
-  // 获取表显示名
+  // 获取表显示名和图标
   const tableMeta = await c.env.DB
-    .prepare(`SELECT title FROM _meta WHERE table_name = ?`)
-    .bind(tableName).first<{ title: string | null }>()
+    .prepare(`SELECT title, icon FROM _meta WHERE table_name = ?`)
+    .bind(tableName).first<{ title: string | null; icon: string | null }>()
 
   return c.json({
     data: {
       name: tableName,
       title: tableMeta?.title ?? tableName,
+      icon: tableMeta?.icon ?? null,
       columns: columns.map((col) => ({
         name: col.name,
         title: metaByCol[col.name]?.title ?? col.name,
@@ -251,15 +256,42 @@ tables.patch('/:tableName', requireWriteMiddleware, async (c) => {
     return c.json({ error: { code: 'TABLE_NOT_FOUND', message: `Table "${tableName}" not found` } }, 404)
   }
 
-  const body = await c.req.json<{ title?: string }>()
+  const body = await c.req.json<{ title?: string; icon?: string | null }>()
 
-  if (!body.title?.trim()) {
-    return c.json({ error: { code: 'INVALID_BODY', message: 'Display name cannot be empty' } }, 400)
+  const setClauses: string[] = []
+  const values: unknown[] = []
+
+  if (body.title !== undefined) {
+    if (!body.title.trim()) {
+      return c.json({ error: { code: 'INVALID_BODY', message: 'Display name cannot be empty' } }, 400)
+    }
+    setClauses.push('title = ?')
+    values.push(body.title.trim())
   }
 
+  if ('icon' in body) {
+    const icon = body.icon ?? null
+    if (icon !== null) {
+      if (icon.startsWith('ion:')) {
+        if (icon.length <= 4) {
+          return c.json({ error: { code: 'INVALID_ICON', message: 'Icon name cannot be empty' } }, 400)
+        }
+      } else if (icon.length > 20) {
+        return c.json({ error: { code: 'INVALID_ICON', message: 'Icon value too long' } }, 400)
+      }
+    }
+    setClauses.push('icon = ?')
+    values.push(icon)
+  }
+
+  if (setClauses.length === 0) {
+    return c.json({ error: { code: 'INVALID_BODY', message: 'Nothing to update' } }, 400)
+  }
+
+  values.push(tableName)
   await c.env.DB.prepare(
-    `UPDATE _meta SET title = ? WHERE table_name = ?`
-  ).bind(body.title.trim(), tableName).run()
+    `UPDATE _meta SET ${setClauses.join(', ')} WHERE table_name = ?`
+  ).bind(...values).run()
 
   return c.json({ data: { success: true } })
 })

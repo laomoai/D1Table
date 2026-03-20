@@ -218,6 +218,7 @@
                 </div>
                 <n-tag :type="u.role === 'admin' ? 'warning' : 'info'" size="small">{{ u.role }}</n-tag>
                 <n-tag :type="u.status === 'active' ? 'success' : 'error'" size="small">{{ u.status }}</n-tag>
+                <span class="user-table-count">{{ u.table_count }} tables</span>
                 <div class="user-actions">
                   <n-button
                     v-if="u.status === 'active' && u.id !== currentUserId"
@@ -975,5 +976,6 @@ async function handleToggleRole(u: UserInfo) {
 .user-info { flex: 1; min-width: 0; }
 .user-name { font-size: 14px; font-weight: 500; color: #1a1d2e; }
 .user-email { font-size: 12px; color: #8b92a5; }
+.user-table-count { font-size: 12px; color: #787774; white-space: nowrap; }
 .user-actions { display: flex; gap: 4px; flex-shrink: 0; }
 </style>

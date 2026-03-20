@@ -2,7 +2,11 @@
   <div class="grid-wrapper">
     <!-- 工具栏 -->
     <div class="toolbar">
-      <span class="table-title">{{ displayTitle }}</span>
+      <span class="table-title">
+        <span v-if="props.tableIcon && !props.tableIcon.startsWith('ion:')" class="title-icon-emoji">{{ props.tableIcon }}</span>
+        <ion-icon v-else-if="props.tableIcon" :name="props.tableIcon.slice(4)" :size="16" style="margin-right:5px;opacity:0.7;vertical-align:middle;" />
+        {{ displayTitle }}
+      </span>
       <span v-if="totalCount !== null" class="row-count">{{ totalCount }} records</span>
       <div style="flex:1" />
       <!-- 搜索 -->
@@ -143,6 +147,7 @@ import RecordForm from './RecordForm.vue'
 import FieldPanel from './FieldPanel.vue'
 import RowExpand from './RowExpand.vue'
 import _FieldHeader from './grid/FieldHeader.vue'
+import IonIcon from './IonIcon.vue'
 
 const FieldHeader = markRaw(_FieldHeader)
 
@@ -150,6 +155,7 @@ const props = defineProps<{
   tableName: string
   fields: FieldMeta[]
   tableTitle?: string | null
+  tableIcon?: string | null
   totalCount: number | null
 }>()
 
@@ -789,7 +795,8 @@ async function refreshAll() {
   border-bottom: 1px solid #e8eaf0;
   flex-shrink: 0;
 }
-.table-title { font-size: 15px; font-weight: 600; color: #1a1d2e; }
+.table-title { font-size: 15px; font-weight: 600; color: #1a1d2e; display: flex; align-items: center; gap: 5px; }
+.title-icon-emoji { font-size: 16px; line-height: 1; }
 .row-count { font-size: 12px; color: #999; background: #f0f2f5; padding: 2px 8px; border-radius: 10px; }
 /* 批量操作栏 */
 .selection-bar {

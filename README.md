@@ -6,29 +6,48 @@ Designed as a structured data backend for **AI Agents** — agents read and writ
 
 ## Features
 
-- **Google OAuth login** — sign in with Google; allowed emails controlled via environment variable
+### Core
 - **Dynamic tables** — create, rename, and delete tables without touching SQL
 - **Spreadsheet UI** — AG Grid-powered table view with sorting, filtering, column resizing, and inline editing
+- **Gallery view** — card-based layout for image-heavy data
+- **Chart view** — ECharts-powered multi-widget dashboard with persistent configuration
 - **Detail view** — expand any row; select/checkbox fields save instantly, text/date fields save on blur
-- **REST API** — full CRUD with keyset pagination, field filtering, and batch inserts
-- **OpenAPI docs** — auto-generated docs at `/api/docs`, readable by AI Agents
-- **Field types** — text, longtext, number, currency, percent, email, URL, date, datetime, checkbox, select
-- **Table groups** — organize tables into groups; restrict API key access per group
-- **API key management** — multiple keys, readonly/read-write permissions, group-scoped access
+- **Field types** — text, longtext, number, currency, percent, email, URL, date, datetime, checkbox, select, image
+- **Image management** — upload with auto WebP compression, dual-size storage (thumb + display) via R2
+
+### Organization & Customization
+- **Table groups** — organize tables into named collections; restrict API key access per group
+- **Table icons** — set emoji or Ionicons as table icons, displayed in sidebar, dashboard, and toolbar
+- **Drag-to-reorder** — reorder tables in the sidebar; order persists to database per user
+- **Sidebar customization** — adjustable font size and text color
+- **User preferences** — table order, group collapse state, and sidebar settings synced to database (cross-device)
+
+### Auth & Multi-user
+- **Google OAuth login** — sign in with Google; first user becomes admin
+- **Multi-user support** — admin/user roles, active/disabled status
+- **User management** — invite users by email, assign roles, view table counts per user
+- **API key system** — readonly/read-write permissions, all/group-scoped access
+- **Session management** — HMAC-SHA256 signed cookies, 30-day expiry
+
+### Data Management
+- **REST API** — full CRUD with keyset pagination, field filtering, sorting, and batch inserts (up to 500)
+- **OpenAPI docs** — auto-generated at `/api/docs`, machine-readable spec at `/api/openapi.json`
 - **Recycle bin** — deleted records are soft-deleted and retained for 30 days
-- **Sidebar customization** — adjustable font size and text color, persisted to localStorage
-- **Cost-optimized** — keyset pagination (no `OFFSET`), `_meta` row count cache (no `COUNT(*)` scans), Cache API for GET responses
+- **Schema export** — export table schema to CSV
+- **Cost-optimized** — keyset pagination (no `OFFSET`), `_meta` row count cache (no `COUNT(*)` scans)
 
 ## Tech Stack
 
 | Layer | Technology |
 |---|---|
-| Runtime | Cloudflare Workers |
+| Runtime | Cloudflare Workers (edge computing) |
 | Database | Cloudflare D1 (SQLite) |
+| File storage | Cloudflare R2 (images) |
 | API framework | Hono.js |
 | Frontend | Vue 3 + Vite |
 | UI components | Naive UI |
 | Data grid | AG Grid Community |
+| Charts | ECharts |
 | Data fetching | TanStack Vue Query |
 
 ## Getting Started
@@ -49,20 +68,14 @@ npm install
 cd web && npm install && cd ..
 ```
 
-### 2. Create a D1 database
+### 2. Create a D1 database and R2 bucket
 
 ```bash
 wrangler d1 create d1table
+wrangler r2 bucket create d1table-files
 ```
 
-Copy the `database_id` from the output and paste it into `wrangler.toml`:
-
-```toml
-[[d1_databases]]
-binding = "DB"
-database_name = "d1table"
-database_id = "YOUR_DATABASE_ID"   # ← paste here
-```
+Copy the `database_id` from the output and paste it into `wrangler.toml`.
 
 ### 3. Run migrations
 
@@ -71,6 +84,10 @@ wrangler d1 execute d1table --remote --file=migrations/0001_init.sql
 wrangler d1 execute d1table --remote --file=migrations/0003_field_meta.sql
 wrangler d1 execute d1table --remote --file=migrations/0004_groups.sql
 wrangler d1 execute d1table --remote --file=migrations/0005_trash.sql
+wrangler d1 execute d1table --remote --file=migrations/0006_dashboards.sql
+wrangler d1 execute d1table --remote --file=migrations/0007_users.sql
+wrangler d1 execute d1table --remote --file=migrations/0008_user_preferences.sql
+wrangler d1 execute d1table --remote --file=migrations/0009_meta_icon.sql
 ```
 
 ### 4. Set up Google OAuth
@@ -87,10 +104,7 @@ wrangler d1 execute d1table --remote --file=migrations/0005_trash.sql
 wrangler secret put GOOGLE_CLIENT_ID
 wrangler secret put GOOGLE_CLIENT_SECRET
 wrangler secret put SESSION_SECRET      # any random 32+ character string
-wrangler secret put ALLOWED_EMAILS      # comma-separated, e.g. alice@gmail.com,bob@gmail.com
 ```
-
-> `ALLOWED_EMAILS` can also be set as a plain text variable in the Cloudflare Dashboard (easier to update without redeploying).
 
 ### 6. Deploy
 
@@ -100,8 +114,6 @@ npm run deploy
 
 Your instance will be available at `https://d1table.<your-subdomain>.workers.dev`.
 
-To use a custom domain, go to **Cloudflare Dashboard** → Workers & Pages → d1table → Settings → Domains & Routes.
-
 ---
 
 ## Local Development
@@ -109,13 +121,10 @@ To use a custom domain, go to **Cloudflare Dashboard** → Workers & Pages → d
 ```bash
 # Copy and fill in local secrets
 cp .dev.vars.example .dev.vars
-# Edit .dev.vars: add GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, SESSION_SECRET, ALLOWED_EMAILS
+# Edit .dev.vars: add GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, SESSION_SECRET
 
 # Run migrations locally
-wrangler d1 execute d1table --local --file=migrations/0001_init.sql
-wrangler d1 execute d1table --local --file=migrations/0003_field_meta.sql
-wrangler d1 execute d1table --local --file=migrations/0004_groups.sql
-wrangler d1 execute d1table --local --file=migrations/0005_trash.sql
+for f in migrations/0*.sql; do wrangler d1 execute d1table --local --file=$f; done
 
 # Start the Worker (port 8787) and the Vite dev server (port 5173) in separate terminals
 npm run dev:worker
@@ -130,7 +139,7 @@ Open `http://localhost:5173` in your browser.
 
 ### Web UI
 
-Sign in with Google. Access is restricted to emails listed in `ALLOWED_EMAILS`. Session is stored as an HMAC-signed cookie (30-day expiry), no database required.
+Sign in with Google. The first user is automatically set as admin and can invite other users from Settings → Users. Session is stored as an HMAC-signed cookie (30-day expiry).
 
 ### API (AI Agents)
 
@@ -153,14 +162,23 @@ The full REST API is documented at `/api/docs` (powered by Scalar). A machine-re
 |---|---|---|
 | `GET` | `/api/tables` | List all tables |
 | `POST` | `/api/tables` | Create a table |
+| `PATCH` | `/api/tables/:name` | Update table title/icon |
+| `DELETE` | `/api/tables/:name` | Delete a table |
 | `GET` | `/api/tables/:name/records` | List records (paginated) |
 | `POST` | `/api/tables/:name/records` | Create a record |
 | `POST` | `/api/tables/:name/records/batch` | Batch create (up to 500) |
 | `PATCH` | `/api/tables/:name/records/:id` | Update a record |
 | `DELETE` | `/api/tables/:name/records/:id` | Delete a record (to trash) |
 | `GET` | `/api/tables/:name/fields` | Get field metadata |
+| `POST` | `/api/tables/:name/fields` | Add a field |
+| `GET/PUT` | `/api/tables/:name/dashboard` | Get/save chart dashboard config |
+| `GET/PUT` | `/api/user/preferences` | Get/save user preferences |
+| `GET` | `/api/groups` | List groups |
+| `POST` | `/api/groups` | Create a group |
 | `GET` | `/api/admin/keys` | List API keys |
 | `POST` | `/api/admin/keys` | Create an API key |
+| `GET` | `/api/admin/users` | List users (admin only) |
+| `GET` | `/api/trash` | List deleted records |
 
 ### Pagination
 
@@ -242,14 +260,14 @@ client.delete_record("contacts", "1")  # moves to trash
 D1Table/
 ├── src/                    # Cloudflare Worker (Hono.js API)
 │   ├── index.ts            # Entry point + OpenAPI spec
-│   ├── middleware/         # Auth middleware (session + API key)
-│   ├── routes/             # API route handlers (tables, records, fields, auth, ...)
+│   ├── middleware/          # Auth middleware (session + API key)
+│   ├── routes/             # API route handlers
 │   └── utils/              # Query builder, session signing, schema helpers
 ├── web/                    # Vue 3 frontend
 │   └── src/
 │       ├── pages/          # Dashboard, TableView, Settings, Login
-│       ├── components/     # DataGrid, AppLayout, RowExpand, FilterBar, ...
-│       └── api/            # Axios client
+│       ├── components/     # DataGrid, GalleryView, ChartView, IconPicker, ...
+│       └── api/            # Axios client + types
 ├── migrations/             # D1 SQL migrations (run in order)
 ├── skills/
 │   └── d1table-client/     # Python client SDK

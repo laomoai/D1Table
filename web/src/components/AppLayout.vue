@@ -41,7 +41,11 @@
               @drop="onDrop($event, table.name)"
               @dragend="onDragEnd"
             >
-              <n-icon class="table-icon" :component="TableIcon" size="14" />
+              <span class="table-icon-cell">
+                <span v-if="table.icon && !table.icon.startsWith('ion:')" class="table-emoji-icon">{{ table.icon }}</span>
+                <ion-icon v-else-if="table.icon" :name="table.icon.slice(4)" :size="14" />
+                <n-icon v-else :component="TableIcon" size="14" style="opacity:0.5" />
+              </span>
               <template v-if="editingTable === table.name">
                 <input
                   v-model="editTableTitle"
@@ -87,7 +91,11 @@
               @drop="onDrop($event, table.name)"
               @dragend="onDragEnd"
             >
-              <n-icon class="table-icon" :component="TableIcon" size="14" />
+              <span class="table-icon-cell">
+                <span v-if="table.icon && !table.icon.startsWith('ion:')" class="table-emoji-icon">{{ table.icon }}</span>
+                <ion-icon v-else-if="table.icon" :name="table.icon.slice(4)" :size="14" />
+                <n-icon v-else :component="TableIcon" size="14" style="opacity:0.5" />
+              </span>
               <template v-if="editingTable === table.name">
                 <input
                   v-model="editTableTitle"
@@ -110,26 +118,32 @@
       </div>
 
       <div class="sidebar-footer">
-        <n-dropdown
-          trigger="click"
-          placement="top-start"
-          :options="userMenuOptions"
-          @select="handleUserMenuSelect"
-        >
-          <div v-if="currentUser" class="user-trigger">
-            <img
-              :src="currentUser.picture"
-              class="user-avatar"
-              referrerpolicy="no-referrer"
-              :alt="currentUser.name"
-            />
-            <div class="user-details">
-              <div class="user-name">{{ currentUser.name }}</div>
-              <div class="user-email">{{ currentUser.email }}</div>
+        <transition name="menu-slide">
+          <div v-if="showUserMenu" class="user-menu">
+            <div class="user-menu-item" @click="handleMenuItem('settings')">
+              <n-icon :component="SettingsIcon" size="16" />
+              <span>Settings</span>
             </div>
-            <span class="user-chevron">⋯</span>
+            <div class="user-menu-divider" />
+            <div class="user-menu-item" @click="handleMenuItem('logout')">
+              <n-icon :component="LogoutIcon" size="16" />
+              <span>Logout</span>
+            </div>
           </div>
-        </n-dropdown>
+        </transition>
+        <div v-if="currentUser" class="user-trigger" @click="showUserMenu = !showUserMenu">
+          <img
+            :src="currentUser.picture"
+            class="user-avatar"
+            referrerpolicy="no-referrer"
+            :alt="currentUser.name"
+          />
+          <div class="user-details">
+            <div class="user-name">{{ currentUser.name }}</div>
+            <div class="user-email">{{ currentUser.email }}</div>
+          </div>
+          <span class="user-chevron">⋯</span>
+        </div>
       </div>
     </n-layout-sider>
 
@@ -141,14 +155,15 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, nextTick, reactive, onUnmounted } from 'vue'
+import { computed, ref, nextTick, reactive, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
-import { NLayout, NLayoutSider, NLayoutContent, NButton, NIcon, NDropdown } from 'naive-ui'
-import { GridOutline as TableIcon } from '@vicons/ionicons5'
+import { NLayout, NLayoutSider, NLayoutContent, NButton, NIcon } from 'naive-ui'
+import { GridOutline as TableIcon, SettingsOutline as SettingsIcon, LogOutOutline as LogoutIcon } from '@vicons/ionicons5'
 import { api, http, type TableMeta } from '@/api/client'
 import { useMessage } from 'naive-ui'
 import { getCachedUser, resetAuthState } from '@/router'
+import IonIcon from './IonIcon.vue'
 
 const message = useMessage()
 const router = useRouter()
@@ -184,10 +199,34 @@ function loadExpandedGroups(): Set<number> {
 
 const expandedGroups = reactive(loadExpandedGroups())
 
+
+function savePreferencesToServer() {
+  api.savePreferences({
+    table_order: tableOrder.value,
+    expanded_groups: [...expandedGroups],
+  }).catch(() => { /* localStorage is the fallback */ })
+}
+
+onMounted(async () => {
+  try {
+    const prefs = await api.getPreferences()
+    if (Array.isArray(prefs.table_order) && (prefs.table_order as string[]).length > 0) {
+      tableOrder.value = prefs.table_order as string[]
+      localStorage.setItem('d1table_table_order', JSON.stringify(prefs.table_order))
+    }
+    if (Array.isArray(prefs.expanded_groups)) {
+      expandedGroups.clear()
+      ;(prefs.expanded_groups as number[]).forEach(id => expandedGroups.add(id))
+      localStorage.setItem(EXPANDED_GROUPS_KEY, JSON.stringify(prefs.expanded_groups))
+    }
+  } catch { /* fallback to localStorage values already loaded */ }
+})
+
 function toggleGroup(id: number) {
   if (expandedGroups.has(id)) expandedGroups.delete(id)
   else expandedGroups.add(id)
   localStorage.setItem(EXPANDED_GROUPS_KEY, JSON.stringify([...expandedGroups]))
+  savePreferencesToServer()
 }
 
 // Compute grouped table list
@@ -304,6 +343,7 @@ function onDrop(e: DragEvent, targetName: string) {
   tableOrder.value = order
   localStorage.setItem('d1table_table_order', JSON.stringify(order))
   draggedTable.value = null
+  savePreferencesToServer()
 }
 
 function onDragEnd() {
@@ -337,16 +377,21 @@ const tableItemStyle = computed(() => ({
 
 const currentUser = computed(() => getCachedUser())
 
-const userMenuOptions = [
-  { label: 'Settings', key: 'settings' },
-  { type: 'divider', key: 'd1' },
-  { label: 'Logout', key: 'logout' },
-]
+const showUserMenu = ref(false)
 
-function handleUserMenuSelect(key: string) {
+function handleMenuItem(key: string) {
+  showUserMenu.value = false
   if (key === 'settings') router.push('/settings')
   if (key === 'logout') logout()
 }
+
+function onDocClick(e: MouseEvent) {
+  if (!(e.target as Element).closest('.sidebar-footer')) {
+    showUserMenu.value = false
+  }
+}
+onMounted(() => document.addEventListener('click', onDocClick))
+onUnmounted(() => document.removeEventListener('click', onDocClick))
 
 async function logout() {
   try {
@@ -441,6 +486,16 @@ async function logout() {
 }
 .table-icon { flex-shrink: 0; opacity: 0.5; }
 .table-item.active .table-icon { opacity: 0.8; }
+.table-icon-cell {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  color: #37352f;
+}
+.table-emoji-icon { font-size: 14px; line-height: 1; }
 .table-name {
   flex: 1;
   overflow: hidden;
@@ -510,4 +565,27 @@ async function logout() {
   flex-shrink: 0;
   letter-spacing: -2px;
 }
+/* User menu */
+.user-menu {
+  background: #fff;
+  border: 1px solid #e9e9e7;
+  border-bottom: none;
+  border-radius: 6px 6px 0 0;
+  box-shadow: 0 -4px 12px rgba(0,0,0,0.06);
+  overflow: hidden;
+}
+.user-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 14px;
+  font-size: 13px;
+  color: #37352f;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.user-menu-item:hover { background: rgba(55,53,47,0.06); }
+.user-menu-divider { height: 1px; background: #e9e9e7; }
+.menu-slide-enter-active, .menu-slide-leave-active { transition: transform 0.12s, opacity 0.12s; }
+.menu-slide-enter-from, .menu-slide-leave-to { transform: translateY(6px); opacity: 0; }
 </style>

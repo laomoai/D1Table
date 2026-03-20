@@ -2,7 +2,11 @@
   <div class="dash-wrapper">
     <!-- 工具栏 -->
     <div class="toolbar">
-      <span class="table-title">{{ tableTitle || tableName }}</span>
+      <span class="table-title">
+        <span v-if="props.tableIcon && !props.tableIcon.startsWith('ion:')" class="title-icon-emoji">{{ props.tableIcon }}</span>
+        <ion-icon v-else-if="props.tableIcon" :name="props.tableIcon.slice(4)" :size="16" style="margin-right:5px;opacity:0.7;vertical-align:middle;" />
+        {{ tableTitle || tableName }}
+      </span>
       <span v-if="totalCount !== null" class="row-count">{{ totalCount }} records</span>
       <div style="flex:1" />
       <span v-if="loadingRecords" class="loading-hint">Loading…</span>
@@ -235,6 +239,7 @@ import { BarChart, LineChart, PieChart } from 'echarts/charts'
 import { GridComponent, TooltipComponent, LegendComponent, DataZoomComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 import { api, type FieldMeta, type RecordRow } from '@/api/client'
+import IonIcon from './IonIcon.vue'
 
 echarts.use([BarChart, LineChart, PieChart, GridComponent, TooltipComponent, LegendComponent, DataZoomComponent, CanvasRenderer])
 
@@ -329,6 +334,7 @@ const props = defineProps<{
   tableName: string
   fields: FieldMeta[]
   tableTitle: string | null
+  tableIcon?: string | null
   totalCount: number | null
 }>()
 const emit = defineEmits<{ switchView: [view: string] }>()
@@ -652,7 +658,8 @@ onUnmounted(() => {
   padding: 0 16px; height: 48px;
   border-bottom: 1px solid #e9e9e7; flex-shrink: 0; background: #fff;
 }
-.table-title { font-size: 15px; font-weight: 600; color: #37352f; }
+.table-title { font-size: 15px; font-weight: 600; color: #37352f; display: flex; align-items: center; gap: 5px; }
+.title-icon-emoji { font-size: 16px; line-height: 1; }
 .row-count, .loading-hint { font-size: 12px; color: #a3a19d; }
 
 .dash-body { flex: 1; overflow-y: auto; padding: 20px; }

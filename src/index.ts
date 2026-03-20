@@ -13,6 +13,7 @@ import groupsRouter from './routes/groups'
 import trashRouter from './routes/trash'
 import uploadRouter from './routes/upload'
 import dashboardsRouter from './routes/dashboards'
+import preferencesRouter from './routes/preferences'
 
 const app = new Hono<{ Bindings: Env; Variables: AuthVariables }>()
 
@@ -72,6 +73,7 @@ app.route('/api/groups', groupsRouter)
 app.route('/api/trash', trashRouter)
 app.route('/api/upload', uploadRouter)
 app.route('/api/tables', dashboardsRouter)
+app.route('/api/user', preferencesRouter)
 
 // GET /api/files/* — 从 R2 代理图片（鉴权后才可访问）
 app.get('/api/files/*', async (c) => {

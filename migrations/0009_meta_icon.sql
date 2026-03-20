@@ -1,0 +1,1 @@
+ALTER TABLE _meta ADD COLUMN icon TEXT;

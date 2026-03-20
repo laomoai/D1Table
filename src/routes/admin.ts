@@ -180,8 +180,10 @@ admin.delete('/keys/:id', async (c) => {
  */
 admin.get('/users', requireAdminMiddleware, async (c) => {
   const rows = await c.env.DB
-    .prepare(`SELECT id, email, name, picture, role, status, created_at, last_login FROM _users ORDER BY id ASC`)
-    .all<{ id: number; email: string; name: string; picture: string; role: string; status: string; created_at: number; last_login: number | null }>()
+    .prepare(`SELECT u.id, u.email, u.name, u.picture, u.role, u.status, u.created_at, u.last_login,
+              (SELECT COUNT(*) FROM _meta WHERE owner_id = u.id) as table_count
+              FROM _users u ORDER BY u.id ASC`)
+    .all<{ id: number; email: string; name: string; picture: string; role: string; status: string; created_at: number; last_login: number | null; table_count: number }>()
 
   return c.json({ data: rows.results })
 })

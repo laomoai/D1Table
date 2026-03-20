@@ -33,6 +33,7 @@
               @save-title="saveTitle"
               @cancel-edit="cancelEdit"
               @update:edit-title="editTitle = $event"
+              @change-icon="openIconPicker"
             />
           </div>
         </div>
@@ -59,6 +60,7 @@
             @save-title="saveTitle"
             @cancel-edit="cancelEdit"
             @update:edit-title="editTitle = $event"
+            @change-icon="openIconPicker"
           />
         </div>
       </div>
@@ -91,6 +93,14 @@
       </div>
     </div>
 
+    <!-- Icon picker modal -->
+    <AppModal v-model:show="showIconPicker" title="Change Icon" width="360px" height="auto">
+      <icon-picker
+        :current-icon="iconPickerTarget?.icon ?? null"
+        @select="onIconSelect"
+      />
+    </AppModal>
+
     <CreateTableModal
       v-model:show="showCreateTable"
       @created="(name) => { queryClient.invalidateQueries({ queryKey: ['tables'] }); router.push(`/tables/${name}`) }"
@@ -99,7 +109,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, nextTick, computed } from 'vue'
+import { ref, nextTick, computed, defineAsyncComponent } from 'vue'
 import { useRouter } from 'vue-router'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import { NButton, NIcon, NSpin, useMessage } from 'naive-ui'
@@ -107,6 +117,9 @@ import { GridOutline } from '@vicons/ionicons5'
 import { api, type TableMeta } from '@/api/client'
 import CreateTableModal from '@/components/CreateTableModal.vue'
 import TableCard from '@/components/TableCard.vue'
+import AppModal from '@/components/AppModal.vue'
+
+const IconPicker = defineAsyncComponent(() => import('@/components/IconPicker.vue'))
 
 const router = useRouter()
 const queryClient = useQueryClient()
@@ -131,6 +144,20 @@ const { data: groups } = useQuery({
   retry: false,
 })
 
+// ── 排序（与侧边栏一致）────────────────────────────────────────
+const tableOrder = ref<string[]>(
+  JSON.parse(localStorage.getItem('d1table_table_order') ?? 'null') ?? []
+)
+
+function sortedTables(list: TableMeta[]) {
+  if (!tableOrder.value.length) return list
+  const idx = (name: string) => {
+    const i = tableOrder.value.indexOf(name)
+    return i === -1 ? 9999 : i
+  }
+  return [...list].sort((a, b) => idx(a.name) - idx(b.name))
+}
+
 // Organize tables by group
 const groupedSections = computed(() => {
   if (!groups.value || !tables.value || groups.value.length === 0) return []
@@ -139,17 +166,17 @@ const groupedSections = computed(() => {
     .map(g => ({
       id: g.id,
       name: g.name,
-      tables: tables.value!.filter(t => g.tables.includes(t.name)),
+      tables: sortedTables(tables.value!.filter(t => g.tables.includes(t.name))),
     }))
     .filter(s => s.tables.length > 0)
 })
 
 const ungroupedTables = computed(() => {
   if (!tables.value) return []
-  if (!groups.value || groups.value.length === 0) return tables.value
+  if (!groups.value || groups.value.length === 0) return sortedTables(tables.value)
 
   const groupedNames = new Set(groups.value.flatMap(g => g.tables))
-  return tables.value.filter(t => !groupedNames.has(t.name))
+  return sortedTables(tables.value.filter(t => !groupedNames.has(t.name)))
 })
 
 // ── Inline edit table display name ──────────────────────────────────────────
@@ -188,6 +215,27 @@ async function saveTitle(t: TableMeta) {
     message.error((err as Error).message)
   }
   cancelEdit()
+}
+
+// ── Icon picker ──────────────────────────────────────────────
+const showIconPicker = ref(false)
+const iconPickerTarget = ref<TableMeta | null>(null)
+
+function openIconPicker(t: TableMeta) {
+  iconPickerTarget.value = t
+  showIconPicker.value = true
+}
+
+async function onIconSelect(icon: string | null) {
+  if (!iconPickerTarget.value) return
+  showIconPicker.value = false
+  try {
+    await api.updateTableIcon(iconPickerTarget.value.name, icon)
+    queryClient.invalidateQueries({ queryKey: ['tables'] })
+  } catch (err) {
+    message.error((err as Error).message)
+  }
+  iconPickerTarget.value = null
 }
 </script>
 

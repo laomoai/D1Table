@@ -62,6 +62,7 @@ export interface TableMeta {
   title: string | null
   row_count: number | null
   groups: GroupInfo[]
+  icon: string | null
 }
 
 export interface Group {
@@ -150,6 +151,10 @@ export const api = {
   updateTableTitle: (tableName: string, title: string) =>
     http.patch<{ data: { success: boolean } }>(`/tables/${tableName}`, { title }).then((r) => r.data.data),
 
+  /** 更新表图标 */
+  updateTableIcon: (tableName: string, icon: string | null) =>
+    http.patch<{ data: { success: boolean } }>(`/tables/${tableName}`, { icon }).then((r) => r.data.data),
+
   /** 删除表 */
   deleteTable: (tableName: string) =>
     http.delete(`/tables/${tableName}`),
@@ -192,6 +197,12 @@ export const api = {
     http.get<{ data: { config: unknown[] } }>(`/tables/${tableName}/dashboard`).then(r => r.data.data.config),
   saveDashboard: (tableName: string, config: unknown[]) =>
     http.put<{ data: { success: boolean } }>(`/tables/${tableName}/dashboard`, { config }).then(r => r.data.data),
+
+  /** 用户偏好设置 */
+  getPreferences: () =>
+    http.get<{ data: Record<string, unknown> }>('/user/preferences').then(r => r.data.data),
+  savePreferences: (data: Record<string, unknown>) =>
+    http.put<{ data: { success: boolean } }>('/user/preferences', data).then(r => r.data.data),
 
   /** 分组管理 */
   getGroups: () =>
@@ -243,6 +254,7 @@ export interface UserInfo {
   status: 'active' | 'disabled'
   created_at: number
   last_login: number | null
+  table_count: number
 }
 
 export const getCurrentUser = (): Promise<CurrentUser> =>

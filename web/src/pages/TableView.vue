@@ -12,6 +12,7 @@
       :table-name="tableName"
       :fields="fields"
       :table-title="tableTitle"
+      :table-icon="tableIcon"
       :total-count="totalCount"
       @refresh="refetchTables"
       @switch-view="switchView"
@@ -21,6 +22,7 @@
       :table-name="tableName"
       :fields="fields"
       :table-title="tableTitle"
+      :table-icon="tableIcon"
       :total-count="totalCount"
       @refresh="refetchTables"
       @switch-view="switchView"
@@ -30,6 +32,7 @@
       :table-name="tableName"
       :fields="fields"
       :table-title="tableTitle"
+      :table-icon="tableIcon"
       :total-count="totalCount"
       @switch-view="switchView"
     />
@@ -37,7 +40,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import { NSpin, NResult } from 'naive-ui'
@@ -81,6 +84,18 @@ const totalCount = computed(() =>
 const tableTitle = computed(() =>
   tablesData.value?.find(t => t.name === tableName.value)?.title ?? null
 )
+
+const tableIcon = computed(() =>
+  tablesData.value?.find(t => t.name === tableName.value)?.icon ?? null
+)
+
+watch([tableTitle, tableIcon, tableName], ([title, icon, name]) => {
+  const display = title || name
+  const prefix = icon && !icon.startsWith('ion:') ? icon + ' ' : ''
+  document.title = `${prefix}${display} - D1Table`
+}, { immediate: true })
+
+onUnmounted(() => { document.title = 'D1Table' })
 
 function refetchTables() {
   queryClient.invalidateQueries({ queryKey: ['tables'] })
