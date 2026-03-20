@@ -8,10 +8,14 @@ function generateId(): string {
   return 'n_' + crypto.randomUUID().replace(/-/g, '').slice(0, 12)
 }
 
-/** owner 过滤条件辅助 */
+/**
+ * Owner filter: strict ownership for regular users, full access for ADMIN_KEY.
+ * Regular users can only see/edit their own notes (owner_id = userId).
+ * ADMIN_KEY (userId = undefined) bypasses ownership checks.
+ */
 function ownerFilter(userId: number | undefined): { clause: string; params: unknown[] } {
   if (userId !== undefined) {
-    return { clause: `(owner_id = ? OR owner_id IS NULL)`, params: [userId] }
+    return { clause: `owner_id = ?`, params: [userId] }
   }
   return { clause: '1=1', params: [] }
 }
@@ -186,7 +190,7 @@ notes.patch('/:id', requireWriteMiddleware, async (c) => {
   params.push(id)
   let sql = `UPDATE _notes SET ${sets.join(', ')} WHERE id = ?`
   if (userId !== undefined) {
-    sql += ` AND (owner_id = ? OR owner_id IS NULL)`
+    sql += ` AND owner_id = ?`
     params.push(userId)
   }
 
@@ -227,7 +231,7 @@ notes.delete('/:id', requireWriteMiddleware, async (c) => {
     let sql = `DELETE FROM _notes WHERE id = ?`
     const params: unknown[] = [noteId]
     if (userId !== undefined) {
-      sql += ` AND (owner_id = ? OR owner_id IS NULL)`
+      sql += ` AND owner_id = ?`
       params.push(userId)
     }
     return c.env.DB.prepare(sql).bind(...params)

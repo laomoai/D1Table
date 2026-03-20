@@ -87,7 +87,7 @@ const tableRefExtension = {
 marked.use({
   extensions: [highlightExtension, taskListExtension, embedExtension, tableRefExtension],
   gfm: true,
-  breaks: false,
+  breaks: true,
 })
 
 export function renderMarkdown(md: string): string {

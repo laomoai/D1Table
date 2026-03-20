@@ -200,7 +200,8 @@
         <input v-model="notePickerSearch" class="np-input" placeholder="Search notes..." />
       </div>
       <div class="np-list">
-        <div v-if="!filteredPickerNotes.length" class="np-empty">No notes found</div>
+        <div v-if="!allNotes" class="np-empty" style="padding:20px;text-align:center"><n-spin size="small" /></div>
+        <div v-else-if="!filteredPickerNotes.length" class="np-empty">No notes found</div>
         <div
           v-for="item in filteredPickerNotes"
           :key="item.note.id"
@@ -224,13 +225,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, nextTick, onBeforeUnmount, onMounted, shallowRef } from 'vue'
+import { ref, computed, watch, nextTick, onBeforeUnmount, onMounted } from 'vue'
 import { useMessage, NDrawer, NDrawerContent, NButton, NInput, NInputNumber, NSwitch, NSelect, NDatePicker, NModal } from 'naive-ui'
-import { api, notesApi, type FieldMeta, type FieldType, type NoteListItem } from '@/api/client'
-import { useQueryClient, useQuery } from '@tanstack/vue-query'
+import { api, type FieldMeta, type FieldType } from '@/api/client'
+import { useQueryClient } from '@tanstack/vue-query'
 import CellValue from './CellValue.vue'
 import ImageUpload from './ImageUpload.vue'
 import { decodeNoteValue, encodeNoteValue } from '@/utils/noteValue'
+import { useNoteTree, type NoteTreeNode } from '@/utils/useNoteTree'
 
 const props = defineProps<{
   tableName: string
@@ -380,72 +382,18 @@ function datetimeToTs(v: unknown): number | null {
 }
 
 
-// ── Note picker ─────────────────────────────────────────────
+// ── Note picker (uses shared composable) ────────────────────
 const showNotePicker = ref(false)
 const notePickerSearch = ref('')
 const notePickerField = ref<string | null>(null)
-
-const { data: allNotes } = useQuery({
-  queryKey: ['notes', 'tree'],
-  queryFn: notesApi.getTree,
-  enabled: computed(() => showNotePicker.value),
-})
-
-// Cache note titles for display
-const noteTitleCache = ref(new Map<string, string>())
-
-function noteTitle(noteId: string): string {
-  if (noteTitleCache.value.has(noteId)) return noteTitleCache.value.get(noteId)!
-  // Trigger async fetch
-  notesApi.getNote(noteId).then(n => {
-    noteTitleCache.value.set(noteId, n.title)
-  }).catch(() => {
-    noteTitleCache.value.set(noteId, '(deleted)')
-  })
-  return noteId // Show ID while loading
-}
-
-// Build tree structures for picker
-interface NoteTreeNode { note: NoteListItem; depth: number; hasChildren: boolean }
-
 const pickerExpanded = ref(new Set<string>())
 
-const pickerChildrenMap = computed(() => {
-  const map = new Map<string | null, NoteListItem[]>()
-  for (const n of allNotes.value ?? []) {
-    const key = n.parent_id ?? null
-    const arr = map.get(key) ?? []
-    arr.push(n)
-    map.set(key, arr)
-  }
-  return map
-})
-
-const filteredPickerNotes = computed<NoteTreeNode[]>(() => {
-  const q = notePickerSearch.value.toLowerCase()
-  const cm = pickerChildrenMap.value
-
-  // Searching: flat results, no tree
-  if (q) {
-    return (allNotes.value ?? [])
-      .filter(n => n.title.toLowerCase().includes(q))
-      .map(n => ({ note: n, depth: 0, hasChildren: !!cm.get(n.id)?.length }))
-  }
-
-  // Tree: respect expanded state
-  const result: NoteTreeNode[] = []
-  function walk(parentId: string | null, depth: number) {
-    for (const child of cm.get(parentId) ?? []) {
-      const hasChildren = !!cm.get(child.id)?.length
-      result.push({ note: child, depth, hasChildren })
-      if (hasChildren && pickerExpanded.value.has(child.id)) {
-        walk(child.id, depth + 1)
-      }
-    }
-  }
-  walk(null, 0)
-  return result
-})
+const { treeData: allNotes, buildTreeList, searchNotes, getNoteTitle } = useNoteTree()
+const pickerTreeNotes = buildTreeList(pickerExpanded)
+const pickerSearchNotes = searchNotes(notePickerSearch)
+const filteredPickerNotes = computed<NoteTreeNode[]>(() =>
+  notePickerSearch.value.trim() ? pickerSearchNotes.value : pickerTreeNotes.value
+)
 
 function togglePickerExpand(id: string) {
   const s = new Set(pickerExpanded.value)
@@ -462,9 +410,7 @@ function openNotePicker(columnName: string) {
 function pickNote(noteId: string) {
   if (notePickerField.value) {
     const note = (allNotes.value ?? []).find(n => n.id === noteId)
-    const title = note?.title || 'Untitled'
-    const icon = note?.icon || ''
-    saveField(notePickerField.value, encodeNoteValue(noteId, title, icon))
+    saveField(notePickerField.value, encodeNoteValue(noteId, note?.title || 'Untitled', note?.icon || ''))
   }
   showNotePicker.value = false
 }

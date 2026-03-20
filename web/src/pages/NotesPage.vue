@@ -68,7 +68,8 @@
             <span v-if="activeNote.updated_at" class="note-time">
               Updated {{ formatTime(activeNote.updated_at) }}
             </span>
-            <span v-if="saving" class="note-saving">Saving...</span>
+            <span v-if="saveError" class="note-error">{{ saveError }}</span>
+            <span v-else-if="saving" class="note-saving">Saving...</span>
             <span v-else-if="lastSaved" class="note-saved">Saved</span>
           </div>
         </div>
@@ -168,7 +169,7 @@ import { useRoute } from 'vue-router'
 import { useQuery, useQueryClient, useMutation } from '@tanstack/vue-query'
 import { NSpin, useMessage, useDialog } from 'naive-ui'
 import { api, notesApi, type NoteListItem, type TableMeta } from '@/api/client'
-import NoteEditor from '@/components/NoteEditor.vue'
+const NoteEditor = defineAsyncComponent(() => import('@/components/NoteEditor.vue'))
 import NoteTreeItem from '@/components/NoteTreeItem.vue'
 import AppModal from '@/components/AppModal.vue'
 import IonIcon from '@/components/IonIcon.vue'
@@ -295,6 +296,7 @@ const noteTitle = ref('')
 const noteContent = ref('')
 const saving = ref(false)
 const lastSaved = ref(false)
+const saveError = ref<string | null>(null)
 // Snapshot of content as loaded from server — used to detect real changes
 let savedContent = ''
 let savedTitle = ''
@@ -395,13 +397,14 @@ async function saveTitle() {
   if (!activeNoteId.value || !noteReady.value || !noteTitle.value.trim()) return
   if (noteTitle.value.trim() === savedTitle) return
   saving.value = true
+  saveError.value = null
   try {
     await notesApi.updateNote(activeNoteId.value, { title: noteTitle.value.trim() })
     savedTitle = noteTitle.value.trim()
     queryClient.invalidateQueries({ queryKey: ['notes', 'tree'] })
     lastSaved.value = true
   } catch (err) {
-    message.error((err as Error).message)
+    saveError.value = `Save failed: ${(err as Error).message}`
   }
   saving.value = false
 }
@@ -411,6 +414,7 @@ async function saveContent() {
   if (saveTimer) { clearTimeout(saveTimer); saveTimer = null }
   if (noteContent.value === savedContent) return
   saving.value = true
+  saveError.value = null
   try {
     await notesApi.updateNote(activeNoteId.value, { content: noteContent.value })
     savedContent = noteContent.value
@@ -419,16 +423,22 @@ async function saveContent() {
     )
     lastSaved.value = true
   } catch (err) {
-    message.error((err as Error).message)
+    saveError.value = `Save failed: ${(err as Error).message}`
   }
   saving.value = false
 }
 
-// Auto-save: debounce content changes
+// Auto-save: debounce content changes + throttle (min 3s between saves)
+let lastSaveTime = 0
 watch(noteContent, () => {
   if (!activeNoteId.value || !noteReady.value) return
   if (saveTimer) clearTimeout(saveTimer)
-  saveTimer = setTimeout(() => saveContent(), 1500)
+  const elapsed = Date.now() - lastSaveTime
+  const delay = Math.max(1500, 3000 - elapsed) // At least 3s between saves
+  saveTimer = setTimeout(() => {
+    lastSaveTime = Date.now()
+    saveContent()
+  }, delay)
 })
 
 // Cleanup on unmount
@@ -747,6 +757,11 @@ async function handleImport(event: Event) {
 .note-time {
   font-size: 12px;
   color: #a3a19d;
+}
+.note-error {
+  font-size: 12px;
+  color: #e03e3e;
+  font-weight: 500;
 }
 .note-saving {
   font-size: 12px;
