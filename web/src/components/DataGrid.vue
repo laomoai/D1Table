@@ -142,6 +142,7 @@ import { AgGridVue } from 'ag-grid-vue3'
 import type { ColDef, GridApi, ColumnResizedEvent, SortChangedEvent, SelectionChangedEvent } from 'ag-grid-community'
 
 import { api, type FieldMeta, type FieldType, type RecordRow, type SelectOption } from '@/api/client'
+import { decodeNoteValue } from '@/utils/noteValue'
 import FilterBar, { type Filter } from './FilterBar.vue'
 import RecordForm from './RecordForm.vue'
 import FieldPanel from './FieldPanel.vue'
@@ -481,17 +482,14 @@ function typedCellRenderer(params: { value: unknown; fieldType: FieldType; selec
     }
 
     case 'note': {
-      const s = String(value)
-      const parts = s.split('|')
-      const noteId = parts[0]
-      const noteTitle = parts.length >= 2 ? parts[1] : (s.startsWith('n_') ? 'Note ' + s.slice(2, 8) : s)
-      const noteIcon = parts.length >= 3 && parts[2] ? parts[2] : '📄'
+      const info = decodeNoteValue(value)
+      if (!info) return '<span class="ag-cell-empty">—</span>'
       const span = document.createElement('span')
       span.className = 'ag-cell-note'
-      span.textContent = `${noteIcon} ${noteTitle}`
+      span.textContent = `${info.icon || '📄'} ${info.title}`
       span.onclick = (e) => {
         e.stopPropagation()
-        import('@/router').then(m => m.default.push(`/notes/${noteId}`))
+        import('@/router').then(m => m.default.push(`/notes/${info.id}`))
       }
       return span
     }

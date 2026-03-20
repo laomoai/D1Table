@@ -94,6 +94,7 @@
 import { computed } from 'vue'
 import type { FieldType, SelectOption } from '@/api/client'
 import router from '@/router'
+import { decodeNoteValue } from '@/utils/noteValue'
 
 const props = defineProps<{
   value: unknown
@@ -109,15 +110,9 @@ const isEmpty = computed(() => {
   return false
 })
 
-const noteInfo = computed<{ id: string; title: string; icon: string } | null>(() => {
-  if (props.fieldType !== 'note' || !props.value) return null
-  const s = String(props.value)
-  const parts = s.split('|')
-  if (parts.length >= 2) {
-    return { id: parts[0], title: parts[1], icon: parts[2] || '' }
-  }
-  // Fallback: raw ID — show shortened
-  return { id: s, title: s.startsWith('n_') ? 'Note ' + s.slice(2, 8) : s, icon: '' }
+const noteInfo = computed(() => {
+  if (props.fieldType !== 'note') return null
+  return decodeNoteValue(props.value)
 })
 
 const imageThumb = computed<string | null>(() => {

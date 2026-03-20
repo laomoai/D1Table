@@ -50,11 +50,11 @@
             <template v-else-if="field.field_type === 'note'">
               <div class="note-field-wrap">
                 <a
-                  v-if="currentRow[field.column_name]"
+                  v-if="currentRow[field.column_name] && decodeNoteValue(currentRow[field.column_name])"
                   class="note-field-link"
-                  :href="`/notes/${parseNoteValue(currentRow[field.column_name] as string).id}`"
-                  @click.prevent="$router.push(`/notes/${parseNoteValue(currentRow[field.column_name] as string).id}`)"
-                >{{ parseNoteValue(currentRow[field.column_name] as string).icon || '📄' }} {{ parseNoteValue(currentRow[field.column_name] as string).title }}</a>
+                  :href="`/notes/${decodeNoteValue(currentRow[field.column_name])!.id}`"
+                  @click.prevent="$router.push(`/notes/${decodeNoteValue(currentRow[field.column_name])!.id}`)"
+                >{{ decodeNoteValue(currentRow[field.column_name])!.icon || '📄' }} {{ decodeNoteValue(currentRow[field.column_name])!.title }}</a>
                 <div class="note-field-actions">
                   <button class="note-field-btn" @click="openNotePicker(field.column_name)" title="Select note">
                     {{ currentRow[field.column_name] ? 'Change' : 'Select note' }}
@@ -230,6 +230,7 @@ import { api, notesApi, type FieldMeta, type FieldType, type NoteListItem } from
 import { useQueryClient, useQuery } from '@tanstack/vue-query'
 import CellValue from './CellValue.vue'
 import ImageUpload from './ImageUpload.vue'
+import { decodeNoteValue, encodeNoteValue } from '@/utils/noteValue'
 
 const props = defineProps<{
   tableName: string
@@ -379,13 +380,6 @@ function datetimeToTs(v: unknown): number | null {
 }
 
 
-// ── Note value parser ───────────────────────────────────────
-function parseNoteValue(val: string): { id: string; title: string; icon: string } {
-  const parts = val.split('|')
-  if (parts.length >= 2) return { id: parts[0], title: parts[1], icon: parts[2] || '' }
-  return { id: val, title: val, icon: '' }
-}
-
 // ── Note picker ─────────────────────────────────────────────
 const showNotePicker = ref(false)
 const notePickerSearch = ref('')
@@ -470,10 +464,7 @@ function pickNote(noteId: string) {
     const note = (allNotes.value ?? []).find(n => n.id === noteId)
     const title = note?.title || 'Untitled'
     const icon = note?.icon || ''
-    // Store as "id|title|icon" so CellValue can display without async fetch
-    saveField(notePickerField.value, `${noteId}|${title}|${icon}`)
-    // Update title cache
-    noteTitleCache.value.set(noteId, title)
+    saveField(notePickerField.value, encodeNoteValue(noteId, title, icon))
   }
   showNotePicker.value = false
 }

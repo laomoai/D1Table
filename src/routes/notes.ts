@@ -95,6 +95,11 @@ notes.post('/', requireWriteMiddleware, async (c) => {
     parent_id?: string
   }>()
 
+  const MAX_CONTENT = 5 * 1024 * 1024 // 5MB
+  if (body.content && body.content.length > MAX_CONTENT) {
+    return c.json({ error: { code: 'CONTENT_TOO_LARGE', message: 'Note content exceeds 5MB limit' } }, 413)
+  }
+
   const id = generateId()
   const userId = c.get('userId')
 
@@ -136,6 +141,10 @@ notes.patch('/:id', requireWriteMiddleware, async (c) => {
     params.push(body.title.trim() || 'Untitled')
   }
   if (body.content !== undefined) {
+    const MAX_CONTENT = 5 * 1024 * 1024
+    if (body.content.length > MAX_CONTENT) {
+      return c.json({ error: { code: 'CONTENT_TOO_LARGE', message: 'Note content exceeds 5MB limit' } }, 413)
+    }
     sets.push('content = ?')
     params.push(body.content)
   }
@@ -144,6 +153,24 @@ notes.patch('/:id', requireWriteMiddleware, async (c) => {
     params.push(body.icon)
   }
   if (body.parent_id !== undefined) {
+    // Prevent circular reference: parent cannot be self or a descendant
+    if (body.parent_id === id) {
+      return c.json({ error: { code: 'INVALID_PARENT', message: 'Cannot set note as its own parent' } }, 400)
+    }
+    if (body.parent_id) {
+      // Walk up from parent_id to check for cycles
+      let cursor: string | null = body.parent_id
+      const visited = new Set<string>()
+      while (cursor) {
+        if (cursor === id) {
+          return c.json({ error: { code: 'INVALID_PARENT', message: 'Cannot set a descendant as parent (circular reference)' } }, 400)
+        }
+        if (visited.has(cursor)) break // safety: break if already visited
+        visited.add(cursor)
+        const row = await c.env.DB.prepare('SELECT parent_id FROM _notes WHERE id = ?').bind(cursor).first<{ parent_id: string | null }>()
+        cursor = row?.parent_id ?? null
+      }
+    }
     sets.push('parent_id = ?')
     params.push(body.parent_id)
   }

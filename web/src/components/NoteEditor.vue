@@ -67,6 +67,7 @@ import { languages } from '@codemirror/language-data'
 import { defaultKeymap, indentWithTab, history, historyKeymap } from '@codemirror/commands'
 import { syntaxHighlighting, defaultHighlightStyle, bracketMatching } from '@codemirror/language'
 import { searchKeymap, highlightSelectionMatches } from '@codemirror/search'
+import DOMPurify from 'dompurify'
 import { renderMarkdown } from '@/utils/markdown'
 
 const props = withDefaults(defineProps<{
@@ -130,7 +131,7 @@ function startDrag(e: MouseEvent) {
 // Prevent feedback loop
 let isExternalUpdate = false
 
-const previewHtml = computed(() => renderMarkdown(props.modelValue))
+const previewHtml = computed(() => DOMPurify.sanitize(renderMarkdown(props.modelValue)))
 const wordCount = computed(() => {
   const text = props.modelValue.trim()
   if (!text) return 0
