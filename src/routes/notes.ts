@@ -39,7 +39,7 @@ notes.get('/', async (c) => {
     sql += ` AND parent_id IS NULL`
   }
 
-  sql += ` ORDER BY sort_order ASC, created_at DESC`
+  sql += ` ORDER BY sort_order ASC, created_at DESC LIMIT 200`
 
   const rows = await c.env.DB.prepare(sql).bind(...params)
     .all<{ id: string; title: string; parent_id: string | null; sort_order: number; created_by: number | null; created_at: number; updated_at: number }>()
@@ -58,7 +58,8 @@ notes.get('/tree', async (c) => {
   const rows = await c.env.DB.prepare(
     `SELECT id, title, icon, parent_id, sort_order, created_at, updated_at
      FROM _notes WHERE ${clause} AND deleted_at IS NULL
-     ORDER BY sort_order ASC, created_at DESC`
+     ORDER BY sort_order ASC, created_at DESC
+     LIMIT 500`
   ).bind(...params)
     .all<{ id: string; title: string; icon: string | null; parent_id: string | null; sort_order: number; created_at: number; updated_at: number }>()
 
@@ -75,7 +76,8 @@ notes.get('/trash', async (c) => {
 
   const rows = await c.env.DB.prepare(
     `SELECT id, title, icon, deleted_at FROM _notes WHERE ${clause} AND deleted_at IS NOT NULL AND parent_id IS NULL
-     ORDER BY deleted_at DESC`
+     ORDER BY deleted_at DESC
+     LIMIT 50`
   ).bind(...params)
     .all<{ id: string; title: string; icon: string | null; deleted_at: number }>()
 
@@ -227,22 +229,18 @@ notes.delete('/:id', requireWriteMiddleware, async (c) => {
   const { id } = c.req.param()
   const userId = c.get('userId')
 
-  // Recursively collect all descendant IDs (max depth 50)
-  async function getDescendantIds(parentId: string, depth = 0): Promise<string[]> {
-    if (depth > 50) return []
+  // Collect all descendant IDs level by level (breadth-first, max 10 levels)
+  // Each level is 1 query instead of 1-per-node
+  const allIds: string[] = [id]
+  let currentLevel = [id]
+  for (let depth = 0; depth < 10 && currentLevel.length > 0; depth++) {
+    const placeholders = currentLevel.map(() => '?').join(',')
     const children = await c.env.DB.prepare(
-      `SELECT id FROM _notes WHERE parent_id = ? AND deleted_at IS NULL`
-    ).bind(parentId).all<{ id: string }>()
-
-    const ids: string[] = []
-    for (const child of children.results) {
-      ids.push(child.id)
-      ids.push(...await getDescendantIds(child.id, depth + 1))
-    }
-    return ids
+      `SELECT id FROM _notes WHERE parent_id IN (${placeholders}) AND deleted_at IS NULL`
+    ).bind(...currentLevel).all<{ id: string }>()
+    currentLevel = children.results.map(r => r.id)
+    allIds.push(...currentLevel)
   }
-
-  const allIds = [id, ...await getDescendantIds(id)]
   const now = Math.floor(Date.now() / 1000)
 
   const stmts = allIds.map(noteId => {

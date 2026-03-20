@@ -16,6 +16,7 @@ export function useNoteTree() {
   const { data: treeData, isLoading: treeLoading } = useQuery({
     queryKey: ['notes', 'tree'],
     queryFn: notesApi.getTree,
+    staleTime: 30_000, // 30s — avoid repeated full-table scans on D1
   })
 
   const childrenMap = computed(() => {
