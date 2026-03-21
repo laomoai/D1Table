@@ -104,7 +104,7 @@
           v-model:page="currentPage"
           v-model:page-size="pageSize"
           :item-count="totalCount"
-          :page-sizes="[20, 50, 100]"
+          :page-sizes="[20, 30, 50, 100]"
           show-size-picker
           size="small"
           :disabled="isFetching"
@@ -192,7 +192,7 @@ const searchText = ref('')
 const selectedCount = ref(0)
 const batchDeleting = ref(false)
 const currentPage = ref(1)
-const pageSize = ref(20)
+const pageSize = ref(parseInt(localStorage.getItem('d1table_page_size') ?? '30', 10) || 30)
 const exporting = ref(false)
 let resizeTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -323,9 +323,12 @@ const queryParams = computed(() => {
   return params
 })
 
-// 过滤条件或排序改变时重置到第一页
+// 过滤条件或排序改变时重置到第一页；pageSize 变化时持久化
 watch([activeFilters, sortField, sortDir, pageSize], () => {
   currentPage.value = 1
+})
+watch(pageSize, (v) => {
+  localStorage.setItem('d1table_page_size', String(v))
 })
 
 // ── 数据查询 ─────────────────────────────────────────────────
