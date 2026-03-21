@@ -197,7 +197,7 @@ records.get('/:tableName/records/search', async (c) => {
 
   const result = await c.env.DB.prepare(sql).bind(...params).all<{ id: number; title: string | null }>()
   return c.json({
-    data: result.results.map(r => ({ id: r.id, title: r.title ?? `#${r.id}` }))
+    data: result.results.map(r => ({ id: String(r.id), title: r.title ?? `#${r.id}` }))
   })
 })
 

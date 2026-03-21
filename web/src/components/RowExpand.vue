@@ -10,6 +10,14 @@
         <div class="expand-header">
           <span class="expand-id">ID: {{ currentRow?.id ?? '—' }}</span>
           <div class="expand-nav">
+            <button class="copy-record-btn" :class="{ copied: recordCopied }" @click="copyRecord" :title="recordCopied ? 'Copied!' : 'Copy record'">
+              {{ recordCopied ? '✓' : '⎘' }}
+            </button>
+            <div class="font-size-switcher">
+              <button class="fs-btn" :class="{ active: fontSize === 'small' }" @click="setFontSize('small')" title="Small">A</button>
+              <button class="fs-btn fs-btn--md" :class="{ active: fontSize === 'medium' }" @click="setFontSize('medium')" title="Medium">A</button>
+              <button class="fs-btn fs-btn--lg" :class="{ active: fontSize === 'large' }" @click="setFontSize('large')" title="Large">A</button>
+            </div>
             <n-button size="small" quaternary :disabled="currentIndex <= 0" @click="navigate(-1)">
               ← Previous
             </n-button>
@@ -20,7 +28,7 @@
         </div>
       </template>
 
-      <div v-if="currentRow" class="expand-fields">
+      <div v-if="currentRow" class="expand-fields" :class="`fs-${fontSize}`">
         <div v-for="field in visibleFields" :key="field.column_name" class="expand-field-row">
           <div class="expand-field-label">
             <span class="field-icon-sm" :style="{ color: typeColor(field.field_type) }">
@@ -302,6 +310,15 @@ watch(() => props.initialIndex, (v) => { currentIndex.value = v })
 const currentRow = computed(() => props.allRows[currentIndex.value] ?? null)
 const visibleFields = computed(() => props.fields.filter(f => !f.is_hidden))
 
+// ── 字体大小 ──────────────────────────────────────────────────
+type FontSize = 'small' | 'medium' | 'large'
+const fontSize = ref<FontSize>((localStorage.getItem('d1table_detail_font_size') as FontSize) || 'medium')
+
+function setFontSize(size: FontSize) {
+  fontSize.value = size
+  localStorage.setItem('d1table_detail_font_size', size)
+}
+
 // ── 抽屉宽度：50vw，最小 480px ──────────────────────────────
 const drawerWidth = ref(Math.max(480, window.innerWidth * 0.5))
 function updateDrawerWidth() { drawerWidth.value = Math.max(480, window.innerWidth * 0.5) }
@@ -386,6 +403,58 @@ function onClose() {
   cancelEdit()
 }
 
+// ── 复制整条记录 ─────────────────────────────────────────────
+const recordCopied = ref(false)
+let recordCopyTimer: ReturnType<typeof setTimeout> | null = null
+
+async function copyRecord() {
+  if (!currentRow.value) return
+  const lines: string[] = []
+  for (const field of visibleFields.value) {
+    const val = currentRow.value[field.column_name]
+    const label = field.title
+    let display = ''
+
+    if (val == null || val === '') {
+      display = '—'
+    } else if (field.field_type === 'checkbox') {
+      display = val ? '✓ Yes' : '✗ No'
+    } else if (field.field_type === 'select' && field.select_options) {
+      const opt = (field.select_options as Array<{ value: string; label: string }>).find(o => o.value === String(val))
+      display = opt?.label ?? String(val)
+    } else if (field.field_type === 'link') {
+      const linked = parseLinkValue(val)
+      display = linked ? linked.title : String(val)
+    } else if (field.field_type === 'note') {
+      const note = decodeNoteValue(val)
+      display = note ? note.title : String(val)
+    } else if (field.field_type === 'image') {
+      try {
+        const img = JSON.parse(String(val)) as { name?: string }
+        display = img.name ?? '[Image]'
+      } catch { display = '[Image]' }
+    } else if (field.field_type === 'currency') {
+      display = '¥' + Number(val).toLocaleString('zh-CN', { minimumFractionDigits: 2 })
+    } else if (field.field_type === 'percent') {
+      display = Number(val).toLocaleString('zh-CN') + '%'
+    } else {
+      display = String(val)
+    }
+
+    lines.push(`${label}: ${display}`)
+  }
+
+  const text = lines.join('\n')
+  try {
+    await navigator.clipboard.writeText(text)
+    recordCopied.value = true
+    if (recordCopyTimer) clearTimeout(recordCopyTimer)
+    recordCopyTimer = setTimeout(() => { recordCopied.value = false }, 2000)
+  } catch {
+    message.error('Copy failed')
+  }
+}
+
 // ── 复制 ────────────────────────────────────────────────────
 const copiedCol = ref<string | null>(null)
 let copyTimer: ReturnType<typeof setTimeout> | null = null
@@ -441,7 +510,12 @@ const linkPickerLoading = ref(false)
 
 function parseLinkValue(val: unknown): LinkValue | null {
   if (!val) return null
-  try { return JSON.parse(String(val)) as LinkValue } catch { return null }
+  try {
+    const parsed = JSON.parse(String(val))
+    if (parsed && typeof parsed === 'object' && parsed.id) return parsed as LinkValue
+  } catch {}
+  // Fallback: raw ID (number or string) — not yet resolved
+  return { id: String(val), title: `#${val}` }
 }
 
 function getLinkTable(field: FieldMeta): string | null {
@@ -555,7 +629,52 @@ function typeColor(type: FieldType): string {
   width: 100%;
 }
 .expand-id { font-size: 14px; font-weight: 600; color: #555; }
-.expand-nav { display: flex; gap: 4px; }
+.expand-nav { display: flex; gap: 4px; align-items: center; }
+
+.copy-record-btn {
+  background: none;
+  border: 1px solid #e0e2ea;
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: 14px;
+  color: #aaa;
+  cursor: pointer;
+  line-height: 1.4;
+  transition: color 0.15s, border-color 0.15s;
+}
+.copy-record-btn:hover { color: #4f6ef7; border-color: #4f6ef7; }
+.copy-record-btn.copied { color: #18a058; border-color: #18a058; }
+
+/* 字体大小切换 */
+.font-size-switcher {
+  display: flex;
+  gap: 1px;
+  border: 1px solid #e0e2e8;
+  border-radius: 4px;
+  padding: 1px;
+  background: #f7f8fa;
+  margin-right: 4px;
+}
+.fs-btn {
+  background: none;
+  border: none;
+  border-radius: 3px;
+  width: 22px;
+  height: 20px;
+  cursor: pointer;
+  color: #aaa;
+  font-size: 10px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: background 0.1s, color 0.1s;
+}
+.fs-btn--md { font-size: 12px; }
+.fs-btn--lg { font-size: 14px; }
+.fs-btn:hover { color: #666; }
+.fs-btn.active { background: #fff; color: #4f6ef7; box-shadow: 0 1px 2px rgba(0,0,0,0.08); }
 
 .expand-fields {
   display: flex;
@@ -585,6 +704,15 @@ function typeColor(type: FieldType): string {
   flex-shrink: 0;
 }
 .expand-field-title { font-size: 13px; color: #666; font-weight: 500; }
+
+/* 字体大小变体 */
+.expand-fields.fs-small .expand-field-title { font-size: 11px; }
+.expand-fields.fs-small .expand-field-value { font-size: 12px; }
+.expand-fields.fs-small .expand-field-row { padding: 5px 0; gap: 8px; }
+.expand-fields.fs-small .expand-field-label { padding-top: 4px; }
+.expand-fields.fs-large .expand-field-title { font-size: 14px; }
+.expand-fields.fs-large .expand-field-value { font-size: 15px; }
+.expand-fields.fs-large .expand-field-row { padding: 10px 0; gap: 14px; }
 
 .expand-field-value {
   font-size: 13px;

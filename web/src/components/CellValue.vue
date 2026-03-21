@@ -121,7 +121,12 @@ const isEmpty = computed(() => {
 
 const linkInfo = computed<LinkValue | null>(() => {
   if (props.fieldType !== 'link' || !props.value) return null
-  try { return JSON.parse(String(props.value)) as LinkValue } catch { return null }
+  try {
+    const parsed = JSON.parse(String(props.value))
+    if (parsed && typeof parsed === 'object' && parsed.id) return parsed as LinkValue
+  } catch {}
+  // Fallback: raw ID not yet resolved
+  return { id: String(props.value), title: `#${props.value}` }
 })
 
 function goToLinked() {

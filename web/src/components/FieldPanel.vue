@@ -86,6 +86,12 @@
                 </div>
               </div>
 
+              <!-- Link 目标表（只读显示） -->
+              <div v-if="editForm.field_type === 'link'" class="editor-section">
+                <div class="editor-label">Target Table</div>
+                <div class="link-table-display">{{ editForm.link_table || '—' }}</div>
+              </div>
+
               <div class="editor-footer">
                 <n-button size="small" @click="cancelExpand">Cancel</n-button>
                 <n-button size="small" type="primary" :loading="saving" @click="saveFieldEdit(field)">Save</n-button>
@@ -221,6 +227,7 @@ const editForm = ref({
   title: '',
   field_type: 'text' as FieldType,
   select_options: [] as SelectOption[],
+  link_table: '' as string,
 })
 
 function toggleExpand(field: FieldMeta) {
@@ -229,10 +236,20 @@ function toggleExpand(field: FieldMeta) {
     return
   }
   expandedCol.value = field.column_name
+  // link 字段的 select_options 存的是 { link_table: "xxx" }，不是数组
+  let linkTable = ''
+  let selectOpts: SelectOption[] = []
+  if (field.field_type === 'link' && field.select_options) {
+    const config = field.select_options as unknown as { link_table?: string }
+    linkTable = config.link_table ?? ''
+  } else if (field.select_options) {
+    selectOpts = (field.select_options as SelectOption[]).map(o => ({ ...o }))
+  }
   editForm.value = {
     title: field.title,
     field_type: field.field_type,
-    select_options: field.select_options ? field.select_options.map(o => ({ ...o })) : [],
+    select_options: selectOpts,
+    link_table: linkTable,
   }
   // 关闭新增表单
   showAddForm.value = false
@@ -575,6 +592,14 @@ function typeColor(type: FieldType): string {
   margin-top: 2px;
 }
 .add-opt-btn:hover { border-color: #4f6ef7; color: #4f6ef7; }
+.link-table-display {
+  font-size: 13px;
+  color: #4f6ef7;
+  padding: 4px 8px;
+  background: rgba(79, 110, 247, 0.08);
+  border-radius: 4px;
+  font-weight: 500;
+}
 
 /* ── 添加字段区域 ─────────────────────── */
 .add-field-section { margin-top: 16px; }

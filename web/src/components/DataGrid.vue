@@ -36,6 +36,12 @@
       <n-button size="small" quaternary @click="toggleLock" :title="props.isLocked ? 'Unlock table' : 'Lock table'">
         {{ props.isLocked ? '🔒' : '🔓' }}
       </n-button>
+      <n-button v-if="!selectMode" size="small" quaternary @click="enterSelectMode" :disabled="props.isLocked" title="Batch delete">
+        🗑
+      </n-button>
+      <n-button v-else size="small" type="error" quaternary @click="exitSelectMode">
+        Cancel select
+      </n-button>
       <!-- 视图切换 -->
       <div class="view-switcher">
         <button class="view-btn view-btn--active" title="Grid view">
@@ -50,10 +56,13 @@
         </button>
         <button class="view-btn" title="Gallery view" @click="emit('switchView', 'gallery')">
           <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
-            <rect x="1" y="1" width="5" height="5" rx="1"/>
-            <rect x="8" y="1" width="5" height="5" rx="1"/>
-            <rect x="1" y="8" width="5" height="5" rx="1"/>
-            <rect x="8" y="8" width="5" height="5" rx="1"/>
+            <rect x="1" y="1" width="5" height="5" rx="1"/><rect x="8" y="1" width="5" height="5" rx="1"/>
+            <rect x="1" y="8" width="5" height="5" rx="1"/><rect x="8" y="8" width="5" height="5" rx="1"/>
+          </svg>
+        </button>
+        <button class="view-btn" title="Kanban view" @click="emit('switchView', 'kanban')">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
+            <rect x="1" y="1" width="3" height="10" rx="0.5"/><rect x="5.5" y="1" width="3" height="7" rx="0.5"/><rect x="10" y="1" width="3" height="12" rx="0.5"/>
           </svg>
         </button>
         <button class="view-btn" title="Chart view" @click="emit('switchView', 'chart')">
@@ -182,9 +191,10 @@ const props = defineProps<{
   tableIcon?: string | null
   totalCount: number | null
   isLocked?: boolean
+  highlightId?: string | null
 }>()
 
-const emit = defineEmits<{ refresh: []; switchView: [view: string] }>()
+const emit = defineEmits<{ refresh: []; switchView: [view: string]; highlightHandled: [] }>()
 
 const message = useMessage()
 const dialog = useDialog()
@@ -260,13 +270,26 @@ async function handleExport(format: 'csv' | 'json') {
   }
 }
 
-// ── 行选择配置 ────────────────────────────────────────────────
-const rowSelection = {
-  mode: 'multiRow' as const,
-  checkboxes: true,
-  headerCheckbox: true,
-  enableClickSelection: false,
+// ── 批量选择模式 ────────────────────────────────────────────────
+const selectMode = ref(false)
+
+function enterSelectMode() {
+  selectMode.value = true
 }
+
+function exitSelectMode() {
+  selectMode.value = false
+  selectedCount.value = 0
+  gridApi.value?.deselectAll()
+}
+
+// ── 行选择配置（仅在 selectMode 时启用 checkbox）────────────────
+const rowSelection = computed(() => ({
+  mode: 'multiRow' as const,
+  checkboxes: selectMode.value,
+  headerCheckbox: selectMode.value,
+  enableClickSelection: false,
+}))
 
 // ── 搜索：监听 searchText 更新 AG Grid quick filter ──────────
 watch(searchText, (v) => {
@@ -295,21 +318,9 @@ const defaultColDef: ColDef = { sortable: false, resizable: false }
 const columnDefs = computed<ColDef[]>(() => {
   const cols: ColDef[] = []
 
-  // 展开按钮列
-  cols.push({
-    colId: '__expand',
-    headerName: '',
-    width: 40,
-    minWidth: 40,
-    maxWidth: 40,
-    sortable: false,
-    resizable: false,
-    cellRenderer: expandCellRenderer,
-    cellClass: 'expand-cell',
-  })
-
-  // 数据列
-  for (const field of visibleFields.value) {
+  // 数据列（第一列带 hover 展开图标）
+  for (let i = 0; i < visibleFields.value.length; i++) {
+    const field = visibleFields.value[i]
     cols.push({
       colId: field.column_name,
       field: field.column_name,
@@ -326,7 +337,7 @@ const columnDefs = computed<ColDef[]>(() => {
         onDeleteField: () => deleteField(field),
         onEditField: () => { showFieldPanel.value = true; nextTick(() => fieldPanelRef.value?.expand(field.column_name)) },
       },
-      cellRenderer: typedCellRenderer,
+      cellRenderer: i === 0 ? firstColCellRenderer : typedCellRenderer,
       cellRendererParams: {
         fieldType: field.field_type,
         selectOptions: field.select_options,
@@ -430,6 +441,7 @@ function onSelectionChanged(event: SelectionChangedEvent) {
 function clearSelection() {
   gridApi.value?.deselectAll()
   selectedCount.value = 0
+  selectMode.value = false
 }
 
 function handleBatchDelete() {
@@ -457,6 +469,20 @@ function handleBatchDelete() {
     },
   })
 }
+
+// ── highlight 处理：从 link 跳转过来，打开详情 ──────────────
+watch(() => props.highlightId, async (id) => {
+  if (!id) return
+  try {
+    const record = await api.getRecord(props.tableName, Number(id))
+    if (record) {
+      expandRow.value = record as Record<string, unknown>
+      expandIndex.value = 0
+      showExpand.value = true
+    }
+  } catch {}
+  emit('highlightHandled')
+}, { immediate: true })
 
 // ── 键盘翻页（左右箭头）─────────────────────────────────────
 function handleKeydown(e: KeyboardEvent) {
@@ -494,13 +520,31 @@ function closeDropdown() {
 }
 
 // ── 函数式 cell renderer ─────────────────────────────────────
-function expandCellRenderer(params: { data: Record<string, unknown>; rowIndex: number }): HTMLElement {
+function firstColCellRenderer(params: { value: unknown; data: Record<string, unknown>; rowIndex: number; fieldType: FieldType; selectOptions: SelectOption[] | null; linkTable?: string }): HTMLElement {
+  const wrap = document.createElement('div')
+  wrap.className = 'ag-first-col-wrap'
+
+  // Expand icon (visible on hover)
   const btn = document.createElement('button')
   btn.className = 'ag-expand-btn'
-  btn.textContent = '⤢'
-  btn.title = 'Expand details'
+  btn.innerHTML = '&#x2922;' // ⤢
+  btn.title = 'Open detail'
   btn.onclick = (e) => { e.stopPropagation(); openExpand(params.data, params.rowIndex) }
-  return btn
+  wrap.appendChild(btn)
+
+  // Actual cell content
+  const content = typedCellRenderer(params)
+  if (typeof content === 'string') {
+    const span = document.createElement('span')
+    span.className = 'ag-first-col-content'
+    span.innerHTML = content
+    wrap.appendChild(span)
+  } else {
+    content.classList.add('ag-first-col-content')
+    wrap.appendChild(content)
+  }
+
+  return wrap
 }
 
 function typedCellRenderer(params: { value: unknown; fieldType: FieldType; selectOptions: SelectOption[] | null }): HTMLElement | string {
@@ -579,6 +623,26 @@ function typedCellRenderer(params: { value: unknown; fieldType: FieldType; selec
       } catch {
         return '<span class="ag-cell-empty">—</span>'
       }
+    }
+
+    case 'link': {
+      try {
+        const linked = JSON.parse(String(value)) as { id: string; title: string }
+        if (linked && linked.title) {
+          const span = document.createElement('span')
+          span.className = 'ag-cell-link-record'
+          span.textContent = linked.title
+          const lt = (params as { linkTable?: string }).linkTable
+          if (lt) {
+            span.onclick = (e) => {
+              e.stopPropagation()
+              import('@/router').then(m => m.default.push(`/tables/${lt}?highlight=${linked.id}`))
+            }
+          }
+          return span
+        }
+      } catch {}
+      return `<span class="ag-cell-text">${esc(String(value))}</span>`
     }
 
     case 'note': {
@@ -829,13 +893,28 @@ async function refreshAll() {
 .ag-theme-alpine .ag-row-selected {
   background-color: #e9f0fb !important;
 }
-/* 展开按钮仅悬浮时可见 */
+/* 第一列：展开图标 + 内容 */
+.ag-first-col-wrap {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  overflow: hidden;
+}
+.ag-first-col-content {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .ag-theme-alpine .ag-expand-btn {
   background: none;
   border: 1px solid #d0d3da;
   border-radius: 3px;
-  width: 20px;
-  height: 20px;
+  width: 18px;
+  height: 18px;
+  min-width: 18px;
   cursor: pointer;
   font-size: 10px;
   color: #888;
@@ -843,11 +922,11 @@ async function refreshAll() {
   align-items: center;
   justify-content: center;
   padding: 0;
-  visibility: hidden;
+  opacity: 0;
+  transition: opacity 0.1s;
 }
-.ag-theme-alpine .ag-row-hover .ag-expand-btn { visibility: visible; }
+.ag-theme-alpine .ag-row-hover .ag-expand-btn { opacity: 1; }
 .ag-theme-alpine .ag-expand-btn:hover { background: #eef0ff; border-color: #4f6ef7; color: #4f6ef7; }
-.ag-theme-alpine .expand-cell { display: flex !important; align-items: center; justify-content: center; }
 /* 单元格样式 */
 .ag-cell-empty { color: #ccc; }
 .ag-cell-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -864,6 +943,15 @@ async function refreshAll() {
   text-overflow: ellipsis; white-space: nowrap;
 }
 .ag-cell-note:hover { background: rgba(55,53,47,0.1); }
+.ag-cell-link-record {
+  display: inline-flex; align-items: center;
+  padding: 1px 8px 1px 6px; background: rgba(79,110,247,0.08);
+  border: 1px solid rgba(79,110,247,0.25); border-radius: 4px;
+  font-size: 12px; color: #4f6ef7; font-weight: 500;
+  cursor: pointer; max-width: 100%; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap;
+}
+.ag-cell-link-record:hover { background: rgba(79,110,247,0.14); }
 /* "···" 操作按钮 */
 .ag-actions-wrap { display: flex; align-items: center; justify-content: center; height: 100%; }
 .ag-act-menu-btn {

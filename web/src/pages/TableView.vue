@@ -15,8 +15,10 @@
       :table-icon="tableIcon"
       :total-count="totalCount"
       :is-locked="isTableLocked"
+      :highlight-id="highlightId"
       @refresh="refetchTables"
       @switch-view="switchView"
+      @highlight-handled="clearHighlight"
     />
     <GalleryView
       v-else-if="fields && viewMode === 'gallery'"
@@ -38,6 +40,17 @@
       :total-count="totalCount"
       @switch-view="switchView"
     />
+    <KanbanView
+      v-else-if="fields && viewMode === 'kanban'"
+      :table-name="tableName"
+      :fields="fields"
+      :table-title="tableTitle"
+      :table-icon="tableIcon"
+      :total-count="totalCount"
+      :is-locked="isTableLocked"
+      @refresh="refetchTables"
+      @switch-view="switchView"
+    />
   </div>
 </template>
 
@@ -50,18 +63,32 @@ import { api } from '@/api/client'
 import DataGrid from '@/components/DataGrid.vue'
 import GalleryView from '@/components/GalleryView.vue'
 import ChartView from '@/components/ChartView.vue'
+import KanbanView from '@/components/KanbanView.vue'
 
 const route = useRoute()
 const queryClient = useQueryClient()
 
 const tableName = computed(() => route.params.tableName as string)
-const viewMode = ref<'grid' | 'gallery' | 'chart'>('grid')
+const highlightId = ref<string | null>((route.query.highlight as string) ?? null)
+const viewMode = ref<'grid' | 'gallery' | 'chart' | 'kanban'>('grid')
+
+// 监听路由变化（从 link 跳转过来）
+watch(() => route.query.highlight, (v) => {
+  if (v) {
+    highlightId.value = String(v)
+    viewMode.value = 'grid'
+  }
+})
+
+function clearHighlight() {
+  highlightId.value = null
+}
 
 // 切换表时重置视图
 watch(tableName, () => { viewMode.value = 'grid' })
 
 function switchView(v: string) {
-  viewMode.value = v as 'grid' | 'gallery' | 'chart'
+  viewMode.value = v as 'grid' | 'gallery' | 'chart' | 'kanban'
 }
 
 const {

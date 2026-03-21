@@ -24,6 +24,11 @@
             <rect x="1" y="8" width="5" height="5" rx="1"/><rect x="8" y="8" width="5" height="5" rx="1"/>
           </svg>
         </button>
+        <button class="view-btn" title="Kanban view" @click="emit('switchView', 'kanban')">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
+            <rect x="1" y="1" width="3" height="10" rx="0.5"/><rect x="5.5" y="1" width="3" height="7" rx="0.5"/><rect x="10" y="1" width="3" height="12" rx="0.5"/>
+          </svg>
+        </button>
         <button class="view-btn view-btn--active" title="Chart view">
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="1,11 4,6 7,9 10,3 13,6"/>
