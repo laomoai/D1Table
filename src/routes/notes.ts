@@ -156,14 +156,6 @@ notes.patch('/:id', requireWriteMiddleware, async (c) => {
   }>()
   const userId = c.get('userId')
 
-  // 锁定检查：锁定时只允许修改 is_locked（解锁）
-  if (body.is_locked === undefined) {
-    const row = await c.env.DB.prepare(`SELECT is_locked FROM _notes WHERE id = ?`).bind(id).first<{ is_locked: number }>()
-    if (row?.is_locked === 1) {
-      return c.json({ error: { code: 'NOTE_LOCKED', message: 'Note is locked' } }, 403)
-    }
-  }
-
   const sets: string[] = ['updated_at = unixepoch()']
   const params: unknown[] = []
 
@@ -241,11 +233,6 @@ notes.patch('/:id', requireWriteMiddleware, async (c) => {
 notes.delete('/:id', requireWriteMiddleware, async (c) => {
   const { id } = c.req.param()
   const userId = c.get('userId')
-
-  const lockRow = await c.env.DB.prepare(`SELECT is_locked FROM _notes WHERE id = ?`).bind(id).first<{ is_locked: number }>()
-  if (lockRow?.is_locked === 1) {
-    return c.json({ error: { code: 'NOTE_LOCKED', message: 'Note is locked' } }, 403)
-  }
 
   // Collect all descendant IDs level by level (breadth-first, max 10 levels)
   // Each level is 1 query instead of 1-per-node

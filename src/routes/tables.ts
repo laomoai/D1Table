@@ -21,11 +21,6 @@ function inferFieldType(colName: string, sqliteType: string): string {
 
 const tables = new Hono<{ Bindings: Env; Variables: AuthVariables }>()
 
-/** 检查表是否被锁定 */
-export async function isTableLocked(db: D1Database, tableName: string): Promise<boolean> {
-  const row = await db.prepare(`SELECT is_locked FROM _meta WHERE table_name = ?`).bind(tableName).first<{ is_locked: number }>()
-  return row?.is_locked === 1
-}
 
 /**
  * GET /api/tables
@@ -301,14 +296,6 @@ tables.patch('/:tableName', requireWriteMiddleware, async (c) => {
 
   if (setClauses.length === 0) {
     return c.json({ error: { code: 'INVALID_BODY', message: 'Nothing to update' } }, 400)
-  }
-
-  // 锁定状态下只允许修改 is_locked（解锁），不允许改 title/icon
-  if (body.is_locked === undefined) {
-    const locked = await isTableLocked(c.env.DB, tableName)
-    if (locked) {
-      return c.json({ error: { code: 'TABLE_LOCKED', message: 'Table is locked' } }, 403)
-    }
   }
 
   values.push(tableName)

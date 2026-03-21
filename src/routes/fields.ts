@@ -2,7 +2,6 @@ import { Hono } from 'hono'
 import type { AuthVariables, Env } from '../types'
 import { requireWriteMiddleware } from '../middleware/auth'
 import { getUserTables, isValidIdentifier } from '../utils/schema-cache'
-import { isTableLocked } from './tables'
 
 const fields = new Hono<{ Bindings: Env; Variables: AuthVariables }>()
 
@@ -138,9 +137,6 @@ fields.patch('/:tableName/fields/:colName', requireWriteMiddleware, async (c) =>
     return c.json({ error: { code: 'INVALID_NAME', message: 'Invalid table or column name' } }, 400)
   }
 
-  if (await isTableLocked(c.env.DB, tableName)) {
-    return c.json({ error: { code: 'TABLE_LOCKED', message: 'Table is locked' } }, 403)
-  }
 
   const body = await c.req.json<{
     title?: string
@@ -234,9 +230,6 @@ fields.patch('/:tableName/fields/:colName', requireWriteMiddleware, async (c) =>
 fields.post('/:tableName/fields', requireWriteMiddleware, async (c) => {
   const { tableName } = c.req.param()
 
-  if (await isTableLocked(c.env.DB, tableName)) {
-    return c.json({ error: { code: 'TABLE_LOCKED', message: 'Table is locked' } }, 403)
-  }
 
   const body = await c.req.json<{
     title: string
@@ -318,9 +311,6 @@ fields.post('/:tableName/fields', requireWriteMiddleware, async (c) => {
 fields.delete('/:tableName/fields/:colName', requireWriteMiddleware, async (c) => {
   const { tableName, colName } = c.req.param()
 
-  if (await isTableLocked(c.env.DB, tableName)) {
-    return c.json({ error: { code: 'TABLE_LOCKED', message: 'Table is locked' } }, 403)
-  }
 
   // 检查是否为系统列
   if (['id', 'created_at'].includes(colName)) {
