@@ -10,3 +10,4 @@ web/node_modules/
 web/dist/
 docs/
 skills/*.zip
+wrangler.toml

@@ -1,0 +1,31 @@
+name = "d1table"
+main = "src/index.ts"
+compatibility_date = "2025-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+[assets]
+directory = "./public"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "d1table"
+database_id = "YOUR_DATABASE_ID"
+
+[[r2_buckets]]
+binding = "BUCKET"
+bucket_name = "d1table-files"
+
+[vars]
+ENVIRONMENT = "production"
+
+# Secrets (set via `wrangler secret put`):
+#   GOOGLE_CLIENT_ID
+#   GOOGLE_CLIENT_SECRET
+#   SESSION_SECRET
+
+# Custom domain routing (optional): uncomment and edit to bind to your own domain
+# [[routes]]
+# pattern = "your-domain.com/*"
+# zone_name = "your-domain.com"

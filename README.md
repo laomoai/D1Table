@@ -50,69 +50,87 @@ Designed as a structured data backend for **AI Agents** — agents read and writ
 | Charts | ECharts |
 | Data fetching | TanStack Vue Query |
 
-## Getting Started
+## Quick Deploy
 
 ### Prerequisites
 
 - [Node.js](https://nodejs.org/) 18+
 - [Wrangler CLI](https://developers.cloudflare.com/workers/wrangler/) — `npm install -g wrangler`
-- A Cloudflare account
-- A Google Cloud project with OAuth 2.0 credentials
+- A Cloudflare account (free tier works)
+- A Google Cloud project with OAuth 2.0 credentials ([setup guide below](#set-up-google-oauth))
 
-### 1. Clone and install
+### One-click deploy
 
 ```bash
-git clone https://github.com/0xAlger/D1Table.git
+git clone https://github.com/nicepkg/D1Table.git
+cd D1Table
+./setup.sh
+```
+
+The script will:
+1. Create a D1 database and R2 bucket on your Cloudflare account
+2. Generate `wrangler.toml` from the template
+3. Prompt for your Google OAuth credentials
+4. Install dependencies, build, run migrations, and deploy
+
+Your instance will be available at `https://d1table.<your-subdomain>.workers.dev`.
+
+### Set up Google OAuth
+
+1. Go to [Google Cloud Console](https://console.cloud.google.com/apis/credentials) → **Create Credentials** → **OAuth 2.0 Client ID**
+2. Application type: **Web application**
+3. Add authorized redirect URI: `https://d1table.<your-subdomain>.workers.dev/api/auth/callback`
+4. Copy the **Client ID** and **Client Secret** — the setup script will ask for these
+
+> For local development, also add `http://localhost:8787/api/auth/callback` as a redirect URI.
+
+### Manual deploy
+
+<details>
+<summary>If you prefer to deploy step by step</summary>
+
+#### 1. Clone and install
+
+```bash
+git clone https://github.com/nicepkg/D1Table.git
 cd D1Table
 npm install
 cd web && npm install && cd ..
 ```
 
-### 2. Create a D1 database and R2 bucket
+#### 2. Create Cloudflare resources
 
 ```bash
 wrangler d1 create d1table
 wrangler r2 bucket create d1table-files
 ```
 
-Copy the `database_id` from the output and paste it into `wrangler.toml`.
+Copy the `database_id` from the output.
 
-### 3. Run migrations
+#### 3. Configure
 
 ```bash
-wrangler d1 execute d1table --remote --file=migrations/0001_init.sql
-wrangler d1 execute d1table --remote --file=migrations/0003_field_meta.sql
-wrangler d1 execute d1table --remote --file=migrations/0004_groups.sql
-wrangler d1 execute d1table --remote --file=migrations/0005_trash.sql
-wrangler d1 execute d1table --remote --file=migrations/0006_dashboards.sql
-wrangler d1 execute d1table --remote --file=migrations/0007_users.sql
-wrangler d1 execute d1table --remote --file=migrations/0008_user_preferences.sql
-wrangler d1 execute d1table --remote --file=migrations/0009_meta_icon.sql
+cp wrangler.toml.example wrangler.toml
+# Edit wrangler.toml — replace YOUR_DATABASE_ID with the actual ID
 ```
 
-### 4. Set up Google OAuth
-
-1. Go to [Google Cloud Console](https://console.cloud.google.com) → APIs & Services → Credentials
-2. Create an **OAuth 2.0 Client ID** (Web application)
-3. Add authorized redirect URIs:
-   - `https://your-domain.com/api/auth/callback`
-   - `http://localhost:8787/api/auth/callback` (for local dev)
-
-### 5. Set secrets
+#### 4. Set secrets
 
 ```bash
 wrangler secret put GOOGLE_CLIENT_ID
 wrangler secret put GOOGLE_CLIENT_SECRET
-wrangler secret put SESSION_SECRET      # any random 32+ character string
+wrangler secret put SESSION_SECRET        # any random 32+ character string
+wrangler secret put ALLOWED_EMAILS        # optional: comma-separated emails
 ```
 
-### 6. Deploy
+#### 5. Run migrations and deploy
 
 ```bash
+for f in migrations/0*.sql; do wrangler d1 execute d1table --remote --file=$f; done
 npm run deploy
 ```
 
-Your instance will be available at `https://d1table.<your-subdomain>.workers.dev`.
+</details>
 
 ---
 
@@ -271,7 +289,9 @@ D1Table/
 ├── migrations/             # D1 SQL migrations (run in order)
 ├── skills/
 │   └── d1table-client/     # Python client SDK
-└── wrangler.toml           # Cloudflare Workers config
+├── setup.sh                # One-click deploy script
+├── wrangler.toml.example   # Config template (copy to wrangler.toml)
+└── wrangler.toml           # Your local config (git-ignored)
 ```
 
 ---
