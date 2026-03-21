@@ -25,6 +25,7 @@
       <span v-else class="note-arrow-placeholder" />
       <span class="note-icon">
         <span v-if="note.icon && !note.icon.startsWith('ion:')">{{ note.icon }}</span>
+        <IonIcon v-else-if="note.icon && note.icon.startsWith('ion:')" :name="note.icon.slice(4)" :size="14" />
         <span v-else-if="hasChildren">📁</span>
         <span v-else>📄</span>
       </span>
@@ -59,6 +60,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { NoteListItem } from '@/api/client'
+import IonIcon from './IonIcon.vue'
 
 const props = defineProps<{
   note: NoteListItem

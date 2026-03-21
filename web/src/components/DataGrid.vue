@@ -3,8 +3,11 @@
     <!-- 工具栏 -->
     <div class="toolbar">
       <span class="table-title">
-        <span v-if="props.tableIcon && !props.tableIcon.startsWith('ion:')" class="title-icon-emoji">{{ props.tableIcon }}</span>
-        <ion-icon v-else-if="props.tableIcon" :name="props.tableIcon.slice(4)" :size="16" style="margin-right:5px;opacity:0.7;vertical-align:middle;" />
+        <button class="title-icon-btn" @click="showIconPicker = true" title="Change icon">
+          <span v-if="props.tableIcon && !props.tableIcon.startsWith('ion:')" class="title-icon-emoji">{{ props.tableIcon }}</span>
+          <ion-icon v-else-if="props.tableIcon" :name="props.tableIcon.slice(4)" :size="16" style="opacity:0.7;vertical-align:middle;" />
+          <span v-else class="title-icon-placeholder">📊</span>
+        </button>
         {{ displayTitle }}
       </span>
       <span v-if="totalCount !== null" class="row-count">{{ totalCount }} records</span>
@@ -144,6 +147,11 @@
     :initial-index="expandIndex"
     @refresh="invalidate"
   />
+
+  <!-- 图标选择器 -->
+  <AppModal v-model:show="showIconPicker" title="Choose Icon" width="360px" height="auto">
+    <IconPicker :current-icon="props.tableIcon ?? null" @select="onIconSelect" />
+  </AppModal>
 </template>
 
 <script setup lang="ts">
@@ -161,6 +169,9 @@ import FieldPanel from './FieldPanel.vue'
 import RowExpand from './RowExpand.vue'
 import _FieldHeader from './grid/FieldHeader.vue'
 import IonIcon from './IonIcon.vue'
+import AppModal from './AppModal.vue'
+import { defineAsyncComponent } from 'vue'
+const IconPicker = defineAsyncComponent(() => import('./IconPicker.vue'))
 
 const FieldHeader = markRaw(_FieldHeader)
 
@@ -183,6 +194,7 @@ const queryClient = useQueryClient()
 const showFilterBar = ref(false)
 const showForm = ref(false)
 const showFieldPanel = ref(false)
+const showIconPicker = ref(false)
 const fieldPanelRef = ref<InstanceType<typeof FieldPanel>>()
 const showExpand = ref(false)
 const editingRecord = ref<RecordRow | null>(null)
@@ -204,6 +216,16 @@ const exportOptions = [
   { label: 'Export CSV', key: 'csv' },
   { label: 'Export JSON', key: 'json' },
 ]
+
+async function onIconSelect(icon: string | null) {
+  showIconPicker.value = false
+  try {
+    await api.updateTableIcon(props.tableName, icon)
+    emit('refresh')
+  } catch (err) {
+    message.error((err as Error).message)
+  }
+}
 
 async function toggleLock() {
   try {
@@ -899,7 +921,13 @@ async function refreshAll() {
   flex-shrink: 0;
 }
 .table-title { font-size: 15px; font-weight: 600; color: #1a1d2e; display: flex; align-items: center; gap: 5px; }
+.title-icon-btn {
+  background: none; border: none; cursor: pointer; padding: 2px 4px; border-radius: 4px;
+  font-size: 16px; line-height: 1; display: flex; align-items: center; transition: background 0.1s;
+}
+.title-icon-btn:hover { background: rgba(0,0,0,0.06); }
 .title-icon-emoji { font-size: 16px; line-height: 1; }
+.title-icon-placeholder { opacity: 0.4; font-size: 16px; }
 .row-count { font-size: 12px; color: #999; background: #f0f2f5; padding: 2px 8px; border-radius: 10px; }
 /* 批量操作栏 */
 .selection-bar {
