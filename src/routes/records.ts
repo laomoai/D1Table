@@ -4,6 +4,7 @@ import { getUserTables, getTableColumns, isValidIdentifier } from '../utils/sche
 import { buildSelectSQL, parseFilters } from '../utils/query-builder'
 import { requireWriteMiddleware } from '../middleware/auth'
 import { getFieldMeta } from './fields'
+import { isTableLocked } from './tables'
 
 const records = new Hono<{ Bindings: Env; Variables: AuthVariables }>()
 
@@ -200,14 +201,19 @@ records.get('/:tableName/records/:id', async (c) => {
 records.post('/:tableName/records', requireWriteMiddleware, async (c) => {
   const { tableName } = c.req.param()
 
-  const [allTables, cols, fieldMeta] = await Promise.all([
+  const [allTables, cols, fieldMeta, locked] = await Promise.all([
     getUserTables(c.env.DB),
     getTableColumns(c.env.DB, tableName),
     getFieldMeta(c.env.DB, tableName),
+    isTableLocked(c.env.DB, tableName),
   ])
 
   if (!allTables.includes(tableName)) {
     return c.json({ error: { code: 'TABLE_NOT_FOUND', message: `Table "${tableName}" not found` } }, 404)
+  }
+
+  if (locked) {
+    return c.json({ error: { code: 'TABLE_LOCKED', message: 'Table is locked' } }, 403)
   }
 
   // 排除主键（自增）以及有 SQL 表达式默认值的列（如 created_at DEFAULT (unixepoch())）
@@ -287,14 +293,19 @@ records.post('/:tableName/records', requireWriteMiddleware, async (c) => {
 records.patch('/:tableName/records/:id', requireWriteMiddleware, async (c) => {
   const { tableName, id } = c.req.param()
 
-  const [allTables, cols, fieldMeta] = await Promise.all([
+  const [allTables, cols, fieldMeta, locked] = await Promise.all([
     getUserTables(c.env.DB),
     getTableColumns(c.env.DB, tableName),
     getFieldMeta(c.env.DB, tableName),
+    isTableLocked(c.env.DB, tableName),
   ])
 
   if (!allTables.includes(tableName)) {
     return c.json({ error: { code: 'TABLE_NOT_FOUND', message: `Table "${tableName}" not found` } }, 404)
+  }
+
+  if (locked) {
+    return c.json({ error: { code: 'TABLE_LOCKED', message: 'Table is locked' } }, 403)
   }
 
   const writableCols = cols.filter((c) => c.pk === 0)
@@ -333,9 +344,15 @@ records.patch('/:tableName/records/:id', requireWriteMiddleware, async (c) => {
 records.delete('/:tableName/records/:id', requireWriteMiddleware, async (c) => {
   const { tableName, id } = c.req.param()
 
-  const allTables = await getUserTables(c.env.DB)
+  const [allTables, locked] = await Promise.all([
+    getUserTables(c.env.DB),
+    isTableLocked(c.env.DB, tableName),
+  ])
   if (!allTables.includes(tableName)) {
     return c.json({ error: { code: 'TABLE_NOT_FOUND', message: `Table "${tableName}" not found` } }, 404)
+  }
+  if (locked) {
+    return c.json({ error: { code: 'TABLE_LOCKED', message: 'Table is locked' } }, 403)
   }
 
   // 获取完整记录用于存入回收站
@@ -371,14 +388,18 @@ records.delete('/:tableName/records/:id', requireWriteMiddleware, async (c) => {
 records.post('/:tableName/records/batch', requireWriteMiddleware, async (c) => {
   const { tableName } = c.req.param()
 
-  const [allTables, cols, fieldMeta] = await Promise.all([
+  const [allTables, cols, fieldMeta, locked] = await Promise.all([
     getUserTables(c.env.DB),
     getTableColumns(c.env.DB, tableName),
     getFieldMeta(c.env.DB, tableName),
+    isTableLocked(c.env.DB, tableName),
   ])
 
   if (!allTables.includes(tableName)) {
     return c.json({ error: { code: 'TABLE_NOT_FOUND', message: `Table "${tableName}" not found` } }, 404)
+  }
+  if (locked) {
+    return c.json({ error: { code: 'TABLE_LOCKED', message: 'Table is locked' } }, 403)
   }
   const writableCols = cols.filter((c) => c.pk === 0)
   const allowedNames = writableCols.map((c) => c.name)

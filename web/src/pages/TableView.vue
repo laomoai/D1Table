@@ -14,6 +14,7 @@
       :table-title="tableTitle"
       :table-icon="tableIcon"
       :total-count="totalCount"
+      :is-locked="isTableLocked"
       @refresh="refetchTables"
       @switch-view="switchView"
     />
@@ -24,6 +25,7 @@
       :table-title="tableTitle"
       :table-icon="tableIcon"
       :total-count="totalCount"
+      :is-locked="isTableLocked"
       @refresh="refetchTables"
       @switch-view="switchView"
     />
@@ -87,6 +89,10 @@ const tableTitle = computed(() =>
 
 const tableIcon = computed(() =>
   tablesData.value?.find(t => t.name === tableName.value)?.icon ?? null
+)
+
+const isTableLocked = computed(() =>
+  tablesData.value?.find(t => t.name === tableName.value)?.is_locked ?? false
 )
 
 watch([tableTitle, tableIcon, tableName], ([title, icon, name]) => {

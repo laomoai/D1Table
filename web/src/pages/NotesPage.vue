@@ -51,7 +51,7 @@
       <template v-else-if="activeNoteId && noteReady && activeNote">
         <div class="note-header">
           <div class="note-title-row">
-            <button class="note-icon-btn" @click="showIconPicker = true" :title="activeNote.icon ? 'Change icon' : 'Add icon'">
+            <button class="note-icon-btn" @click="showIconPicker = true" :disabled="!!activeNote.is_locked" :title="activeNote.icon ? 'Change icon' : 'Add icon'">
               <span v-if="activeNote.icon && !activeNote.icon.startsWith('ion:')" class="note-icon-emoji">{{ activeNote.icon }}</span>
               <IonIcon v-else-if="activeNote.icon" :name="activeNote.icon.slice(4)" :size="22" />
               <span v-else class="note-icon-placeholder">📄</span>
@@ -60,11 +60,15 @@
               v-model="noteTitle"
               class="note-title-input"
               placeholder="Untitled"
+              :readonly="!!activeNote.is_locked"
               @blur="saveTitle"
               @keyup.enter="($event.target as HTMLInputElement).blur()"
             />
           </div>
           <div class="note-meta">
+            <button class="note-lock-btn" @click="toggleNoteLock" :title="activeNote.is_locked ? 'Unlock note' : 'Lock note'">
+              {{ activeNote.is_locked ? '🔒' : '🔓' }}
+            </button>
             <span v-if="activeNote.updated_at" class="note-time">
               Updated {{ formatTime(activeNote.updated_at) }}
             </span>
@@ -76,6 +80,7 @@
         <NoteEditor
           ref="noteEditorRef"
           v-model="noteContent"
+          :editable="!activeNote.is_locked"
           @blur="saveContent"
           @export="exportCurrentNote"
           @insert-table-ref="showTablePicker = true"
@@ -508,6 +513,17 @@ function confirmDeleteNote(id: string) {
   })
 }
 
+async function toggleNoteLock() {
+  if (!activeNoteId.value || !activeNote.value) return
+  try {
+    await notesApi.updateNote(activeNoteId.value, { is_locked: !activeNote.value.is_locked })
+    queryClient.invalidateQueries({ queryKey: ['notes', activeNoteId.value] })
+    queryClient.invalidateQueries({ queryKey: ['notes', 'tree'] })
+  } catch (err) {
+    message.error((err as Error).message)
+  }
+}
+
 async function onIconSelect(icon: string | null) {
   if (!activeNoteId.value) return
   showIconPicker.value = false
@@ -768,6 +784,17 @@ async function handleImport(event: Event) {
   padding-bottom: 12px;
   border-bottom: 1px solid #e9e9e7;
 }
+.note-lock-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 2px 4px;
+  border-radius: 3px;
+  opacity: 0.6;
+  transition: opacity 0.1s;
+}
+.note-lock-btn:hover { opacity: 1; }
 .note-time {
   font-size: 12px;
   color: #a3a19d;

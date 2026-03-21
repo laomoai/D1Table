@@ -25,7 +25,10 @@
       <n-dropdown :options="exportOptions" @select="handleExport" trigger="click">
         <n-button size="small" :loading="exporting">Export</n-button>
       </n-dropdown>
-      <n-button size="small" type="primary" @click="openCreate">+ Add</n-button>
+      <n-button size="small" type="primary" @click="openCreate" :disabled="props.isLocked">+ Add</n-button>
+      <n-button size="small" quaternary @click="toggleLock" :title="props.isLocked ? 'Unlock table' : 'Lock table'">
+        {{ props.isLocked ? '🔒' : '🔓' }}
+      </n-button>
       <!-- 视图切换 -->
       <div class="view-switcher">
         <button class="view-btn" title="Grid view" @click="emit('switchView', 'grid')">
@@ -110,7 +113,7 @@
             </div>
           </div>
           <!-- 操作（悬浮显示）-->
-          <div class="card-actions" @click.stop>
+          <div v-if="!props.isLocked" class="card-actions" @click.stop>
             <button class="card-btn" @click="openEdit(record)">Edit</button>
             <button class="card-btn card-btn--del" @click="handleDelete(record)">Delete</button>
           </div>
@@ -175,6 +178,7 @@ const props = defineProps<{
   tableTitle?: string | null
   tableIcon?: string | null
   totalCount: number | null
+  isLocked?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -204,6 +208,15 @@ const exportOptions = [
   { label: 'Export CSV', key: 'csv' },
   { label: 'Export JSON', key: 'json' },
 ]
+
+async function toggleLock() {
+  try {
+    await api.setTableLocked(props.tableName, !props.isLocked)
+    emit('refresh')
+  } catch (err) {
+    message.error((err as Error).message)
+  }
+}
 
 async function handleExport(format: 'csv' | 'json') {
   exporting.value = true

@@ -63,6 +63,7 @@ export interface TableMeta {
   row_count: number | null
   groups: GroupInfo[]
   icon: string | null
+  is_locked: boolean
 }
 
 export interface Group {
@@ -159,6 +160,10 @@ export const api = {
   /** 更新表图标 */
   updateTableIcon: (tableName: string, icon: string | null) =>
     http.patch<{ data: { success: boolean } }>(`/tables/${tableName}`, { icon }).then((r) => r.data.data),
+
+  /** 切换表锁定状态 */
+  setTableLocked: (tableName: string, isLocked: boolean) =>
+    http.patch<{ data: { success: boolean } }>(`/tables/${tableName}`, { is_locked: isLocked }).then((r) => r.data.data),
 
   /** 删除表 */
   deleteTable: (tableName: string) =>
@@ -271,6 +276,7 @@ export interface Note {
   icon: string | null
   parent_id: string | null
   sort_order: number
+  is_locked: number
   created_by: number | null
   owner_id: number | null
   created_at: number
@@ -291,6 +297,7 @@ export interface NoteUpdate {
   icon?: string | null
   parent_id?: string | null
   sort_order?: number
+  is_locked?: boolean
 }
 
 export const notesApi = {

@@ -21,6 +21,12 @@ function inferFieldType(colName: string, sqliteType: string): string {
 
 const tables = new Hono<{ Bindings: Env; Variables: AuthVariables }>()
 
+/** 检查表是否被锁定 */
+export async function isTableLocked(db: D1Database, tableName: string): Promise<boolean> {
+  const row = await db.prepare(`SELECT is_locked FROM _meta WHERE table_name = ?`).bind(tableName).first<{ is_locked: number }>()
+  return row?.is_locked === 1
+}
+
 /**
  * GET /api/tables
  * 获取所有用户表列表
@@ -43,8 +49,8 @@ tables.get('/', async (c) => {
   // owner 过滤：有 userId 时只查自己的表
   const userId = c.get('userId')
   const metaQuery = userId !== undefined
-    ? c.env.DB.prepare(`SELECT table_name, title, row_count, icon FROM _meta WHERE owner_id = ? OR owner_id IS NULL`).bind(userId)
-    : c.env.DB.prepare(`SELECT table_name, title, row_count, icon FROM _meta`)
+    ? c.env.DB.prepare(`SELECT table_name, title, row_count, icon, is_locked FROM _meta WHERE owner_id = ? OR owner_id IS NULL`).bind(userId)
+    : c.env.DB.prepare(`SELECT table_name, title, row_count, icon, is_locked FROM _meta`)
   const groupQuery = userId !== undefined
     ? c.env.DB.prepare(
         `SELECT gt.table_name, gt.group_id, g.name as group_name
@@ -58,7 +64,7 @@ tables.get('/', async (c) => {
 
   // 并行获取 _meta（行数+显示名）和分组信息，避免串行等待
   const [metaRows, gtRows] = await Promise.all([
-    metaQuery.all<{ table_name: string; title: string | null; row_count: number | null; icon: string | null }>(),
+    metaQuery.all<{ table_name: string; title: string | null; row_count: number | null; icon: string | null; is_locked: number }>(),
     groupQuery.all<{ table_name: string; group_id: number; group_name: string }>(),
   ])
 
@@ -71,6 +77,9 @@ tables.get('/', async (c) => {
   )
   const iconMap = Object.fromEntries(
     metaRows.results.map((r) => [r.table_name, r.icon])
+  )
+  const lockMap = Object.fromEntries(
+    metaRows.results.map((r) => [r.table_name, r.is_locked === 1])
   )
 
   const groupsByTable = new Map<string, Array<{ id: number; name: string }>>()
@@ -92,6 +101,7 @@ tables.get('/', async (c) => {
     row_count: countMap[name] ?? 0,
     groups: groupsByTable.get(name) ?? [],
     icon: iconMap[name] ?? null,
+    is_locked: lockMap[name] ?? false,
   }))
 
   return c.json({ data: result })
@@ -256,7 +266,7 @@ tables.patch('/:tableName', requireWriteMiddleware, async (c) => {
     return c.json({ error: { code: 'TABLE_NOT_FOUND', message: `Table "${tableName}" not found` } }, 404)
   }
 
-  const body = await c.req.json<{ title?: string; icon?: string | null }>()
+  const body = await c.req.json<{ title?: string; icon?: string | null; is_locked?: boolean }>()
 
   const setClauses: string[] = []
   const values: unknown[] = []
@@ -284,8 +294,21 @@ tables.patch('/:tableName', requireWriteMiddleware, async (c) => {
     values.push(icon)
   }
 
+  if (body.is_locked !== undefined) {
+    setClauses.push('is_locked = ?')
+    values.push(body.is_locked ? 1 : 0)
+  }
+
   if (setClauses.length === 0) {
     return c.json({ error: { code: 'INVALID_BODY', message: 'Nothing to update' } }, 400)
+  }
+
+  // 锁定状态下只允许修改 is_locked（解锁），不允许改 title/icon
+  if (body.is_locked === undefined) {
+    const locked = await isTableLocked(c.env.DB, tableName)
+    if (locked) {
+      return c.json({ error: { code: 'TABLE_LOCKED', message: 'Table is locked' } }, 403)
+    }
   }
 
   values.push(tableName)

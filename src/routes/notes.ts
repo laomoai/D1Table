@@ -56,12 +56,12 @@ notes.get('/tree', async (c) => {
   const { clause, params } = ownerFilter(userId)
 
   const rows = await c.env.DB.prepare(
-    `SELECT id, title, icon, parent_id, sort_order, created_at, updated_at
+    `SELECT id, title, icon, parent_id, sort_order, is_locked, created_at, updated_at
      FROM _notes WHERE ${clause} AND deleted_at IS NULL
      ORDER BY sort_order ASC, created_at DESC
      LIMIT 500`
   ).bind(...params)
-    .all<{ id: string; title: string; icon: string | null; parent_id: string | null; sort_order: number; created_at: number; updated_at: number }>()
+    .all<{ id: string; title: string; icon: string | null; parent_id: string | null; sort_order: number; is_locked: number; created_at: number; updated_at: number }>()
 
   return c.json({ data: rows.results })
 })
@@ -94,10 +94,10 @@ notes.get('/:id', async (c) => {
   const { clause, params } = ownerFilter(userId)
 
   const row = await c.env.DB.prepare(
-    `SELECT id, title, content, icon, parent_id, sort_order, created_by, owner_id, created_at, updated_at
+    `SELECT id, title, content, icon, parent_id, sort_order, is_locked, created_by, owner_id, created_at, updated_at
      FROM _notes WHERE id = ? AND ${clause} AND deleted_at IS NULL`
   ).bind(id, ...params)
-    .first<{ id: string; title: string; content: string; icon: string | null; parent_id: string | null; sort_order: number; created_by: number | null; owner_id: number | null; created_at: number; updated_at: number }>()
+    .first<{ id: string; title: string; content: string; icon: string | null; parent_id: string | null; sort_order: number; is_locked: number; created_by: number | null; owner_id: number | null; created_at: number; updated_at: number }>()
 
   if (!row) {
     return c.json({ error: { code: 'NOT_FOUND', message: 'Note not found' } }, 404)
@@ -152,8 +152,17 @@ notes.patch('/:id', requireWriteMiddleware, async (c) => {
     icon?: string | null
     parent_id?: string | null
     sort_order?: number
+    is_locked?: boolean
   }>()
   const userId = c.get('userId')
+
+  // 锁定检查：锁定时只允许修改 is_locked（解锁）
+  if (body.is_locked === undefined) {
+    const row = await c.env.DB.prepare(`SELECT is_locked FROM _notes WHERE id = ?`).bind(id).first<{ is_locked: number }>()
+    if (row?.is_locked === 1) {
+      return c.json({ error: { code: 'NOTE_LOCKED', message: 'Note is locked' } }, 403)
+    }
+  }
 
   const sets: string[] = ['updated_at = unixepoch()']
   const params: unknown[] = []
@@ -200,6 +209,10 @@ notes.patch('/:id', requireWriteMiddleware, async (c) => {
     sets.push('sort_order = ?')
     params.push(body.sort_order)
   }
+  if (body.is_locked !== undefined) {
+    sets.push('is_locked = ?')
+    params.push(body.is_locked ? 1 : 0)
+  }
 
   if (sets.length === 1) {
     return c.json({ error: { code: 'INVALID_BODY', message: 'No valid fields provided' } }, 400)
@@ -228,6 +241,11 @@ notes.patch('/:id', requireWriteMiddleware, async (c) => {
 notes.delete('/:id', requireWriteMiddleware, async (c) => {
   const { id } = c.req.param()
   const userId = c.get('userId')
+
+  const lockRow = await c.env.DB.prepare(`SELECT is_locked FROM _notes WHERE id = ?`).bind(id).first<{ is_locked: number }>()
+  if (lockRow?.is_locked === 1) {
+    return c.json({ error: { code: 'NOTE_LOCKED', message: 'Note is locked' } }, 403)
+  }
 
   // Collect all descendant IDs level by level (breadth-first, max 10 levels)
   // Each level is 1 query instead of 1-per-node
