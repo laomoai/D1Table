@@ -22,6 +22,9 @@
       <n-button size="small" quaternary @click="refreshAll" title="Refresh" :disabled="refreshing">
         <span :class="{ 'spin-icon': refreshing }">↻</span>
       </n-button>
+      <n-dropdown :options="exportOptions" @select="handleExport" trigger="click">
+        <n-button size="small" :loading="exporting">Export</n-button>
+      </n-dropdown>
       <n-button size="small" type="primary" @click="openCreate">+ Add</n-button>
       <!-- 视图切换 -->
       <div class="view-switcher">
@@ -114,18 +117,23 @@
         </div>
       </div>
 
-      <div v-if="isFetchingNextPage" style="padding:16px;text-align:center">
-        <n-spin size="small" />
-      </div>
-      <div ref="sentinelRef" style="height:1px" />
     </div>
 
     <!-- 底栏 -->
     <div class="gallery-footer">
-      <span v-if="!isLoading" class="footer-hint">
-        {{ filteredRows.length }} record{{ filteredRows.length !== 1 ? 's' : '' }}
-        <template v-if="hasNextPage"> loaded — scroll for more</template>
-      </span>
+      <n-spin v-if="isFetching" size="small" />
+      <template v-else-if="totalCount !== null && totalCount > 0">
+        <n-pagination
+          v-model:page="currentPage"
+          v-model:page-size="pageSize"
+          :item-count="totalCount"
+          :page-sizes="[20, 50, 100]"
+          show-size-picker
+          size="small"
+          :disabled="isFetching"
+        />
+      </template>
+      <span v-else-if="!isFetching && rowData.length === 0" class="footer-hint">No data</span>
     </div>
   </div>
 
@@ -150,9 +158,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
-import { useInfiniteQuery, useQueryClient } from '@tanstack/vue-query'
-import { useMessage, useDialog, NButton, NSpin, NInput } from 'naive-ui'
+import { ref, computed, watch } from 'vue'
+import { useQuery, useQueryClient } from '@tanstack/vue-query'
+import { useMessage, useDialog, NButton, NSpin, NInput, NPagination, NDropdown } from 'naive-ui'
 
 import { api, type FieldMeta, type RecordRow } from '@/api/client'
 import FilterBar, { type Filter } from './FilterBar.vue'
@@ -188,7 +196,37 @@ const expandRow = ref<RecordRow | null>(null)
 const expandIndex = ref(0)
 const searchText = ref('')
 const refreshing = ref(false)
-const sentinelRef = ref<HTMLElement | null>(null)
+const currentPage = ref(1)
+const pageSize = ref(20)
+const exporting = ref(false)
+
+const exportOptions = [
+  { label: 'Export CSV', key: 'csv' },
+  { label: 'Export JSON', key: 'json' },
+]
+
+async function handleExport(format: 'csv' | 'json') {
+  exporting.value = true
+  try {
+    const exportParams: Record<string, string | number> = {}
+    for (const f of activeFilters.value) {
+      if (f.field && f.value) {
+        exportParams[`filter[${f.field}${f.op === 'eq' ? '' : `__${f.op}`}]`] = f.value
+      }
+    }
+    const blob = await api.exportRecords(props.tableName, { ...exportParams, format })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${props.tableTitle || props.tableName}.${format}`
+    a.click()
+    URL.revokeObjectURL(url)
+  } catch (err) {
+    message.error((err as Error).message)
+  } finally {
+    exporting.value = false
+  }
+}
 
 // ── 计算属性 ──────────────────────────────────────────────────
 const visibleFields = computed(() =>
@@ -250,7 +288,10 @@ function titleValue(record: RecordRow): string {
 
 // ── 查询参数 ──────────────────────────────────────────────────
 const queryParams = computed(() => {
-  const params: Record<string, string> = { page_size: '50' }
+  const params: Record<string, string | number> = {
+    page_size: pageSize.value,
+    page: currentPage.value,
+  }
   for (const f of activeFilters.value) {
     if (f.field && f.value) {
       params[`filter[${f.field}${f.op === 'eq' ? '' : `__${f.op}`}]`] = f.value
@@ -259,21 +300,20 @@ const queryParams = computed(() => {
   return params
 })
 
+// 过滤条件或每页条数改变时重置到第一页
+watch([activeFilters, pageSize], () => {
+  currentPage.value = 1
+})
+
 // ── 数据查询 ──────────────────────────────────────────────────
-const { data, isLoading, isFetchingNextPage, hasNextPage, fetchNextPage } =
-  useInfiniteQuery({
+const { data, isLoading, isFetching } =
+  useQuery({
     queryKey: computed(() => ['records', props.tableName, queryParams.value]),
-    queryFn: ({ pageParam }) =>
-      api.getRecords(props.tableName, {
-        ...queryParams.value,
-        ...(pageParam ? { cursor: pageParam as string } : {}),
-      }),
-    getNextPageParam: (lastPage) => lastPage.meta.next_cursor ?? undefined,
-    initialPageParam: undefined as string | undefined,
+    queryFn: () => api.getRecords(props.tableName, queryParams.value),
   })
 
 const rowData = computed(() =>
-  (data.value?.pages.flatMap(p => p.data.map(r => ({ ...r }))) ?? []) as RecordRow[]
+  (data.value?.data.map(r => ({ ...r })) ?? []) as RecordRow[]
 )
 
 // 客户端搜索过滤
@@ -288,26 +328,10 @@ const filteredRows = computed(() => {
   )
 })
 
-// ── 无限滚动（IntersectionObserver）──────────────────────────
-let observer: IntersectionObserver | null = null
-
-onMounted(() => {
-  observer = new IntersectionObserver(entries => {
-    if (entries[0].isIntersecting && hasNextPage.value && !isFetchingNextPage.value) {
-      fetchNextPage()
-    }
-  })
-  if (sentinelRef.value) observer.observe(sentinelRef.value)
-})
-
-onBeforeUnmount(() => {
-  observer?.disconnect()
-})
-
 // ── 工具方法 ──────────────────────────────────────────────────
 function handleFilterChange(filters: Filter[]) {
   activeFilters.value = filters
-  invalidate()
+  currentPage.value = 1
 }
 
 function invalidate() {
@@ -546,8 +570,8 @@ function openExpand(row: RecordRow) {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 6px;
-  height: 32px;
+  padding: 8px 16px;
+  min-height: 40px;
   flex-shrink: 0;
   border-top: 1px solid #f0f2f5;
 }

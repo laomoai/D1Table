@@ -97,6 +97,7 @@ export interface PageResult {
 
 export interface RecordQuery {
   page_size?: number
+  page?: number
   cursor?: string
   sort?: string          // 格式：field:asc
   fields?: string
@@ -117,6 +118,10 @@ export const api = {
   /** 查询记录（分页） */
   getRecords: (tableName: string, query: RecordQuery = {}) =>
     http.get<PageResult>(`/tables/${tableName}/records`, { params: query }).then((r) => r.data),
+
+  /** 导出表数据 */
+  exportRecords: (tableName: string, params: Omit<RecordQuery, 'page' | 'page_size' | 'cursor'> & { format: 'csv' | 'json' }) =>
+    http.get(`/tables/${tableName}/export`, { params, responseType: 'blob' }).then((r) => r.data as Blob),
 
   /** 查询单条记录 */
   getRecord: (tableName: string, id: number) =>

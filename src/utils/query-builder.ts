@@ -25,7 +25,9 @@ export interface SelectOptions {
   filters: FilterItem[]
   sort?: { field: string; dir: 'ASC' | 'DESC' }
   cursor?: number         // 上一页最后一条 id（keyset 分页）
-  pageSize: number        // 最大 100
+  pageSize: number        // 最大 100（除非 skipPageSizeLimit = true）
+  offset?: number         // offset 分页（page > 1 时使用）
+  skipPageSizeLimit?: boolean  // 导出等场景允许超过 100 行
 }
 
 /**
@@ -44,7 +46,12 @@ export function buildSelectSQL(opts: SelectOptions): {
   sql: string
   params: (string | number)[]
 } {
-  const { tableName, selectFields, filters, sort, cursor, pageSize } = opts
+  const { tableName, selectFields, filters, sort, cursor, pageSize, offset } = opts
+
+  // cursor 和 offset 互斥：cursor 用于 keyset 分页，offset 用于页码分页
+  if (cursor !== undefined && offset !== undefined && offset > 0) {
+    throw new Error('Cannot use both cursor and offset pagination')
+  }
 
   const safeTable = sanitizeName(tableName)
   const fields =
@@ -87,10 +94,15 @@ export function buildSelectSQL(opts: SelectOptions): {
     sql += ` ORDER BY "id" ASC`
   }
 
-  // 限制 pageSize 上限，防止单次大量读取
-  const size = Math.min(pageSize, 100)
+  // 限制 pageSize 上限，防止单次大量读取（导出场景除外）
+  const size = opts.skipPageSizeLimit ? pageSize : Math.min(pageSize, 100)
   sql += ` LIMIT ?`
   params.push(size)
+
+  if (offset !== undefined && offset > 0) {
+    sql += ` OFFSET ?`
+    params.push(offset)
+  }
 
   return { sql, params }
 }

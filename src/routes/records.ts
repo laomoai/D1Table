@@ -7,6 +7,61 @@ import { getFieldMeta } from './fields'
 
 const records = new Hono<{ Bindings: Env; Variables: AuthVariables }>()
 
+type SelectOpt = { id?: string; value: string; label: string; color: string }
+type FieldMetaRow = { column_name: string; field_type: string; select_options: unknown[] | null }
+
+const SELECT_COLORS = ['#4f6ef7', '#18a058', '#f0a020', '#d03050', '#8a2be2', '#00ced1']
+
+/**
+ * 针对多行数据，检查 select 字段中是否有不存在的选项值，
+ * 若有则自动追加并返回需要更新 _field_meta 的 PreparedStatement 列表。
+ */
+function buildSelectOptionStmts(
+  db: D1Database,
+  tableName: string,
+  fieldMeta: FieldMetaRow[],
+  rows: Record<string, unknown>[],
+): D1PreparedStatement[] {
+  const stmts: D1PreparedStatement[] = []
+
+  for (const field of fieldMeta) {
+    if (field.field_type !== 'select') continue
+
+    const existing = (field.select_options ?? []) as SelectOpt[]
+    const existingValues = new Set(existing.map(o => o.value))
+
+    // 收集所有行中该字段的新值（去重）
+    const newValues: string[] = []
+    for (const row of rows) {
+      const val = row[field.column_name]
+      if (val == null || val === '') continue
+      const str = String(val)
+      if (!existingValues.has(str) && !newValues.includes(str)) {
+        newValues.push(str)
+      }
+    }
+
+    if (newValues.length === 0) continue
+
+    const updated = [...existing]
+    for (let i = 0; i < newValues.length; i++) {
+      updated.push({
+        id: Math.random().toString(36).slice(2, 10),
+        value: newValues[i],
+        label: newValues[i],
+        color: SELECT_COLORS[(existing.length + i) % SELECT_COLORS.length],
+      })
+    }
+
+    stmts.push(
+      db.prepare(`UPDATE _field_meta SET select_options = ? WHERE table_name = ? AND column_name = ?`)
+        .bind(JSON.stringify(updated), tableName, field.column_name)
+    )
+  }
+
+  return stmts
+}
+
 /**
  * GET /api/tables/:tableName/records
  *
@@ -59,15 +114,20 @@ records.get('/:tableName/records', async (c) => {
 
   // 解析分页参数
   const pageSize = Math.min(parseInt(query.page_size ?? '20', 10) || 20, 100)
+  const hasPageParam = query.page !== undefined
+  const page = Math.max(1, parseInt(query.page ?? '1', 10) || 1)
   const cursor = query.cursor ? parseInt(query.cursor, 10) : undefined
+  // page 参数优先于 cursor；二者同时存在时忽略 cursor
+  const offset = hasPageParam && page > 1 ? (page - 1) * pageSize : undefined
 
   const { sql, params } = buildSelectSQL({
     tableName,
     selectFields: requestedFields,
     filters,
     sort,
-    cursor,
+    cursor: hasPageParam ? undefined : cursor,
     pageSize,
+    offset,
   })
 
   const result = await c.env.DB.prepare(sql).bind(...params).all()
@@ -140,12 +200,16 @@ records.get('/:tableName/records/:id', async (c) => {
 records.post('/:tableName/records', requireWriteMiddleware, async (c) => {
   const { tableName } = c.req.param()
 
-  const allTables = await getUserTables(c.env.DB)
+  const [allTables, cols, fieldMeta] = await Promise.all([
+    getUserTables(c.env.DB),
+    getTableColumns(c.env.DB, tableName),
+    getFieldMeta(c.env.DB, tableName),
+  ])
+
   if (!allTables.includes(tableName)) {
     return c.json({ error: { code: 'TABLE_NOT_FOUND', message: `Table "${tableName}" not found` } }, 404)
   }
 
-  const cols = await getTableColumns(c.env.DB, tableName)
   // 排除主键（自增）以及有 SQL 表达式默认值的列（如 created_at DEFAULT (unixepoch())）
   // 这类列由数据库自动填写，用户传 null 会触发 NOT NULL 违反
   const writableCols = cols.filter(
@@ -181,6 +245,7 @@ records.post('/:tableName/records', requireWriteMiddleware, async (c) => {
   }
 
   const insertSQL = `INSERT INTO "${tableName}" (${columnList}) VALUES (${placeholders})`
+  const optionStmts = buildSelectOptionStmts(c.env.DB, tableName, fieldMeta, [body])
 
   try {
     const results = await c.env.DB.batch([
@@ -189,6 +254,7 @@ records.post('/:tableName/records', requireWriteMiddleware, async (c) => {
         `INSERT INTO _meta (table_name, row_count) VALUES (?, 1)
          ON CONFLICT(table_name) DO UPDATE SET row_count = row_count + 1, updated_at = unixepoch()`
       ).bind(tableName),
+      ...optionStmts,
     ])
 
     const insertResult = results[0] as D1Result
@@ -221,12 +287,16 @@ records.post('/:tableName/records', requireWriteMiddleware, async (c) => {
 records.patch('/:tableName/records/:id', requireWriteMiddleware, async (c) => {
   const { tableName, id } = c.req.param()
 
-  const allTables = await getUserTables(c.env.DB)
+  const [allTables, cols, fieldMeta] = await Promise.all([
+    getUserTables(c.env.DB),
+    getTableColumns(c.env.DB, tableName),
+    getFieldMeta(c.env.DB, tableName),
+  ])
+
   if (!allTables.includes(tableName)) {
     return c.json({ error: { code: 'TABLE_NOT_FOUND', message: `Table "${tableName}" not found` } }, 404)
   }
 
-  const cols = await getTableColumns(c.env.DB, tableName)
   const writableCols = cols.filter((c) => c.pk === 0)
   const allowedNames = writableCols.map((c) => c.name)
 
@@ -239,13 +309,16 @@ records.patch('/:tableName/records/:id', requireWriteMiddleware, async (c) => {
 
   const setClause = fields.map((f) => `"${f}" = ?`).join(', ')
   const values = [...fields.map((f) => body[f]), id]
+  const optionStmts = buildSelectOptionStmts(c.env.DB, tableName, fieldMeta, [body])
 
-  const result = await c.env.DB
+  const updateStmt = c.env.DB
     .prepare(`UPDATE "${tableName}" SET ${setClause} WHERE id = ?`)
     .bind(...values)
-    .run()
 
-  if (result.meta.changes === 0) {
+  const results = await c.env.DB.batch([updateStmt, ...optionStmts])
+  const updateResult = results[0] as D1Result
+
+  if (updateResult.meta.changes === 0) {
     return c.json({ error: { code: 'RECORD_NOT_FOUND', message: 'Record not found' } }, 404)
   }
 
@@ -298,12 +371,15 @@ records.delete('/:tableName/records/:id', requireWriteMiddleware, async (c) => {
 records.post('/:tableName/records/batch', requireWriteMiddleware, async (c) => {
   const { tableName } = c.req.param()
 
-  const allTables = await getUserTables(c.env.DB)
+  const [allTables, cols, fieldMeta] = await Promise.all([
+    getUserTables(c.env.DB),
+    getTableColumns(c.env.DB, tableName),
+    getFieldMeta(c.env.DB, tableName),
+  ])
+
   if (!allTables.includes(tableName)) {
     return c.json({ error: { code: 'TABLE_NOT_FOUND', message: `Table "${tableName}" not found` } }, 404)
   }
-
-  const cols = await getTableColumns(c.env.DB, tableName)
   const writableCols = cols.filter((c) => c.pk === 0)
   const allowedNames = writableCols.map((c) => c.name)
 
@@ -337,9 +413,104 @@ records.post('/:tableName/records/batch', requireWriteMiddleware, async (c) => {
     ).bind(tableName, rows.length, rows.length)
   )
 
+  // 自动补全 select 选项（跨所有行收集新值，每个字段只生成一条更新语句）
+  stmts.push(...buildSelectOptionStmts(c.env.DB, tableName, fieldMeta, rows))
+
   await c.env.DB.batch(stmts)
 
   return c.json({ data: { inserted: rows.length } }, 201)
+})
+
+/**
+ * GET /api/tables/:tableName/export
+ *
+ * 导出整张表数据（遵循当前筛选/排序）
+ *   format=csv   → UTF-8 BOM CSV（默认，Excel 兼容）
+ *   format=json  → JSON 数组
+ *   filter/sort  → 同 records 接口
+ *   最多导出 10000 行
+ */
+records.get('/:tableName/export', async (c) => {
+  const { tableName } = c.req.param()
+  const query = c.req.query()
+
+  const [allTables, cols, fieldMeta] = await Promise.all([
+    getUserTables(c.env.DB),
+    getTableColumns(c.env.DB, tableName),
+    getFieldMeta(c.env.DB, tableName),
+  ])
+
+  if (!allTables.includes(tableName)) {
+    return c.json({ error: { code: 'TABLE_NOT_FOUND', message: `Table "${tableName}" not found` } }, 404)
+  }
+
+  const allColumns = cols.map((col) => col.name)
+  const filters = parseFilters(query, allColumns)
+
+  let sort: { field: string; dir: 'ASC' | 'DESC' } | undefined
+  if (query.sort) {
+    const [field, dir] = query.sort.split(':')
+    if (field && allColumns.includes(field)) {
+      sort = { field, dir: dir?.toUpperCase() === 'DESC' ? 'DESC' : 'ASC' }
+    }
+  }
+
+  const { sql, params } = buildSelectSQL({
+    tableName,
+    selectFields: [],
+    filters,
+    sort,
+    pageSize: 10000,
+    skipPageSizeLimit: true,
+  })
+
+  const result = await c.env.DB.prepare(sql).bind(...params).all()
+  const rows = result.results as Record<string, unknown>[]
+  const formattedRows = formatDatetimeFields(rows, fieldMeta)
+
+  // getFieldMeta 已按 order_index ASC 返回（含 id / created_at 等系统列）
+  // 兜底：如果 _field_meta 为空（表未初始化），用 allColumns 作为 fallback
+  const orderedFields = fieldMeta.length > 0
+    ? fieldMeta
+    : allColumns.map(c => ({ column_name: c, title: c }))
+
+  const format = query.format === 'json' ? 'json' : 'csv'
+  const safeFilename = tableName.replace(/[^a-z0-9_-]/gi, '_')
+
+  if (format === 'json') {
+    // JSON：使用 column_name 作为 key
+    const json = JSON.stringify(formattedRows, null, 2)
+    return new Response(json, {
+      headers: {
+        'Content-Type': 'application/json; charset=utf-8',
+        'Content-Disposition': `attachment; filename="${safeFilename}.json"`,
+      },
+    })
+  }
+
+  // CSV：用 field title 作为表头，保持字段顺序
+  function csvEscape(v: unknown): string {
+    if (v == null) return ''
+    const s = String(v)
+    if (s.includes(',') || s.includes('"') || s.includes('\n') || s.includes('\r')) {
+      return `"${s.replace(/"/g, '""')}"`
+    }
+    return s
+  }
+
+  const columnNames = orderedFields.map(f => f.column_name)
+  const headerRow = orderedFields.map(f => csvEscape(f.title)).join(',')
+  const dataRows = formattedRows.map(row =>
+    columnNames.map(col => csvEscape(row[col])).join(',')
+  )
+  const csv = '\uFEFF' + [headerRow, ...dataRows].join('\r\n')
+
+  return new Response(csv, {
+    headers: {
+      'Content-Type': 'text/csv; charset=utf-8',
+      'Content-Disposition': `attachment; filename="${safeFilename}.csv"`,
+    },
+  })
 })
 
 /**

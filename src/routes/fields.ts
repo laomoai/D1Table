@@ -5,6 +5,16 @@ import { getUserTables, isValidIdentifier } from '../utils/schema-cache'
 
 const fields = new Hono<{ Bindings: Env; Variables: AuthVariables }>()
 
+const SELECT_COLORS = ['#4f6ef7', '#18a058', '#f0a020', '#d03050', '#8a2be2', '#00ced1']
+
+/** 为缺少 color 的 select option 自动补色 */
+function ensureOptionColors(opts: Array<{ id?: string; value: string; label: string; color?: string }>): Array<{ id?: string; value: string; label: string; color: string }> {
+  return opts.map((o, i) => ({
+    ...o,
+    color: o.color?.trim() ? o.color : SELECT_COLORS[i % SELECT_COLORS.length],
+  }))
+}
+
 // SQLite 类型 → 默认 field_type 映射
 function inferFieldType(colName: string, sqliteType: string): string {
   const name = colName.toLowerCase()
@@ -142,7 +152,7 @@ fields.patch('/:tableName/fields/:colName', requireWriteMiddleware, async (c) =>
 
   if (body.title !== undefined) { updates.push('title = ?'); params.push(body.title) }
   if (body.field_type !== undefined) { updates.push('field_type = ?'); params.push(body.field_type) }
-  if (body.select_options !== undefined) { updates.push('select_options = ?'); params.push(JSON.stringify(body.select_options)) }
+  if (body.select_options !== undefined) { updates.push('select_options = ?'); params.push(JSON.stringify(ensureOptionColors(body.select_options))) }
   if (body.width !== undefined) { updates.push('width = ?'); params.push(body.width) }
   if (body.is_hidden !== undefined) { updates.push('is_hidden = ?'); params.push(body.is_hidden ? 1 : 0) }
   if (body.order_index !== undefined) { updates.push('order_index = ?'); params.push(body.order_index) }
@@ -276,7 +286,7 @@ fields.post('/:tableName/fields', requireWriteMiddleware, async (c) => {
          VALUES (?, ?, ?, ?, ?, ?, ?)`
       ).bind(
         tableName, columnName, body.title.trim(), body.field_type,
-        body.select_options ? JSON.stringify(body.select_options) : null,
+        body.select_options ? JSON.stringify(ensureOptionColors(body.select_options)) : null,
         (maxOrder?.max_order ?? 0) + 10, 180
       )
     ])

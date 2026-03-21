@@ -26,6 +26,9 @@
       <n-button size="small" quaternary @click="refreshAll" title="Refresh" :disabled="refreshing">
         <span :class="{ 'spin-icon': refreshing }">↻</span>
       </n-button>
+      <n-dropdown :options="exportOptions" @select="handleExport" trigger="click">
+        <n-button size="small" :loading="exporting">Export</n-button>
+      </n-dropdown>
       <n-button size="small" type="primary" @click="openCreate">+ Add</n-button>
       <!-- 视图切换 -->
       <div class="view-switcher">
@@ -89,19 +92,25 @@
         @grid-ready="onGridReady"
         @column-resized="onColumnResized"
         @sort-changed="onSortChanged"
-        @body-scroll="onBodyScroll"
         @selection-changed="onSelectionChanged"
       />
     </div>
 
     <!-- 底栏 -->
     <div class="grid-footer">
-      <n-spin v-if="isFetchingNextPage || isLoading" size="small" />
-      <span v-else-if="rowData.length === 0" class="footer-hint">No data</span>
-      <span v-else-if="!hasNextPage" class="footer-hint">
-        All {{ rowData.length }} records loaded
-      </span>
-      <span v-else class="footer-hint">{{ rowData.length }} records loaded — scroll for more</span>
+      <n-spin v-if="isFetching" size="small" />
+      <template v-else-if="totalCount !== null && totalCount > 0">
+        <n-pagination
+          v-model:page="currentPage"
+          v-model:page-size="pageSize"
+          :item-count="totalCount"
+          :page-sizes="[20, 50, 100]"
+          show-size-picker
+          size="small"
+          :disabled="isFetching"
+        />
+      </template>
+      <span v-else-if="!isFetching && rowData.length === 0" class="footer-hint">No data</span>
     </div>
   </div>
 
@@ -136,8 +145,8 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onBeforeUnmount, markRaw, shallowRef, nextTick } from 'vue'
-import { useInfiniteQuery, useQueryClient } from '@tanstack/vue-query'
-import { useMessage, useDialog, NButton, NSpin, NInput } from 'naive-ui'
+import { useQuery, useQueryClient } from '@tanstack/vue-query'
+import { useMessage, useDialog, NButton, NSpin, NInput, NPagination, NDropdown } from 'naive-ui'
 import { AgGridVue } from 'ag-grid-vue3'
 import type { ColDef, GridApi, ColumnResizedEvent, SortChangedEvent, SelectionChangedEvent } from 'ag-grid-community'
 
@@ -182,7 +191,39 @@ const sortDir = ref<'asc' | 'desc'>('asc')
 const searchText = ref('')
 const selectedCount = ref(0)
 const batchDeleting = ref(false)
+const currentPage = ref(1)
+const pageSize = ref(20)
+const exporting = ref(false)
 let resizeTimer: ReturnType<typeof setTimeout> | null = null
+
+const exportOptions = [
+  { label: 'Export CSV', key: 'csv' },
+  { label: 'Export JSON', key: 'json' },
+]
+
+async function handleExport(format: 'csv' | 'json') {
+  exporting.value = true
+  try {
+    const exportParams: Record<string, string | number> = {}
+    if (sortField.value) exportParams.sort = `${sortField.value}:${sortDir.value}`
+    for (const f of activeFilters.value) {
+      if (f.field && f.value) {
+        exportParams[`filter[${f.field}${f.op === 'eq' ? '' : `__${f.op}`}]`] = f.value
+      }
+    }
+    const blob = await api.exportRecords(props.tableName, { ...exportParams, format })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${props.tableTitle || props.tableName}.${format}`
+    a.click()
+    URL.revokeObjectURL(url)
+  } catch (err) {
+    message.error((err as Error).message)
+  } finally {
+    exporting.value = false
+  }
+}
 
 // ── 行选择配置 ────────────────────────────────────────────────
 const rowSelection = {
@@ -269,7 +310,10 @@ const columnDefs = computed<ColDef[]>(() => {
 
 // ── 查询参数 ──────────────────────────────────────────────────
 const queryParams = computed(() => {
-  const params: Record<string, string> = { page_size: '50' }
+  const params: Record<string, string | number> = {
+    page_size: pageSize.value,
+    page: currentPage.value,
+  }
   if (sortField.value) params.sort = `${sortField.value}:${sortDir.value}`
   for (const f of activeFilters.value) {
     if (f.field && f.value) {
@@ -279,21 +323,20 @@ const queryParams = computed(() => {
   return params
 })
 
+// 过滤条件或排序改变时重置到第一页
+watch([activeFilters, sortField, sortDir, pageSize], () => {
+  currentPage.value = 1
+})
+
 // ── 数据查询 ─────────────────────────────────────────────────
-const { data, isLoading, isFetchingNextPage, hasNextPage, fetchNextPage } =
-  useInfiniteQuery({
+const { data, isFetching } =
+  useQuery({
     queryKey: computed(() => ['records', props.tableName, queryParams.value]),
-    queryFn: ({ pageParam }) =>
-      api.getRecords(props.tableName, {
-        ...queryParams.value,
-        ...(pageParam ? { cursor: pageParam as string } : {}),
-      }),
-    getNextPageParam: (lastPage) => lastPage.meta.next_cursor ?? undefined,
-    initialPageParam: undefined as string | undefined,
+    queryFn: () => api.getRecords(props.tableName, queryParams.value),
   })
 
 const rowData = computed(() =>
-  (data.value?.pages.flatMap(p => p.data.map(r => ({ ...r }))) ?? []) as RecordRow[]
+  (data.value?.data.map(r => ({ ...r })) ?? []) as RecordRow[]
 )
 
 // ── Grid 事件 ─────────────────────────────────────────────────
@@ -311,12 +354,6 @@ function onGridReady(params: { api: GridApi }) {
 watch(rowData, (rows) => {
   gridApi.value?.setGridOption('rowData', rows)
 }, { flush: 'post' })
-
-function onBodyScroll() {
-  if (!gridApi.value || !hasNextPage.value || isFetchingNextPage.value) return
-  const lastIdx = gridApi.value.getLastDisplayedRowIndex()
-  if (lastIdx >= rowData.value.length - 8) fetchNextPage()
-}
 
 function onColumnResized(event: ColumnResizedEvent) {
   if (!event.finished || !event.column) return
@@ -337,7 +374,7 @@ function onSortChanged(event: SortChangedEvent) {
   } else {
     sortField.value = ''
   }
-  invalidate()
+  // currentPage 由 watch([..., sortField, sortDir, ...]) 自动重置
 }
 
 function onSelectionChanged(event: SelectionChangedEvent) {
@@ -865,7 +902,7 @@ async function refreshAll() {
 .ag-grid-box { flex: 1; min-height: 200px; }
 .grid-footer {
   display: flex; align-items: center; justify-content: center; gap: 8px;
-  padding: 6px; height: 32px; flex-shrink: 0; border-top: 1px solid #f0f2f5;
+  padding: 8px 16px; min-height: 40px; flex-shrink: 0; border-top: 1px solid #f0f2f5;
 }
 .footer-hint { font-size: 12px; color: #bbb; }
 .spin-icon {
