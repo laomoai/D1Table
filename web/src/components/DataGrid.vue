@@ -144,7 +144,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onBeforeUnmount, markRaw, shallowRef, nextTick } from 'vue'
+import { ref, computed, watch, onMounted, onBeforeUnmount, markRaw, shallowRef, nextTick } from 'vue'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import { useMessage, useDialog, NButton, NSpin, NInput, NPagination, NDropdown } from 'naive-ui'
 import { AgGridVue } from 'ag-grid-vue3'
@@ -416,10 +416,28 @@ function handleBatchDelete() {
   })
 }
 
+// ── 键盘翻页（左右箭头）─────────────────────────────────────
+function handleKeydown(e: KeyboardEvent) {
+  // 忽略输入框内的按键
+  const tag = (e.target as HTMLElement)?.tagName
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || (e.target as HTMLElement)?.isContentEditable) return
+  if (e.key === 'ArrowLeft' && currentPage.value > 1) {
+    currentPage.value--
+  } else if (e.key === 'ArrowRight') {
+    const totalPages = Math.ceil((props.totalCount ?? 0) / pageSize.value)
+    if (currentPage.value < totalPages) currentPage.value++
+  }
+}
+
+onMounted(() => {
+  document.addEventListener('keydown', handleKeydown)
+})
+
 onBeforeUnmount(() => {
   if (resizeTimer) clearTimeout(resizeTimer)
   closeDropdown()
   document.removeEventListener('click', closeDropdown)
+  document.removeEventListener('keydown', handleKeydown)
 })
 
 // 注册全局 click 关闭下拉菜单
@@ -841,6 +859,15 @@ async function refreshAll() {
 .ag-act-dropdown-item:hover { background: #f5f6f8; }
 .ag-act-dropdown-item--del { color: #d03050; }
 .ag-act-dropdown-item--del:hover { background: #fff0f3; }
+/* 分页按钮加宽 */
+.grid-footer .n-pagination .n-pagination-item {
+  min-width: 36px;
+  height: 30px;
+  font-size: 13px;
+}
+.grid-footer .n-pagination .n-pagination-item--button {
+  min-width: 40px;
+}
 </style>
 
 <style scoped>

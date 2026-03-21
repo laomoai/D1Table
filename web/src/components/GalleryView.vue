@@ -158,7 +158,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import { useMessage, useDialog, NButton, NSpin, NInput, NPagination, NDropdown } from 'naive-ui'
 
@@ -398,6 +398,25 @@ function openExpand(row: RecordRow) {
   expandIndex.value = idx >= 0 ? idx : 0
   showExpand.value = true
 }
+
+// ── 键盘翻页（左右箭头）─────────────────────────────────────
+function handleKeydown(e: KeyboardEvent) {
+  const tag = (e.target as HTMLElement)?.tagName
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || (e.target as HTMLElement)?.isContentEditable) return
+  if (e.key === 'ArrowLeft' && currentPage.value > 1) {
+    currentPage.value--
+  } else if (e.key === 'ArrowRight') {
+    const totalPages = Math.ceil((props.totalCount ?? 0) / pageSize.value)
+    if (currentPage.value < totalPages) currentPage.value++
+  }
+}
+
+onMounted(() => {
+  document.addEventListener('keydown', handleKeydown)
+})
+onBeforeUnmount(() => {
+  document.removeEventListener('keydown', handleKeydown)
+})
 </script>
 
 <style scoped>
@@ -577,6 +596,14 @@ function openExpand(row: RecordRow) {
   min-height: 40px;
   flex-shrink: 0;
   border-top: 1px solid #f0f2f5;
+}
+.gallery-footer :deep(.n-pagination-item) {
+  min-width: 36px;
+  height: 30px;
+  font-size: 13px;
+}
+.gallery-footer :deep(.n-pagination-item--button) {
+  min-width: 40px;
 }
 .footer-hint { font-size: 12px; color: #bbb; }
 
