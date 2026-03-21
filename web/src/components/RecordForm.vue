@@ -101,6 +101,14 @@
           type="text"
         />
 
+        <!-- link (just show ID input in form — use detail view for picker) -->
+        <n-input
+          v-else-if="field.field_type === 'link'"
+          :value="linkDisplayValue(formData[field.column_name])"
+          @update:value="(v: string) => formData[field.column_name] = v"
+          placeholder="Enter linked record ID"
+        />
+
         <!-- image -->
         <ImageUpload
           v-else-if="field.field_type === 'image'"
@@ -204,6 +212,17 @@ async function handleSubmit() {
   } finally {
     submitting.value = false
   }
+}
+
+// ── Link field display ──────────────────────────────────────
+function linkDisplayValue(val: unknown): string {
+  if (!val) return ''
+  // If it's a JSON object from the API, extract the ID
+  try {
+    const parsed = JSON.parse(String(val))
+    if (parsed && typeof parsed === 'object' && parsed.id) return String(parsed.id)
+  } catch {}
+  return String(val)
 }
 
 // ── 日期工具（兼容数字、数字字符串、日期字符串）──────────────

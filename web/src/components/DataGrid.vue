@@ -283,6 +283,12 @@ const hiddenCount = computed(() => props.fields.filter(f => f.is_hidden).length)
 const displayTitle = computed(() => props.tableTitle || props.tableName)
 
 
+function getLinkTableFromField(field: FieldMeta): string | undefined {
+  if (field.field_type !== 'link' || !field.select_options) return undefined
+  const config = field.select_options as unknown as { link_table?: string }
+  return config.link_table
+}
+
 // ── 列定义 ──────────────────────────────────────────────────
 const defaultColDef: ColDef = { sortable: false, resizable: false }
 
@@ -324,6 +330,7 @@ const columnDefs = computed<ColDef[]>(() => {
       cellRendererParams: {
         fieldType: field.field_type,
         selectOptions: field.select_options,
+        linkTable: getLinkTableFromField(field),
       },
     })
   }

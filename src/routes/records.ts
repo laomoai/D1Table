@@ -148,6 +148,10 @@ records.get('/:tableName/records', async (c) => {
   // 格式化日期时间字段（Unix 时间戳 → ISO 8601）
   const formattedRows = formatDatetimeFields(rows, fieldMeta)
 
+  // 解析 link 字段值（ID → {id, title}）
+  const linkFields = getLinkFields(fieldMeta)
+  await resolveLinkValues(c.env.DB, formattedRows, linkFields)
+
   return c.json({
     data: formattedRows,
     fields,
@@ -156,6 +160,44 @@ records.get('/:tableName/records', async (c) => {
       count: rows.length,
       next_cursor: nextCursor,
     },
+  })
+})
+
+/**
+ * GET /api/tables/:tableName/records/search
+ * 简化版搜索：返回 id + primary field，用于 link 字段的记录选择器
+ * 查询参数：q=搜索词，limit=数量（默认20）
+ */
+records.get('/:tableName/records/search', async (c) => {
+  const { tableName } = c.req.param()
+  const query = c.req.query()
+
+  const allTables = await getUserTables(c.env.DB)
+  if (!allTables.includes(tableName)) {
+    return c.json({ error: { code: 'TABLE_NOT_FOUND', message: `Table "${tableName}" not found` } }, 404)
+  }
+
+  const primaryField = await getTablePrimaryField(c.env.DB, tableName)
+  if (!primaryField) {
+    return c.json({ data: [] })
+  }
+
+  const limit = Math.min(parseInt(query.limit ?? '20', 10) || 20, 50)
+  const q = query.q?.trim()
+
+  let sql: string
+  let params: unknown[]
+  if (q) {
+    sql = `SELECT id, "${primaryField}" as title FROM "${tableName}" WHERE "${primaryField}" LIKE ? ORDER BY id DESC LIMIT ?`
+    params = [`%${q}%`, limit]
+  } else {
+    sql = `SELECT id, "${primaryField}" as title FROM "${tableName}" ORDER BY id DESC LIMIT ?`
+    params = [limit]
+  }
+
+  const result = await c.env.DB.prepare(sql).bind(...params).all<{ id: number; title: string | null }>()
+  return c.json({
+    data: result.results.map(r => ({ id: r.id, title: r.title ?? `#${r.id}` }))
   })
 })
 
@@ -188,6 +230,10 @@ records.get('/:tableName/records/:id', async (c) => {
   }
 
   const [formattedRow] = formatDatetimeFields([rowResult as Record<string, unknown>], fieldMeta)
+
+  // 解析 link 字段值
+  const linkFields = getLinkFields(fieldMeta)
+  await resolveLinkValues(c.env.DB, [formattedRow], linkFields)
 
   return c.json({ data: formattedRow, fields })
 })
@@ -468,6 +514,10 @@ records.get('/:tableName/export', async (c) => {
   const rows = result.results as Record<string, unknown>[]
   const formattedRows = formatDatetimeFields(rows, fieldMeta)
 
+  // 解析 link 字段值
+  const linkFields = getLinkFields(fieldMeta)
+  await resolveLinkValues(c.env.DB, formattedRows, linkFields)
+
   // getFieldMeta 已按 order_index ASC 返回（含 id / created_at 等系统列）
   // 兜底：如果 _field_meta 为空（表未初始化），用 allColumns 作为 fallback
   const orderedFields = fieldMeta.length > 0
@@ -512,6 +562,99 @@ records.get('/:tableName/export', async (c) => {
     },
   })
 })
+
+/**
+ * 解析 link 字段的配置（从 select_options JSON 中提取 link_table）
+ */
+function getLinkFields(fieldMeta: FieldMetaRow[]): Array<{ column_name: string; link_table: string }> {
+  const result: Array<{ column_name: string; link_table: string }> = []
+  for (const f of fieldMeta) {
+    if (f.field_type !== 'link') continue
+    if (!f.select_options) continue
+    // select_options stores { link_table: "xxx" } for link fields
+    const config = f.select_options as unknown as { link_table?: string }
+    if (config.link_table) {
+      result.push({ column_name: f.column_name, link_table: config.link_table })
+    }
+  }
+  return result
+}
+
+/**
+ * 获取目标表的 "primary field"（第一个 text/longtext 类型的非系统字段）
+ * 用于 link 字段的显示标题
+ */
+async function getTablePrimaryField(db: D1Database, tableName: string): Promise<string | null> {
+  const meta = await db.prepare(
+    `SELECT column_name, field_type FROM _field_meta WHERE table_name = ? AND column_name NOT IN ('id', 'created_at') ORDER BY order_index ASC`
+  ).bind(tableName).all<{ column_name: string; field_type: string }>()
+
+  // 优先找 text/longtext，否则取第一个非系统字段
+  const textField = meta.results.find(f => f.field_type === 'text' || f.field_type === 'longtext')
+  return textField?.column_name ?? meta.results[0]?.column_name ?? null
+}
+
+/**
+ * 解析 link 字段的值（ID → {id, title}）
+ * 按目标表分组批量查询，减少 DB 调用
+ */
+async function resolveLinkValues(
+  db: D1Database,
+  rows: Record<string, unknown>[],
+  linkFields: Array<{ column_name: string; link_table: string }>
+): Promise<void> {
+  if (linkFields.length === 0 || rows.length === 0) return
+
+  // 按 link_table 分组收集需要查的 IDs
+  const tableIds = new Map<string, Set<string>>()
+  const tableFieldMap = new Map<string, string>() // link_table -> column to use as title
+
+  for (const lf of linkFields) {
+    if (!tableIds.has(lf.link_table)) tableIds.set(lf.link_table, new Set())
+    const idSet = tableIds.get(lf.link_table)!
+    for (const row of rows) {
+      const val = row[lf.column_name]
+      if (val != null && val !== '') idSet.add(String(val))
+    }
+  }
+
+  // 批量查询每个目标表
+  const resolved = new Map<string, Map<string, { id: string; title: string }>>()
+
+  for (const [tableName, ids] of tableIds) {
+    if (ids.size === 0) continue
+
+    const primaryField = await getTablePrimaryField(db, tableName)
+    if (!primaryField) continue
+    tableFieldMap.set(tableName, primaryField)
+
+    const idArr = Array.from(ids)
+    const placeholders = idArr.map(() => '?').join(',')
+    const result = await db.prepare(
+      `SELECT id, "${primaryField}" as _title FROM "${tableName}" WHERE id IN (${placeholders})`
+    ).bind(...idArr).all<{ id: number; _title: string | null }>()
+
+    const map = new Map<string, { id: string; title: string }>()
+    for (const r of result.results) {
+      map.set(String(r.id), { id: String(r.id), title: r._title ?? `#${r.id}` })
+    }
+    resolved.set(tableName, map)
+  }
+
+  // 替换行数据中的 link 字段值
+  for (const lf of linkFields) {
+    const map = resolved.get(lf.link_table)
+    if (!map) continue
+    for (const row of rows) {
+      const val = row[lf.column_name]
+      if (val == null || val === '') continue
+      const linked = map.get(String(val))
+      if (linked) {
+        row[lf.column_name] = JSON.stringify(linked)
+      }
+    }
+  }
+}
 
 /**
  * 将 datetime/date 字段的 Unix 时间戳格式化为 ISO 8601 字符串

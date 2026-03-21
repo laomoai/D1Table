@@ -238,6 +238,7 @@ fields.post('/:tableName/fields', requireWriteMiddleware, async (c) => {
     nullable?: boolean
     default_value?: string
     select_options?: Array<{ value: string; label: string; color: string }>
+    link_table?: string
   }>()
 
   if (!body.title?.trim()) {
@@ -267,10 +268,22 @@ fields.post('/:tableName/fields', requireWriteMiddleware, async (c) => {
     number: 'REAL', currency: 'REAL', percent: 'REAL',
     date: 'TEXT', datetime: 'TEXT',
     checkbox: 'INTEGER',
+    link: 'TEXT',
   }
   const sqliteType = sqliteTypeMap[body.field_type] ?? 'TEXT'
   const nullable = body.nullable !== false
   const defVal = body.default_value ? ` DEFAULT ${body.default_value}` : (nullable ? '' : " DEFAULT ''")
+
+  // link 字段需要 link_table 参数
+  if (body.field_type === 'link') {
+    if (!body.link_table?.trim()) {
+      return c.json({ error: { code: 'INVALID_BODY', message: 'link_table is required for link fields' } }, 400)
+    }
+    const allTables = await getUserTables(c.env.DB)
+    if (!allTables.includes(body.link_table)) {
+      return c.json({ error: { code: 'INVALID_BODY', message: `Target table "${body.link_table}" not found` } }, 400)
+    }
+  }
 
   // 获取当前最大 order_index
   const maxOrder = await c.env.DB.prepare(
@@ -279,18 +292,37 @@ fields.post('/:tableName/fields', requireWriteMiddleware, async (c) => {
 
   const alterSQL = `ALTER TABLE "${tableName}" ADD COLUMN "${columnName}" ${sqliteType}${nullable ? '' : ' NOT NULL'}${defVal}`
 
+  // 计算 select_options JSON（link 字段存 link_table 配置）
+  let selectOptionsJson: string | null = null
+  if (body.field_type === 'link' && body.link_table) {
+    selectOptionsJson = JSON.stringify({ link_table: body.link_table })
+  } else if (body.select_options) {
+    selectOptionsJson = JSON.stringify(ensureOptionColors(body.select_options))
+  }
+
   try {
-    await c.env.DB.batch([
+    const batchStmts: D1PreparedStatement[] = [
       c.env.DB.prepare(alterSQL),
       c.env.DB.prepare(
         `INSERT INTO _field_meta (table_name, column_name, title, field_type, select_options, order_index, width)
          VALUES (?, ?, ?, ?, ?, ?, ?)`
       ).bind(
         tableName, columnName, body.title.trim(), body.field_type,
-        body.select_options ? JSON.stringify(ensureOptionColors(body.select_options)) : null,
+        selectOptionsJson,
         (maxOrder?.max_order ?? 0) + 10, 180
+      ),
+    ]
+
+    // link 字段额外插入 _link_meta
+    if (body.field_type === 'link' && body.link_table) {
+      batchStmts.push(
+        c.env.DB.prepare(
+          `INSERT INTO _link_meta (source_table, source_field, target_table) VALUES (?, ?, ?)`
+        ).bind(tableName, columnName, body.link_table)
       )
-    ])
+    }
+
+    await c.env.DB.batch(batchStmts)
   } catch (err) {
     const msg = (err as Error).message ?? ''
     if (msg.includes('duplicate column')) {
@@ -317,9 +349,15 @@ fields.delete('/:tableName/fields/:colName', requireWriteMiddleware, async (c) =
     return c.json({ error: { code: 'SYSTEM_FIELD', message: 'Cannot delete system fields' } }, 400)
   }
 
-  await c.env.DB.prepare(
-    `UPDATE _field_meta SET is_hidden = 1 WHERE table_name = ? AND column_name = ?`
-  ).bind(tableName, colName).run()
+  await c.env.DB.batch([
+    c.env.DB.prepare(
+      `UPDATE _field_meta SET is_hidden = 1 WHERE table_name = ? AND column_name = ?`
+    ).bind(tableName, colName),
+    // Clean up link metadata if this was a link field
+    c.env.DB.prepare(
+      `DELETE FROM _link_meta WHERE source_table = ? AND source_field = ?`
+    ).bind(tableName, colName),
+  ])
 
   return c.json({ data: { success: true } })
 })

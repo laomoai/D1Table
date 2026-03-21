@@ -46,6 +46,28 @@
               />
             </template>
 
+            <!-- 即时交互：link (record reference) -->
+            <template v-else-if="field.field_type === 'link'">
+              <div class="link-field-wrap">
+                <a
+                  v-if="parseLinkValue(currentRow[field.column_name])"
+                  class="link-field-pill"
+                  @click.prevent="goToLinkedRecord(field)"
+                >{{ parseLinkValue(currentRow[field.column_name])!.title }}</a>
+                <div class="link-field-actions">
+                  <button class="note-field-btn" @click="openLinkPicker(field)" :title="currentRow[field.column_name] ? 'Change' : 'Select record'">
+                    {{ currentRow[field.column_name] ? 'Change' : 'Select record' }}
+                  </button>
+                  <button
+                    v-if="currentRow[field.column_name]"
+                    class="note-field-btn danger"
+                    @click="saveField(field.column_name, null)"
+                    title="Clear"
+                  >Clear</button>
+                </div>
+              </div>
+            </template>
+
             <!-- 即时交互：note (stored as "id|title|icon") -->
             <template v-else-if="field.field_type === 'note'">
               <div class="note-field-wrap">
@@ -189,6 +211,33 @@
     </n-drawer-content>
   </n-drawer>
 
+  <!-- Link record picker modal -->
+  <n-modal v-model:show="showLinkPicker" :mask-closable="true">
+    <div class="note-picker-modal">
+      <div class="np-header">
+        <span class="np-title">Select a record</span>
+        <button class="np-close" @click="showLinkPicker = false">×</button>
+      </div>
+      <div class="np-search">
+        <input v-model="linkPickerSearch" class="np-input" placeholder="Search records..." @input="debouncedSearchLinks" />
+      </div>
+      <div class="np-list">
+        <div v-if="linkPickerLoading" class="np-empty" style="padding:20px;text-align:center"><n-spin size="small" /></div>
+        <div v-else-if="!linkPickerResults.length" class="np-empty">No records found</div>
+        <div
+          v-for="item in linkPickerResults"
+          :key="item.id"
+          class="np-item"
+          @click="pickLink(item)"
+        >
+          <span class="np-icon">📋</span>
+          <span class="np-name">{{ item.title }}</span>
+          <span style="color:#aaa;font-size:11px;margin-left:auto">#{{ item.id }}</span>
+        </div>
+      </div>
+    </div>
+  </n-modal>
+
   <!-- Note picker modal -->
   <n-modal v-model:show="showNotePicker" :mask-closable="true">
     <div class="note-picker-modal">
@@ -226,8 +275,8 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, nextTick, onBeforeUnmount, onMounted } from 'vue'
-import { useMessage, NDrawer, NDrawerContent, NButton, NInput, NInputNumber, NSwitch, NSelect, NDatePicker, NModal } from 'naive-ui'
-import { api, type FieldMeta, type FieldType } from '@/api/client'
+import { useMessage, NDrawer, NDrawerContent, NButton, NInput, NInputNumber, NSwitch, NSelect, NDatePicker, NModal, NSpin } from 'naive-ui'
+import { api, type FieldMeta, type FieldType, type LinkValue } from '@/api/client'
 import { useQueryClient } from '@tanstack/vue-query'
 import CellValue from './CellValue.vue'
 import ImageUpload from './ImageUpload.vue'
@@ -382,6 +431,71 @@ function datetimeToTs(v: unknown): number | null {
 }
 
 
+// ── Link record picker ───────────────────────────────────────
+const showLinkPicker = ref(false)
+const linkPickerSearch = ref('')
+const linkPickerField = ref<string | null>(null)
+const linkPickerTable = ref<string | null>(null)
+const linkPickerResults = ref<LinkValue[]>([])
+const linkPickerLoading = ref(false)
+
+function parseLinkValue(val: unknown): LinkValue | null {
+  if (!val) return null
+  try { return JSON.parse(String(val)) as LinkValue } catch { return null }
+}
+
+function getLinkTable(field: FieldMeta): string | null {
+  if (!field.select_options) return null
+  const config = field.select_options as unknown as { link_table?: string }
+  return config.link_table ?? null
+}
+
+function goToLinkedRecord(field: FieldMeta) {
+  const val = parseLinkValue(currentRow.value?.[field.column_name])
+  const linkTable = getLinkTable(field)
+  if (!val || !linkTable) return
+  // Navigate using router
+  import('@/router').then(m => m.default.push(`/tables/${linkTable}?highlight=${val.id}`))
+}
+
+async function openLinkPicker(field: FieldMeta) {
+  const linkTable = getLinkTable(field)
+  if (!linkTable) return
+  linkPickerField.value = field.column_name
+  linkPickerTable.value = linkTable
+  linkPickerSearch.value = ''
+  linkPickerResults.value = []
+  linkPickerLoading.value = true
+  showLinkPicker.value = true
+  try {
+    linkPickerResults.value = await api.searchRecords(linkTable)
+  } finally {
+    linkPickerLoading.value = false
+  }
+}
+
+let linkSearchTimer: ReturnType<typeof setTimeout> | null = null
+function debouncedSearchLinks() {
+  if (linkSearchTimer) clearTimeout(linkSearchTimer)
+  linkSearchTimer = setTimeout(async () => {
+    if (!linkPickerTable.value) return
+    linkPickerLoading.value = true
+    try {
+      linkPickerResults.value = await api.searchRecords(linkPickerTable.value, linkPickerSearch.value)
+    } finally {
+      linkPickerLoading.value = false
+    }
+  }, 300)
+}
+
+function pickLink(item: LinkValue) {
+  if (linkPickerField.value) {
+    // Save the raw ID — backend will resolve to {id, title} on next fetch
+    saveField(linkPickerField.value, item.id)
+  }
+  showLinkPicker.value = false
+}
+
 // ── Note picker (uses shared composable) ────────────────────
 const showNotePicker = ref(false)
 const notePickerSearch = ref('')
@@ -419,7 +533,7 @@ function pickNote(noteId: string) {
 function typeIcon(type: FieldType): string {
   const map: Record<string, string> = {
     text: 'T', longtext: '¶', number: '#', currency: '¥', percent: '%',
-    email: '@', url: '🔗', date: '📅', datetime: '🕐', checkbox: '☑', select: '◉', image: '🖼', note: '📄',
+    email: '@', url: '🔗', date: '📅', datetime: '🕐', checkbox: '☑', select: '◉', image: '🖼', note: '📄', link: '🔗',
   }
   return map[type] ?? 'T'
 }
@@ -427,7 +541,7 @@ function typeIcon(type: FieldType): string {
 function typeColor(type: FieldType): string {
   const map: Record<string, string> = {
     text: '#666', longtext: '#888', number: '#4f6ef7', currency: '#18a058', percent: '#f0a020',
-    email: '#00adb5', url: '#4f6ef7', date: '#8a2be2', datetime: '#d03050', checkbox: '#18a058', select: '#f0a020', image: '#e91e8c', note: '#8a6d3b',
+    email: '#00adb5', url: '#4f6ef7', date: '#8a2be2', datetime: '#d03050', checkbox: '#18a058', select: '#f0a020', image: '#e91e8c', note: '#8a6d3b', link: '#4f6ef7',
   }
   return map[type] ?? '#666'
 }
@@ -559,6 +673,17 @@ function typeColor(type: FieldType): string {
   line-height: 1.8;
 }
 .longtext-toggle:hover { text-decoration: underline; }
+/* Link field */
+.link-field-wrap { display: flex; flex-direction: column; gap: 6px; width: 100%; }
+.link-field-pill {
+  display: inline-flex; align-items: center; gap: 2px;
+  padding: 3px 10px 3px 8px; background: rgba(79, 110, 247, 0.08);
+  border: 1px solid rgba(79, 110, 247, 0.25); border-radius: 4px;
+  font-size: 13px; color: #4f6ef7; text-decoration: none; font-weight: 500;
+  cursor: pointer; max-width: fit-content;
+}
+.link-field-pill:hover { background: rgba(79, 110, 247, 0.14); }
+.link-field-actions { display: flex; gap: 6px; }
 /* Note field */
 .note-field-wrap { display: flex; flex-direction: column; gap: 6px; width: 100%; }
 .note-field-link {

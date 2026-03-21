@@ -133,6 +133,17 @@
                 </div>
               </div>
             </template>
+            <template v-if="newField.field_type === 'link'">
+              <div class="editor-section">
+                <div class="editor-label">Target Table</div>
+                <naive-select
+                  v-model:value="newField.link_table"
+                  :options="availableTables.filter(t => t.value !== props.tableName)"
+                  placeholder="Select target table"
+                  size="small"
+                />
+              </div>
+            </template>
             <div class="editor-footer">
               <n-button size="small" @click="showAddForm = false">Cancel</n-button>
               <n-button size="small" type="primary" :loading="adding" @click="submitAddField">Add</n-button>
@@ -155,8 +166,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, nextTick } from 'vue'
-import { useMessage, NDrawer, NDrawerContent, NInput, NButton, NCollapseTransition } from 'naive-ui'
+import { ref, watch, nextTick, onMounted } from 'vue'
+import { useMessage, NDrawer, NDrawerContent, NInput, NButton, NCollapseTransition, NSelect as NaiveSelect } from 'naive-ui'
 import { api, type FieldMeta, type FieldType, type SelectOption } from '@/api/client'
 import { useQueryClient } from '@tanstack/vue-query'
 
@@ -176,6 +187,15 @@ watch(() => props.fields, (f) => {
   localFields.value = [...f]
 }, { immediate: true })
 
+// 可选的目标表列表（link 字段用）
+const availableTables = ref<Array<{ label: string; value: string }>>([])
+onMounted(async () => {
+  try {
+    const tables = await api.getTables()
+    availableTables.value = tables.map(t => ({ label: t.title || t.name, value: t.name }))
+  } catch {}
+})
+
 // ── 字段类型定义 ────────────────────────────────────────────────
 const fieldTypes = [
   { value: 'text',     label: 'Text',      icon: 'T',  color: '#666' },
@@ -191,6 +211,7 @@ const fieldTypes = [
   { value: 'select',   label: 'Select',    icon: '◉',  color: '#f0a020' },
   { value: 'image',    label: 'Image',     icon: '🖼',  color: '#e91e8c' },
   { value: 'note',     label: 'Note',      icon: '📄',  color: '#8a6d3b' },
+  { value: 'link',     label: 'Link',      icon: '🔗',  color: '#4f6ef7' },
 ]
 
 // ── 展开编辑 ──────────────────────────────────────────────────
@@ -319,10 +340,11 @@ const newField = ref({
   title: '',
   field_type: 'text' as FieldType,
   select_options: [] as SelectOption[],
+  link_table: '' as string,
 })
 
 function openAddForm() {
-  newField.value = { title: '', field_type: 'text', select_options: [] }
+  newField.value = { title: '', field_type: 'text', select_options: [], link_table: '' }
   showAddForm.value = true
   cancelExpand()
 }
@@ -333,12 +355,17 @@ async function submitAddField() {
     message.warning('Please enter a field display name')
     return
   }
+  if (newField.value.field_type === 'link' && !newField.value.link_table) {
+    message.warning('Please select a target table')
+    return
+  }
   adding.value = true
   try {
     await api.addField(props.tableName, {
       title: newField.value.title.trim(),
       field_type: newField.value.field_type,
       select_options: newField.value.field_type === 'select' ? newField.value.select_options : undefined,
+      link_table: newField.value.field_type === 'link' ? newField.value.link_table : undefined,
     })
     message.success('Field added')
     queryClient.invalidateQueries({ queryKey: ['fields', props.tableName] })

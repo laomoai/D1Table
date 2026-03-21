@@ -3,6 +3,7 @@
     :value="params.value"
     :field-type="params.fieldType"
     :select-options="params.selectOptions"
+    :link-table="params.linkTable"
   />
 </template>
 
@@ -15,6 +16,7 @@ defineProps<{
     value: unknown
     fieldType: FieldType
     selectOptions: SelectOption[] | null
+    linkTable?: string
   }
 }>()
 </script>

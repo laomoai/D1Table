@@ -111,6 +111,7 @@
                   :value="record[field.column_name]"
                   :field-type="field.field_type"
                   :select-options="field.select_options"
+                  :link-table="getLinkTableFromField(field)"
                 />
               </span>
             </div>
@@ -311,6 +312,12 @@ const COVER_GRADIENTS = [
 
 function coverGradient(record: RecordRow): string {
   return COVER_GRADIENTS[Number(record.id) % COVER_GRADIENTS.length]
+}
+
+function getLinkTableFromField(field: FieldMeta): string | undefined {
+  if (field.field_type !== 'link' || !field.select_options) return undefined
+  const config = field.select_options as unknown as { link_table?: string }
+  return config.link_table
 }
 
 function titleValue(record: RecordRow): string {

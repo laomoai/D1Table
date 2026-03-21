@@ -57,6 +57,14 @@
   >{{ value }}</a>
   <span v-else-if="fieldType === 'longtext'" :class="detail ? 'cell-longtext--full' : 'cell-longtext'">{{ value }}</span>
 
+  <!-- link (stored as JSON: {"id":"42","title":"Alice"}) -->
+  <span
+    v-else-if="fieldType === 'link' && linkInfo"
+    class="cell-link-record"
+    @click.stop="goToLinked"
+  >{{ linkInfo.title }}</span>
+  <span v-else-if="fieldType === 'link'" class="cell-empty">—</span>
+
   <!-- note (stored as "id|title|icon") -->
   <span
     v-else-if="fieldType === 'note' && noteInfo"
@@ -92,7 +100,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { FieldType, SelectOption } from '@/api/client'
+import type { FieldType, SelectOption, LinkValue } from '@/api/client'
 import router from '@/router'
 import { decodeNoteValue } from '@/utils/noteValue'
 
@@ -101,6 +109,7 @@ const props = defineProps<{
   fieldType: FieldType
   selectOptions?: SelectOption[] | null
   detail?: boolean
+  linkTable?: string
 }>()
 
 const isEmpty = computed(() => {
@@ -109,6 +118,16 @@ const isEmpty = computed(() => {
   if (Array.isArray(v)) return v.length === 0
   return false
 })
+
+const linkInfo = computed<LinkValue | null>(() => {
+  if (props.fieldType !== 'link' || !props.value) return null
+  try { return JSON.parse(String(props.value)) as LinkValue } catch { return null }
+})
+
+function goToLinked() {
+  if (!linkInfo.value || !props.linkTable) return
+  router.push(`/tables/${props.linkTable}?highlight=${linkInfo.value.id}`)
+}
 
 const noteInfo = computed(() => {
   if (props.fieldType !== 'note') return null
@@ -267,6 +286,26 @@ const datetimeVal = computed(() => {
   font-size: 12px;
   border: 1px solid;
   font-weight: 500;
+}
+.cell-link-record {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 1px 8px 1px 6px;
+  background: rgba(79, 110, 247, 0.08);
+  border: 1px solid rgba(79, 110, 247, 0.25);
+  border-radius: 4px;
+  font-size: 12px;
+  color: #4f6ef7;
+  font-weight: 500;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.cell-link-record:hover {
+  background: rgba(79, 110, 247, 0.14);
 }
 .cell-note {
   display: inline-flex;

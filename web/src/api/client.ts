@@ -22,7 +22,12 @@ http.interceptors.response.use(
 
 // ── 类型定义 ──────────────────────────────────────────────────
 
-export type FieldType = 'text' | 'longtext' | 'number' | 'currency' | 'percent' | 'email' | 'url' | 'date' | 'datetime' | 'checkbox' | 'select' | 'image' | 'note'
+export type FieldType = 'text' | 'longtext' | 'number' | 'currency' | 'percent' | 'email' | 'url' | 'date' | 'datetime' | 'checkbox' | 'select' | 'image' | 'note' | 'link'
+
+export interface LinkValue {
+  id: string
+  title: string
+}
 
 export interface ImageValue {
   thumb: string    // R2 key，如 images/uuid/thumb.webp
@@ -140,6 +145,10 @@ export const api = {
   deleteRecord: (tableName: string, id: number) =>
     http.delete(`/tables/${tableName}/records/${id}`),
 
+  /** 搜索记录（用于 link 字段选择器）*/
+  searchRecords: (tableName: string, q?: string, limit?: number) =>
+    http.get<{ data: LinkValue[] }>(`/tables/${tableName}/records/search`, { params: { q, limit } }).then((r) => r.data.data),
+
   /** 字段元数据 */
   getFieldMeta: (tableName: string) =>
     http.get<{ data: FieldMeta[] }>(`/tables/${tableName}/fields`).then((r) => r.data.data),
@@ -147,7 +156,7 @@ export const api = {
   updateFieldMeta: (tableName: string, colName: string, patch: Partial<Pick<FieldMeta, 'title' | 'field_type' | 'select_options' | 'width' | 'is_hidden' | 'order_index'>>) =>
     http.patch<{ data: { success: boolean } }>(`/tables/${tableName}/fields/${colName}`, patch).then((r) => r.data.data),
 
-  addField: (tableName: string, data: { title: string; column_name?: string; field_type: FieldType; nullable?: boolean; default_value?: string; select_options?: SelectOption[] }) =>
+  addField: (tableName: string, data: { title: string; column_name?: string; field_type: FieldType; nullable?: boolean; default_value?: string; select_options?: SelectOption[]; link_table?: string }) =>
     http.post<{ data: { column_name: string; title: string; field_type: string } }>(`/tables/${tableName}/fields`, data).then((r) => r.data.data),
 
   deleteField: (tableName: string, colName: string) =>
