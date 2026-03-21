@@ -31,7 +31,13 @@
         <template v-for="group in groupedTables" :key="group.id">
           <div
             class="group-header"
+            draggable="true"
             @click="toggleGroup(group.id)"
+            @dragstart.stop="onGroupDragStart($event, group.id)"
+            @dragover.prevent="onGroupDragOver"
+            @drop.stop="onGroupDrop($event, group.id)"
+            @dragend="onGroupDragEnd"
+            :class="{ 'drag-target': draggedGroupId !== null && draggedGroupId !== group.id }"
           >
             <span class="group-arrow" :class="{ expanded: expandedGroups.has(group.id) }">›</span>
             <span class="group-name">{{ group.name }}</span>
@@ -214,6 +220,7 @@ function savePreferencesToServer() {
   api.savePreferences({
     table_order: tableOrder.value,
     expanded_groups: [...expandedGroups],
+    group_order: groupOrder.value,
   }).catch(() => { /* localStorage is the fallback */ })
 }
 
@@ -229,6 +236,10 @@ onMounted(async () => {
       ;(prefs.expanded_groups as number[]).forEach(id => expandedGroups.add(id))
       localStorage.setItem(EXPANDED_GROUPS_KEY, JSON.stringify(prefs.expanded_groups))
     }
+    if (Array.isArray(prefs.group_order) && (prefs.group_order as number[]).length > 0) {
+      groupOrder.value = prefs.group_order as number[]
+      localStorage.setItem('d1table_group_order', JSON.stringify(prefs.group_order))
+    }
   } catch { /* fallback to localStorage values already loaded */ }
 })
 
@@ -239,11 +250,59 @@ function toggleGroup(id: number) {
   savePreferencesToServer()
 }
 
+// ── 分组排序 ────────────────────────────────────────────────────
+const groupOrder = ref<number[]>(
+  JSON.parse(localStorage.getItem('d1table_group_order') ?? 'null') ?? []
+)
+
+const draggedGroupId = ref<number | null>(null)
+
+function onGroupDragStart(e: DragEvent, id: number) {
+  draggedGroupId.value = id
+  e.dataTransfer!.effectAllowed = 'move'
+}
+
+function onGroupDragOver(e: DragEvent) {
+  e.dataTransfer!.dropEffect = 'move'
+}
+
+function onGroupDrop(e: DragEvent, targetId: number) {
+  e.preventDefault()
+  if (!draggedGroupId.value || draggedGroupId.value === targetId) return
+
+  // 用当前显示顺序为基础
+  const currentOrder = groupedTables.value.map(g => g.id)
+  const from = currentOrder.indexOf(draggedGroupId.value)
+  const to = currentOrder.indexOf(targetId)
+  if (from === -1 || to === -1) return
+
+  currentOrder.splice(from, 1)
+  currentOrder.splice(to, 0, draggedGroupId.value)
+
+  groupOrder.value = currentOrder
+  localStorage.setItem('d1table_group_order', JSON.stringify(currentOrder))
+  draggedGroupId.value = null
+  savePreferencesToServer()
+}
+
+function onGroupDragEnd() {
+  draggedGroupId.value = null
+}
+
+function sortGroups<T extends { id: number }>(list: T[]): T[] {
+  if (!groupOrder.value.length) return list
+  const idx = (id: number) => {
+    const i = groupOrder.value.indexOf(id)
+    return i === -1 ? 9999 : i
+  }
+  return [...list].sort((a, b) => idx(a.id) - idx(b.id))
+}
+
 // Compute grouped table list
 const groupedTables = computed(() => {
   if (!groups.value || !tables.value || groups.value.length === 0) return []
 
-  return groups.value
+  const result = groups.value
     .filter(g => g.tables.length > 0)
     .map(g => {
       // 首次出现时（localStorage 里没有记录）默认展开
@@ -258,6 +317,7 @@ const groupedTables = computed(() => {
       }
     })
     .filter(g => g.tables.length > 0)
+  return sortGroups(result)
 })
 
 const ungroupedTables = computed(() => {
@@ -472,6 +532,12 @@ async function logout() {
 }
 .group-header:hover {
   color: #37352f;
+}
+.group-header[draggable="true"] { cursor: grab; }
+.group-header[draggable="true"]:active { cursor: grabbing; }
+.group-header.drag-target {
+  border-top: 2px solid #4f6ef7;
+  padding-top: 4px;
 }
 .group-arrow {
   font-size: 12px;

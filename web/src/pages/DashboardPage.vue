@@ -148,6 +148,9 @@ const { data: groups } = useQuery({
 const tableOrder = ref<string[]>(
   JSON.parse(localStorage.getItem('d1table_table_order') ?? 'null') ?? []
 )
+const groupOrder = ref<number[]>(
+  JSON.parse(localStorage.getItem('d1table_group_order') ?? 'null') ?? []
+)
 
 function sortedTables(list: TableMeta[]) {
   if (!tableOrder.value.length) return list
@@ -158,17 +161,27 @@ function sortedTables(list: TableMeta[]) {
   return [...list].sort((a, b) => idx(a.name) - idx(b.name))
 }
 
+function sortedGroups<T extends { id: number }>(list: T[]): T[] {
+  if (!groupOrder.value.length) return list
+  const idx = (id: number) => {
+    const i = groupOrder.value.indexOf(id)
+    return i === -1 ? 9999 : i
+  }
+  return [...list].sort((a, b) => idx(a.id) - idx(b.id))
+}
+
 // Organize tables by group
 const groupedSections = computed(() => {
   if (!groups.value || !tables.value || groups.value.length === 0) return []
 
-  return groups.value
+  const sections = groups.value
     .map(g => ({
       id: g.id,
       name: g.name,
       tables: sortedTables(tables.value!.filter(t => g.tables.includes(t.name))),
     }))
     .filter(s => s.tables.length > 0)
+  return sortedGroups(sections)
 })
 
 const ungroupedTables = computed(() => {
