@@ -32,6 +32,7 @@ export const authMiddleware: MiddlewareHandler<{
       c.set('keyType', 'readwrite')
       c.set('keyScope', 'all')
       c.set('allowedTables', null)
+      c.set('allowedGroupIds', null)
       c.set('user', user)
       c.set('userId', userRow.id)
       c.set('userRole', userRow.role)
@@ -51,6 +52,7 @@ export const authMiddleware: MiddlewareHandler<{
     c.set('keyType', 'readwrite')
     c.set('keyScope', 'all')
     c.set('allowedTables', null)
+    c.set('allowedGroupIds', null)
     return next()
   }
 
@@ -79,20 +81,25 @@ export const authMiddleware: MiddlewareHandler<{
     c.set('userId', row.user_id)
   }
 
-  // scope=groups → 查询允许访问的表列表
+  // scope=groups → 查询允许访问的表列表和组 ID
   if (row.scope === 'groups') {
-    const allowed = await c.env.DB.prepare(
-      `SELECT DISTINCT gt.table_name
-       FROM _api_key_groups akg
-       JOIN _group_tables gt ON gt.group_id = akg.group_id
-       WHERE akg.key_id = ?`
-    )
-      .bind(row.id)
-      .all<{ table_name: string }>()
+    const [allowed, groupIds] = await Promise.all([
+      c.env.DB.prepare(
+        `SELECT DISTINCT gt.table_name
+         FROM _api_key_groups akg
+         JOIN _group_tables gt ON gt.group_id = akg.group_id
+         WHERE akg.key_id = ?`
+      ).bind(row.id).all<{ table_name: string }>(),
+      c.env.DB.prepare(
+        `SELECT group_id FROM _api_key_groups WHERE key_id = ?`
+      ).bind(row.id).all<{ group_id: number }>(),
+    ])
 
     c.set('allowedTables', allowed.results.map(r => r.table_name))
+    c.set('allowedGroupIds', groupIds.results.map(r => r.group_id))
   } else {
     c.set('allowedTables', null)
+    c.set('allowedGroupIds', null)
   }
 
   return next()

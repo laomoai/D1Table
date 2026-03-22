@@ -238,12 +238,26 @@ tables.post('/', requireWriteMiddleware, async (c) => {
 
   const displayTitle = body.title?.trim() || body.name
 
+  // scope=groups 的 key 创建表时，自动加入该 key 有权限的分组
+  const groupIds = c.get('allowedGroupIds')
+  const groupStmts: D1PreparedStatement[] = []
+  if (groupIds && groupIds.length > 0) {
+    for (const gid of groupIds) {
+      groupStmts.push(
+        c.env.DB.prepare(
+          `INSERT OR IGNORE INTO _group_tables (group_id, table_name) VALUES (?, ?)`
+        ).bind(gid, body.name)
+      )
+    }
+  }
+
   await c.env.DB.batch([
     c.env.DB.prepare(createSQL),
     c.env.DB.prepare(
       `INSERT OR IGNORE INTO _meta (table_name, row_count, title, owner_id) VALUES (?, 0, ?, ?)`
     ).bind(body.name, displayTitle, c.get('userId') ?? null),
     ...fieldMetaStmts,
+    ...groupStmts,
   ])
 
   return c.json({ data: { name: body.name, message: 'Table created successfully' } }, 201)

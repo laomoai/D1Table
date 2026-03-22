@@ -51,6 +51,7 @@ export type AuthVariables = {
   keyType: 'readonly' | 'readwrite'
   keyScope: 'all' | 'groups'
   allowedTables: string[] | null // null = all tables, string[] = restricted
+  allowedGroupIds: number[] | null // group IDs this key has access to (null = all)
   user?: SessionUser
   userId?: number               // _users.id，ADMIN_KEY 时为 undefined
   userRole?: 'admin' | 'user'   // _users.role

@@ -100,6 +100,7 @@
                     </n-tag>
                     <n-tag v-else size="tiny" :bordered="false">All tables</n-tag>
                     <n-tag v-if="!k.is_active" type="error" size="tiny">Revoked</n-tag>
+                    <span class="key-last-used">{{ k.last_used_at ? 'Last used ' + formatRelativeTime(k.last_used_at) : 'Never used' }}</span>
                   </div>
                 </div>
                 <n-button
@@ -450,6 +451,17 @@ async function handleCreateKey() {
   } finally {
     creating.value = false
   }
+}
+
+function formatRelativeTime(ts: number): string {
+  const now = Math.floor(Date.now() / 1000)
+  const diff = now - ts
+  if (diff < 60) return 'just now'
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`
+  if (diff < 604800) return `${Math.floor(diff / 86400)}d ago`
+  const d = new Date(ts * 1000)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
 async function handleRevoke(id: number) {
@@ -901,6 +913,10 @@ async function handleToggleRole(u: UserInfo) {
   background: #f5f6f8;
   padding: 1px 6px;
   border-radius: 3px;
+}
+.key-last-used {
+  font-size: 11px;
+  color: #a3a19d;
 }
 
 /* ── Appearance ── */

@@ -253,6 +253,7 @@ export interface ApiKeyInfo {
   scope: 'all' | 'groups'
   created_at: number
   is_active: number
+  last_used_at: number | null
   groups: GroupInfo[]
 }
 
