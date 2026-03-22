@@ -69,6 +69,11 @@ export const authMiddleware: MiddlewareHandler<{
   c.set('keyType', row.type)
   c.set('keyScope', row.scope)
 
+  // 异步更新 last_used_at（不阻塞请求）
+  c.executionCtx.waitUntil(
+    c.env.DB.prepare(`UPDATE _api_keys SET last_used_at = unixepoch() WHERE id = ?`).bind(row.id).run()
+  )
+
   // 设置 userId（API Key 继承创建者的 user_id）
   if (row.user_id) {
     c.set('userId', row.user_id)

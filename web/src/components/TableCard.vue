@@ -3,7 +3,7 @@
     <div class="card-icon" @click.stop="$emit('changeIcon', table)" title="Click to change icon">
       <span v-if="table.icon && !table.icon.startsWith('ion:')" class="card-icon-emoji">{{ table.icon }}</span>
       <IonIcon v-else-if="table.icon" :name="table.icon.slice(4)" :size="20" />
-      <n-icon v-else :component="GridOutline" :size="20" color="#787774" />
+      <span v-else style="font-size:20px;opacity:0.4">📊</span>
     </div>
     <div class="card-body">
       <template v-if="editingTable === table.name">

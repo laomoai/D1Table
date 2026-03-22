@@ -60,7 +60,7 @@
               <span class="table-icon-cell">
                 <span v-if="table.icon && !table.icon.startsWith('ion:')" class="table-emoji-icon">{{ table.icon }}</span>
                 <ion-icon v-else-if="table.icon" :name="table.icon.slice(4)" :size="14" />
-                <n-icon v-else :component="TableIcon" size="14" style="opacity:0.5" />
+                <span v-else class="table-emoji-icon" style="opacity:0.4">📊</span>
               </span>
               <template v-if="editingTable === table.name">
                 <input
@@ -110,7 +110,7 @@
               <span class="table-icon-cell">
                 <span v-if="table.icon && !table.icon.startsWith('ion:')" class="table-emoji-icon">{{ table.icon }}</span>
                 <ion-icon v-else-if="table.icon" :name="table.icon.slice(4)" :size="14" />
-                <n-icon v-else :component="TableIcon" size="14" style="opacity:0.5" />
+                <span v-else class="table-emoji-icon" style="opacity:0.4">📊</span>
               </span>
               <template v-if="editingTable === table.name">
                 <input

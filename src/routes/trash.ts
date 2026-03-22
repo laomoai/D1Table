@@ -24,11 +24,25 @@ trash.get('/', async (c) => {
     ).bind(RETENTION_DAYS * 86400).run()
   )
 
-  let sql = `SELECT id, table_name, record_id, record_data, deleted_at FROM _trash`
+  const conditions: string[] = []
   const params: unknown[] = []
   if (userId !== undefined) {
-    sql += ` WHERE owner_id = ? OR owner_id IS NULL`
+    conditions.push(`(owner_id = ? OR owner_id IS NULL)`)
     params.push(userId)
+  }
+  // scope=groups 限制：只显示允许访问的表的回收站记录
+  const allowedTables = c.get('allowedTables')
+  if (allowedTables !== null && allowedTables !== undefined) {
+    if (allowedTables.length === 0) {
+      return c.json({ data: [] })
+    }
+    const placeholders = allowedTables.map(() => '?').join(',')
+    conditions.push(`table_name IN (${placeholders})`)
+    params.push(...allowedTables)
+  }
+  let sql = `SELECT id, table_name, record_id, record_data, deleted_at FROM _trash`
+  if (conditions.length > 0) {
+    sql += ` WHERE ${conditions.join(' AND ')}`
   }
   sql += ` ORDER BY deleted_at DESC LIMIT 200`
 

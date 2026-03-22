@@ -18,12 +18,12 @@ admin.get('/keys', async (c) => {
   const userId = c.get('userId')
 
   const keySql = userId !== undefined
-    ? `SELECT id, key_prefix, name, type, scope, created_at, is_active FROM _api_keys WHERE (user_id = ? OR user_id IS NULL) ORDER BY created_at DESC LIMIT 200`
-    : `SELECT id, key_prefix, name, type, scope, created_at, is_active FROM _api_keys ORDER BY created_at DESC LIMIT 200`
+    ? `SELECT id, key_prefix, name, type, scope, created_at, is_active, last_used_at FROM _api_keys WHERE (user_id = ? OR user_id IS NULL) ORDER BY created_at DESC LIMIT 200`
+    : `SELECT id, key_prefix, name, type, scope, created_at, is_active, last_used_at FROM _api_keys ORDER BY created_at DESC LIMIT 200`
 
   const rows = userId !== undefined
-    ? await c.env.DB.prepare(keySql).bind(userId).all<{ id: number; key_prefix: string; name: string; type: string; scope: string; created_at: number; is_active: number }>()
-    : await c.env.DB.prepare(keySql).all<{ id: number; key_prefix: string; name: string; type: string; scope: string; created_at: number; is_active: number }>()
+    ? await c.env.DB.prepare(keySql).bind(userId).all<{ id: number; key_prefix: string; name: string; type: string; scope: string; created_at: number; is_active: number; last_used_at: number | null }>()
+    : await c.env.DB.prepare(keySql).all<{ id: number; key_prefix: string; name: string; type: string; scope: string; created_at: number; is_active: number; last_used_at: number | null }>()
 
   // 获取每个 key 关联的分组
   const akgRows = await c.env.DB

@@ -62,9 +62,9 @@ export function buildSelectSQL(opts: SelectOptions): {
   const conditions: string[] = []
   const params: (string | number)[] = []
 
-  // Keyset 分页条件
+  // Keyset 分页条件（默认 id DESC，所以 cursor 取 < ）
   if (cursor !== undefined) {
-    conditions.push('"id" > ?')
+    conditions.push('"id" < ?')
     params.push(cursor)
   }
 
@@ -89,9 +89,11 @@ export function buildSelectSQL(opts: SelectOptions): {
   // 排序：自定义字段 + id 兜底，保证游标稳定
   if (sort && sort.field !== 'id') {
     const safeField = sanitizeName(sort.field)
-    sql += ` ORDER BY "${safeField}" ${sort.dir}, "id" ASC`
+    sql += ` ORDER BY "${safeField}" ${sort.dir}, "id" DESC`
+  } else if (sort && sort.field === 'id') {
+    sql += ` ORDER BY "id" ${sort.dir}`
   } else {
-    sql += ` ORDER BY "id" ASC`
+    sql += ` ORDER BY "id" DESC`
   }
 
   // 限制 pageSize 上限，防止单次大量读取（导出场景除外）

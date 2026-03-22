@@ -117,9 +117,19 @@ notes.post('/', requireWriteMiddleware, async (c) => {
     parent_id?: string
   }>()
 
-  const MAX_CONTENT = 1024 * 1024 // 1MB — D1 row size limit // 5MB
+  const MAX_CONTENT = 1024 * 1024 // 1MB
   if (body.content && body.content.length > MAX_CONTENT) {
     return c.json({ error: { code: 'CONTENT_TOO_LARGE', message: 'Note content exceeds 1MB limit' } }, 413)
+  }
+
+  // Validate parent_id exists and is not deleted
+  if (body.parent_id) {
+    const parent = await c.env.DB.prepare(
+      `SELECT id FROM _notes WHERE id = ? AND deleted_at IS NULL`
+    ).bind(body.parent_id).first()
+    if (!parent) {
+      return c.json({ error: { code: 'INVALID_PARENT', message: 'Parent note not found' } }, 400)
+    }
   }
 
   const id = generateId()
@@ -271,7 +281,7 @@ notes.post('/:id/restore', requireWriteMiddleware, async (c) => {
   const { id } = c.req.param()
   const userId = c.get('userId')
 
-  // Restore note and all descendants that were deleted at the same time
+  // Restore note and all descendants deleted at the same timestamp
   const note = await c.env.DB.prepare(
     `SELECT deleted_at FROM _notes WHERE id = ?`
   ).bind(id).first<{ deleted_at: number | null }>()
@@ -280,14 +290,29 @@ notes.post('/:id/restore', requireWriteMiddleware, async (c) => {
     return c.json({ error: { code: 'NOT_FOUND', message: 'Deleted note not found' } }, 404)
   }
 
-  let sql = `UPDATE _notes SET deleted_at = NULL WHERE deleted_at = ? AND (id = ? OR parent_id = ?)`
-  const params: unknown[] = [note.deleted_at, id, id]
-  if (userId !== undefined) {
-    sql += ` AND owner_id = ?`
-    params.push(userId)
+  // Use same breadth-first approach as delete to find all descendants
+  const allIds: string[] = [id]
+  let currentLevel = [id]
+  for (let depth = 0; depth < 10 && currentLevel.length > 0; depth++) {
+    const placeholders = currentLevel.map(() => '?').join(',')
+    const children = await c.env.DB.prepare(
+      `SELECT id FROM _notes WHERE parent_id IN (${placeholders}) AND deleted_at = ?`
+    ).bind(...currentLevel, note.deleted_at).all<{ id: string }>()
+    currentLevel = children.results.map(r => r.id)
+    allIds.push(...currentLevel)
   }
 
-  await c.env.DB.prepare(sql).bind(...params).run()
+  const stmts = allIds.map(noteId => {
+    let sql = `UPDATE _notes SET deleted_at = NULL WHERE id = ? AND deleted_at = ?`
+    const params: unknown[] = [noteId, note.deleted_at]
+    if (userId !== undefined) {
+      sql += ` AND owner_id = ?`
+      params.push(userId)
+    }
+    return c.env.DB.prepare(sql).bind(...params)
+  })
+
+  await c.env.DB.batch(stmts)
 
   return c.json({ data: { success: true } })
 })
