@@ -585,13 +585,16 @@ function getLinkFields(fieldMeta: FieldMetaRow[]): Array<{ column_name: string; 
  * 用于 link 字段的显示标题
  */
 async function getTablePrimaryField(db: D1Database, tableName: string): Promise<string | null> {
+  if (!isValidIdentifier(tableName)) return null
   const meta = await db.prepare(
     `SELECT column_name, field_type FROM _field_meta WHERE table_name = ? AND column_name NOT IN ('id', 'created_at') ORDER BY order_index ASC`
   ).bind(tableName).all<{ column_name: string; field_type: string }>()
 
   // 优先找 text/longtext，否则取第一个非系统字段
   const textField = meta.results.find(f => f.field_type === 'text' || f.field_type === 'longtext')
-  return textField?.column_name ?? meta.results[0]?.column_name ?? null
+  const col = textField?.column_name ?? meta.results[0]?.column_name ?? null
+  if (col && !isValidIdentifier(col)) return null
+  return col
 }
 
 /**
@@ -607,9 +610,9 @@ async function resolveLinkValues(
 
   // 按 link_table 分组收集需要查的 IDs
   const tableIds = new Map<string, Set<string>>()
-  const tableFieldMap = new Map<string, string>() // link_table -> column to use as title
 
   for (const lf of linkFields) {
+    if (!isValidIdentifier(lf.link_table)) continue
     if (!tableIds.has(lf.link_table)) tableIds.set(lf.link_table, new Set())
     const idSet = tableIds.get(lf.link_table)!
     for (const row of rows) {
@@ -626,7 +629,6 @@ async function resolveLinkValues(
 
     const primaryField = await getTablePrimaryField(db, tableName)
     if (!primaryField) continue
-    tableFieldMap.set(tableName, primaryField)
 
     const idArr = Array.from(ids)
     const placeholders = idArr.map(() => '?').join(',')

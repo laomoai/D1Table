@@ -172,6 +172,7 @@ import type { ColDef, GridApi, ColumnResizedEvent, SortChangedEvent, SelectionCh
 
 import { api, type FieldMeta, type FieldType, type RecordRow, type SelectOption } from '@/api/client'
 import { decodeNoteValue } from '@/utils/noteValue'
+import { copyText } from '@/utils/clipboard'
 import FilterBar, { type Filter } from './FilterBar.vue'
 import RecordForm from './RecordForm.vue'
 import FieldPanel from './FieldPanel.vue'
@@ -613,6 +614,15 @@ function typedCellRenderer(params: { value: unknown; fieldType: FieldType; selec
       return `<span class="ag-cell-text">${esc(String(value))}</span>`
     }
 
+    case 'password': {
+      const wrap = document.createElement('span')
+      wrap.className = 'ag-cell-password'
+      wrap.innerHTML = '<span class="ag-pw-dots">••••••••</span>'
+      wrap.title = 'Click to copy'
+      wrap.onclick = (e) => { e.stopPropagation(); copyText(String(value), 'Password') }
+      return wrap
+    }
+
     case 'totp': {
       const span = document.createElement('span')
       span.className = 'ag-cell-totp'
@@ -626,18 +636,14 @@ function typedCellRenderer(params: { value: unknown; fieldType: FieldType; selec
         span.innerHTML = `<span class="ag-totp-code">${code ?? '------'}</span><span class="ag-totp-timer">${rem}s</span>`
       }
       update()
-      const timer = setInterval(update, 1000)
-      // Cleanup when cell is destroyed
-      const observer = new MutationObserver(() => {
-        if (!span.isConnected) { clearInterval(timer); observer.disconnect() }
-      })
-      requestAnimationFrame(() => {
-        if (span.parentElement) observer.observe(span.parentElement, { childList: true })
-      })
+      const timer = setInterval(() => {
+        if (!span.isConnected) { clearInterval(timer); return }
+        update()
+      }, 1000)
       span.onclick = (e) => {
         e.stopPropagation()
         const code = span.querySelector('.ag-totp-code')?.textContent
-        if (code && code !== '------') navigator.clipboard.writeText(code)
+        if (code && code !== '------') copyText(code, '2FA code')
       }
       return span
     }
@@ -981,6 +987,12 @@ async function refreshAll() {
   text-overflow: ellipsis; white-space: nowrap;
 }
 .ag-cell-link-record:hover { background: rgba(79,110,247,0.14); }
+/* Password */
+.ag-cell-password {
+  cursor: pointer; position: relative; display: inline-flex; align-items: center;
+}
+.ag-pw-dots { color: #999; font-size: 12px; letter-spacing: 1px; }
+.ag-cell-password:hover .ag-pw-dots { color: #4f6ef7; }
 /* TOTP */
 .ag-cell-totp {
   display: inline-flex; align-items: center; gap: 6px;

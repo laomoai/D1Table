@@ -22,7 +22,7 @@ http.interceptors.response.use(
 
 // ── 类型定义 ──────────────────────────────────────────────────
 
-export type FieldType = 'text' | 'longtext' | 'number' | 'currency' | 'percent' | 'email' | 'url' | 'date' | 'datetime' | 'checkbox' | 'select' | 'image' | 'note' | 'link' | 'totp'
+export type FieldType = 'text' | 'longtext' | 'number' | 'currency' | 'percent' | 'email' | 'url' | 'date' | 'datetime' | 'checkbox' | 'select' | 'image' | 'note' | 'link' | 'totp' | 'password'
 
 export interface LinkValue {
   id: string

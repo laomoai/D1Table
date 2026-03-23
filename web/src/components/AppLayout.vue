@@ -179,9 +179,11 @@ import { GridOutline as TableIcon, SettingsOutline as SettingsIcon, LogOutOutlin
 import { api, http, type TableMeta } from '@/api/client'
 import { useMessage } from 'naive-ui'
 import { getCachedUser, resetAuthState } from '@/router'
+import { registerClipboardToast } from '@/utils/clipboard'
 import IonIcon from './IonIcon.vue'
 
 const message = useMessage()
+registerClipboardToast((content, opts) => message.success(content, opts))
 const router = useRouter()
 const route = useRoute()
 const queryClient = useQueryClient()

@@ -101,6 +101,16 @@
           type="text"
         />
 
+        <!-- password -->
+        <n-input
+          v-else-if="field.field_type === 'password'"
+          :value="formData[field.column_name] as string"
+          @update:value="(v: string) => formData[field.column_name] = v"
+          placeholder="Enter password"
+          type="password"
+          show-password-on="click"
+        />
+
         <!-- totp (secret key input) -->
         <n-input
           v-else-if="field.field_type === 'totp'"

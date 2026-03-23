@@ -54,15 +54,29 @@
               />
             </template>
 
+            <!-- 即时交互：password -->
+            <template v-else-if="field.field_type === 'password'">
+              <div v-if="currentRow[field.column_name]" class="pw-field-wrap">
+                <code v-if="pwRevealed.has(field.column_name)" class="pw-value">{{ currentRow[field.column_name] }}</code>
+                <code v-else class="pw-value pw-value--hidden">••••••••••••</code>
+                <button class="note-field-btn" @click="togglePwReveal(field.column_name)">
+                  {{ pwRevealed.has(field.column_name) ? 'Hide' : 'Show' }}
+                </button>
+                <button class="note-field-btn" @click="copyPwField(field.column_name)">Copy</button>
+                <button class="note-field-btn" @click="startEdit(field.column_name)">Edit</button>
+              </div>
+              <div v-else>
+                <button class="note-field-btn" @click="startEdit(field.column_name)">Set password</button>
+              </div>
+            </template>
+
             <!-- 即时交互：totp (2FA code) -->
             <template v-else-if="field.field_type === 'totp'">
               <div v-if="currentRow[field.column_name]" class="totp-field-wrap">
                 <div class="totp-code-display">
                   <span class="totp-code-big">{{ totpCodes[field.column_name] || '······' }}</span>
                   <span class="totp-countdown-big" :class="{ warn: totpRemaining <= 5 }">{{ totpRemaining }}s</span>
-                  <button class="note-field-btn" @click="copyTotpFieldCode(field.column_name)" :title="totpCopied === field.column_name ? 'Copied!' : 'Copy code'">
-                    {{ totpCopied === field.column_name ? '✓' : 'Copy' }}
-                  </button>
+                  <button class="note-field-btn" @click="copyTotpFieldCode(field.column_name)" title="Copy code">Copy</button>
                 </div>
                 <div class="totp-secret-row">
                   <code v-if="totpRevealed.has(field.column_name)" class="totp-secret">{{ currentRow[field.column_name] }}</code>
@@ -314,6 +328,7 @@ import { useQueryClient } from '@tanstack/vue-query'
 import CellValue from './CellValue.vue'
 import ImageUpload from './ImageUpload.vue'
 import { decodeNoteValue, encodeNoteValue } from '@/utils/noteValue'
+import { copyText } from '@/utils/clipboard'
 import { useNoteTree, type NoteTreeNode } from '@/utils/useNoteTree'
 
 const props = defineProps<{
@@ -335,13 +350,28 @@ watch(() => props.initialIndex, (v) => { currentIndex.value = v })
 const currentRow = computed(() => props.allRows[currentIndex.value] ?? null)
 const visibleFields = computed(() => props.fields.filter(f => !f.is_hidden))
 
+// ── Password field ────────────────────────────────────────────
+const pwRevealed = ref(new Set<string>())
+function togglePwReveal(col: string) {
+  const s = new Set(pwRevealed.value)
+  if (s.has(col)) s.delete(col); else s.add(col)
+  pwRevealed.value = s
+}
+
+function copyPwField(col: string) {
+  const val = currentRow.value?.[col]
+  if (val) copyText(String(val), 'Password')
+}
+
+// 切换行时重置
+watch(currentIndex, () => { pwRevealed.value = new Set() })
+
 // ── TOTP ──────────────────────────────────────────────────────
 import { generateTOTP, getTOTPRemaining } from '@/utils/totp'
 
 const totpCodes = ref<Record<string, string | null>>({})
 const totpRemaining = ref(getTOTPRemaining())
 const totpRevealed = ref(new Set<string>())
-const totpCopied = ref<string | null>(null)
 let totpTimer: ReturnType<typeof setInterval> | null = null
 
 async function refreshTotpCodes() {
@@ -358,11 +388,7 @@ async function refreshTotpCodes() {
 
 function copyTotpFieldCode(col: string) {
   const code = totpCodes.value[col]
-  if (code) {
-    navigator.clipboard.writeText(code)
-    totpCopied.value = col
-    setTimeout(() => { totpCopied.value = null }, 1500)
-  }
+  if (code) copyText(code, '2FA code')
 }
 
 function toggleTotpReveal(col: string) {
@@ -516,13 +542,11 @@ async function copyRecord() {
   }
 
   const text = lines.join('\n')
-  try {
-    await navigator.clipboard.writeText(text)
+  const ok = await copyText(text, 'Record')
+  if (ok) {
     recordCopied.value = true
     if (recordCopyTimer) clearTimeout(recordCopyTimer)
     recordCopyTimer = setTimeout(() => { recordCopied.value = false }, 2000)
-  } catch {
-    message.error('Copy failed')
   }
 }
 
@@ -531,17 +555,17 @@ const copiedCol = ref<string | null>(null)
 let copyTimer: ReturnType<typeof setTimeout> | null = null
 onBeforeUnmount(() => {
   if (copyTimer) clearTimeout(copyTimer)
+  if (recordCopyTimer) clearTimeout(recordCopyTimer)
+  if (linkSearchTimer) clearTimeout(linkSearchTimer)
   window.removeEventListener('resize', updateDrawerWidth)
 })
 
 async function copyValue(colName: string, value: unknown) {
-  try {
-    await navigator.clipboard.writeText(String(value ?? ''))
+  const ok = await copyText(String(value ?? ''))
+  if (ok) {
     copiedCol.value = colName
     if (copyTimer) clearTimeout(copyTimer)
     copyTimer = setTimeout(() => { copiedCol.value = null }, 1500)
-  } catch {
-    message.error('Copy failed')
   }
 }
 
@@ -678,7 +702,7 @@ function pickNote(noteId: string) {
 function typeIcon(type: FieldType): string {
   const map: Record<string, string> = {
     text: 'T', longtext: '¶', number: '#', currency: '¥', percent: '%',
-    email: '@', url: '🔗', date: '📅', datetime: '🕐', checkbox: '☑', select: '◉', image: '🖼', note: '📄', link: '🔗', totp: '🔐',
+    email: '@', url: '🔗', date: '📅', datetime: '🕐', checkbox: '☑', select: '◉', image: '🖼', note: '📄', link: '🔗', totp: '🔐', password: '🔑',
   }
   return map[type] ?? 'T'
 }
@@ -686,7 +710,7 @@ function typeIcon(type: FieldType): string {
 function typeColor(type: FieldType): string {
   const map: Record<string, string> = {
     text: '#666', longtext: '#888', number: '#4f6ef7', currency: '#18a058', percent: '#f0a020',
-    email: '#00adb5', url: '#4f6ef7', date: '#8a2be2', datetime: '#d03050', checkbox: '#18a058', select: '#f0a020', image: '#e91e8c', note: '#8a6d3b', link: '#4f6ef7', totp: '#d03050',
+    email: '#00adb5', url: '#4f6ef7', date: '#8a2be2', datetime: '#d03050', checkbox: '#18a058', select: '#f0a020', image: '#e91e8c', note: '#8a6d3b', link: '#4f6ef7', totp: '#d03050', password: '#8a6d3b',
   }
   return map[type] ?? '#666'
 }
@@ -872,6 +896,13 @@ function typeColor(type: FieldType): string {
   line-height: 1.8;
 }
 .longtext-toggle:hover { text-decoration: underline; }
+/* Password field */
+.pw-field-wrap { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; width: 100%; }
+.pw-value {
+  font-size: 13px; padding: 2px 8px; background: #f5f6f8;
+  border-radius: 3px; color: #333; font-family: 'SF Mono', 'Fira Code', monospace;
+}
+.pw-value--hidden { color: #ccc; letter-spacing: 2px; }
 /* TOTP field */
 .totp-field-wrap { display: flex; flex-direction: column; gap: 8px; width: 100%; }
 .totp-code-display {

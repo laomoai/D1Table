@@ -219,6 +219,7 @@ const fieldTypes = [
   { value: 'note',     label: 'Note',      icon: '📄',  color: '#8a6d3b' },
   { value: 'link',     label: 'Link',      icon: '🔗',  color: '#4f6ef7' },
   { value: 'totp',     label: '2FA',       icon: '🔐',  color: '#d03050' },
+  { value: 'password', label: 'Password', icon: '🔑',  color: '#8a6d3b' },
 ]
 
 // ── 展开编辑 ──────────────────────────────────────────────────

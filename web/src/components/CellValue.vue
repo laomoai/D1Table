@@ -57,6 +57,16 @@
   >{{ value }}</a>
   <span v-else-if="fieldType === 'longtext'" :class="detail ? 'cell-longtext--full' : 'cell-longtext'">{{ value }}</span>
 
+  <!-- password (hidden, click to copy) -->
+  <span
+    v-else-if="fieldType === 'password' && value"
+    class="cell-password"
+    @click.stop="copyPassword"
+  >
+    <span class="pw-dots">••••••••</span>
+  </span>
+  <span v-else-if="fieldType === 'password'" class="cell-empty">—</span>
+
   <!-- totp (stored as base32 secret, displays generated code) -->
   <span v-else-if="fieldType === 'totp' && value" class="cell-totp" @click.stop="copyTotpCode">
     <span class="totp-code">{{ totpCode || '······' }}</span>
@@ -111,6 +121,7 @@ import type { FieldType, SelectOption, LinkValue } from '@/api/client'
 import router from '@/router'
 import { decodeNoteValue } from '@/utils/noteValue'
 import { generateTOTP, getTOTPRemaining } from '@/utils/totp'
+import { copyText } from '@/utils/clipboard'
 
 const props = defineProps<{
   value: unknown
@@ -119,6 +130,11 @@ const props = defineProps<{
   detail?: boolean
   linkTable?: string
 }>()
+
+// ── Password copy ─────────────────────────────────────────────
+function copyPassword() {
+  if (props.value) copyText(String(props.value), 'Password')
+}
 
 // ── TOTP ──────────────────────────────────────────────────────
 const totpCode = ref<string | null>(null)
@@ -132,17 +148,20 @@ async function refreshTotp() {
 }
 
 function copyTotpCode() {
-  if (totpCode.value) navigator.clipboard.writeText(totpCode.value)
+  if (totpCode.value) copyText(totpCode.value, '2FA code')
 }
 
-onMounted(() => {
+function startTotpTimer() {
+  if (totpTimer) clearInterval(totpTimer)
   if (props.fieldType === 'totp' && props.value) {
     refreshTotp()
     totpTimer = setInterval(refreshTotp, 1000)
   }
-})
+}
+
+onMounted(startTotpTimer)
 onBeforeUnmount(() => { if (totpTimer) clearInterval(totpTimer) })
-watch(() => props.value, () => { refreshTotp() })
+watch([() => props.value, () => props.fieldType], startTotpTimer)
 
 const isEmpty = computed(() => {
   const v = props.value
@@ -324,6 +343,19 @@ const datetimeVal = computed(() => {
   border: 1px solid;
   font-weight: 500;
 }
+.cell-password {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  position: relative;
+}
+.pw-dots {
+  color: #999;
+  font-size: 12px;
+  letter-spacing: 1px;
+}
+.cell-password:hover .pw-dots { color: #4f6ef7; }
 .cell-totp {
   display: inline-flex;
   align-items: center;

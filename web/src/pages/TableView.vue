@@ -56,7 +56,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onUnmounted } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import { NSpin, NResult } from 'naive-ui'
 import { api } from '@/api/client'
@@ -66,6 +66,7 @@ import ChartView from '@/components/ChartView.vue'
 import KanbanView from '@/components/KanbanView.vue'
 
 const route = useRoute()
+const router = useRouter()
 const queryClient = useQueryClient()
 
 const tableName = computed(() => route.params.tableName as string)
@@ -82,6 +83,11 @@ watch(() => route.query.highlight, (v) => {
 
 function clearHighlight() {
   highlightId.value = null
+  // 清除 URL 上的 highlight 参数，避免刷新时重复触发
+  if (route.query.highlight) {
+    const { highlight: _, ...rest } = route.query
+    router.replace({ query: rest })
+  }
 }
 
 // 切换表时重置视图

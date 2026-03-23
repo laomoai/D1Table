@@ -145,7 +145,7 @@ function openApiSpec(serverUrl: string) {
             type: 'object',
             properties: {
               title: { type: 'string', description: 'Field display name' },
-              field_type: { type: 'string', enum: ['text', 'longtext', 'number', 'currency', 'percent', 'email', 'url', 'date', 'datetime', 'checkbox', 'select', 'image', 'note', 'link', 'totp'] },
+              field_type: { type: 'string', enum: ['text', 'longtext', 'number', 'currency', 'percent', 'email', 'url', 'date', 'datetime', 'checkbox', 'select', 'image', 'note', 'link', 'totp', 'password'] },
             },
           },
           example: { name: { title: 'Name', field_type: 'text' }, created_at: { title: 'Created At', field_type: 'datetime' } },
@@ -434,7 +434,7 @@ function openApiSpec(serverUrl: string) {
                           properties: {
                             column_name: { type: 'string' },
                             title: { type: 'string' },
-                            field_type: { type: 'string', enum: ['text', 'longtext', 'number', 'currency', 'percent', 'email', 'url', 'date', 'datetime', 'checkbox', 'select', 'image', 'note', 'link', 'totp'] },
+                            field_type: { type: 'string', enum: ['text', 'longtext', 'number', 'currency', 'percent', 'email', 'url', 'date', 'datetime', 'checkbox', 'select', 'image', 'note', 'link', 'totp', 'password'] },
                             select_options: { type: 'array', nullable: true },
                             order_index: { type: 'integer' },
                             width: { type: 'integer' },
@@ -463,7 +463,7 @@ function openApiSpec(serverUrl: string) {
                   properties: {
                     title: { type: 'string', description: 'Field display name' },
                     column_name: { type: 'string', description: 'Optional; auto-generated from title if omitted' },
-                    field_type: { type: 'string', enum: ['text', 'longtext', 'number', 'currency', 'percent', 'email', 'url', 'date', 'datetime', 'checkbox', 'select', 'image', 'note', 'link', 'totp'] },
+                    field_type: { type: 'string', enum: ['text', 'longtext', 'number', 'currency', 'percent', 'email', 'url', 'date', 'datetime', 'checkbox', 'select', 'image', 'note', 'link', 'totp', 'password'] },
                     nullable: { type: 'boolean', default: true },
                     select_options: { type: 'array', items: { type: 'object', properties: { value: { type: 'string' }, label: { type: 'string' }, color: { type: 'string' } } } },
                     link_table: { type: 'string', description: 'Required when field_type is "link". The target table name to link to.' },
