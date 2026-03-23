@@ -57,6 +57,13 @@
   >{{ value }}</a>
   <span v-else-if="fieldType === 'longtext'" :class="detail ? 'cell-longtext--full' : 'cell-longtext'">{{ value }}</span>
 
+  <!-- totp (stored as base32 secret, displays generated code) -->
+  <span v-else-if="fieldType === 'totp' && value" class="cell-totp" @click.stop="copyTotpCode">
+    <span class="totp-code">{{ totpCode || '······' }}</span>
+    <span class="totp-countdown" :style="{ opacity: totpRemaining <= 5 ? 1 : 0.5 }">{{ totpRemaining }}s</span>
+  </span>
+  <span v-else-if="fieldType === 'totp'" class="cell-empty">—</span>
+
   <!-- link (stored as JSON: {"id":"42","title":"Alice"}) -->
   <span
     v-else-if="fieldType === 'link' && linkInfo"
@@ -99,10 +106,11 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, onMounted, onBeforeUnmount, watch } from 'vue'
 import type { FieldType, SelectOption, LinkValue } from '@/api/client'
 import router from '@/router'
 import { decodeNoteValue } from '@/utils/noteValue'
+import { generateTOTP, getTOTPRemaining } from '@/utils/totp'
 
 const props = defineProps<{
   value: unknown
@@ -111,6 +119,30 @@ const props = defineProps<{
   detail?: boolean
   linkTable?: string
 }>()
+
+// ── TOTP ──────────────────────────────────────────────────────
+const totpCode = ref<string | null>(null)
+const totpRemaining = ref(getTOTPRemaining())
+let totpTimer: ReturnType<typeof setInterval> | null = null
+
+async function refreshTotp() {
+  if (props.fieldType !== 'totp' || !props.value) return
+  totpCode.value = await generateTOTP(String(props.value))
+  totpRemaining.value = getTOTPRemaining()
+}
+
+function copyTotpCode() {
+  if (totpCode.value) navigator.clipboard.writeText(totpCode.value)
+}
+
+onMounted(() => {
+  if (props.fieldType === 'totp' && props.value) {
+    refreshTotp()
+    totpTimer = setInterval(refreshTotp, 1000)
+  }
+})
+onBeforeUnmount(() => { if (totpTimer) clearInterval(totpTimer) })
+watch(() => props.value, () => { refreshTotp() })
 
 const isEmpty = computed(() => {
   const v = props.value
@@ -292,6 +324,25 @@ const datetimeVal = computed(() => {
   border: 1px solid;
   font-weight: 500;
 }
+.cell-totp {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+}
+.totp-code {
+  font-size: 14px;
+  font-weight: 700;
+  color: #d03050;
+  letter-spacing: 2px;
+}
+.totp-countdown {
+  font-size: 10px;
+  color: #999;
+  min-width: 20px;
+}
+.cell-totp:hover .totp-code { color: #b02040; }
 .cell-link-record {
   display: inline-flex;
   align-items: center;

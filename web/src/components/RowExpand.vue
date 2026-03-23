@@ -54,6 +54,31 @@
               />
             </template>
 
+            <!-- 即时交互：totp (2FA code) -->
+            <template v-else-if="field.field_type === 'totp'">
+              <div v-if="currentRow[field.column_name]" class="totp-field-wrap">
+                <div class="totp-code-display">
+                  <span class="totp-code-big">{{ totpCodes[field.column_name] || '······' }}</span>
+                  <span class="totp-countdown-big" :class="{ warn: totpRemaining <= 5 }">{{ totpRemaining }}s</span>
+                  <button class="note-field-btn" @click="copyTotpFieldCode(field.column_name)" :title="totpCopied === field.column_name ? 'Copied!' : 'Copy code'">
+                    {{ totpCopied === field.column_name ? '✓' : 'Copy' }}
+                  </button>
+                </div>
+                <div class="totp-secret-row">
+                  <code v-if="totpRevealed.has(field.column_name)" class="totp-secret">{{ currentRow[field.column_name] }}</code>
+                  <code v-else class="totp-secret totp-secret--hidden">••••••••••••••••</code>
+                  <button class="note-field-btn" @click="toggleTotpReveal(field.column_name)">
+                    {{ totpRevealed.has(field.column_name) ? 'Hide' : 'Show' }} secret
+                  </button>
+                  <button class="note-field-btn" @click="startEdit(field.column_name)">Edit</button>
+                  <button class="note-field-btn danger" @click="saveField(field.column_name, null)">Clear</button>
+                </div>
+              </div>
+              <div v-else class="totp-field-wrap">
+                <button class="note-field-btn" @click="startEdit(field.column_name)">Set secret key</button>
+              </div>
+            </template>
+
             <!-- 即时交互：link (record reference) -->
             <template v-else-if="field.field_type === 'link'">
               <div class="link-field-wrap">
@@ -309,6 +334,52 @@ watch(() => props.initialIndex, (v) => { currentIndex.value = v })
 
 const currentRow = computed(() => props.allRows[currentIndex.value] ?? null)
 const visibleFields = computed(() => props.fields.filter(f => !f.is_hidden))
+
+// ── TOTP ──────────────────────────────────────────────────────
+import { generateTOTP, getTOTPRemaining } from '@/utils/totp'
+
+const totpCodes = ref<Record<string, string | null>>({})
+const totpRemaining = ref(getTOTPRemaining())
+const totpRevealed = ref(new Set<string>())
+const totpCopied = ref<string | null>(null)
+let totpTimer: ReturnType<typeof setInterval> | null = null
+
+async function refreshTotpCodes() {
+  if (!currentRow.value) return
+  const fields = visibleFields.value.filter(f => f.field_type === 'totp')
+  const codes: Record<string, string | null> = {}
+  for (const f of fields) {
+    const secret = currentRow.value[f.column_name]
+    codes[f.column_name] = secret ? await generateTOTP(String(secret)) : null
+  }
+  totpCodes.value = codes
+  totpRemaining.value = getTOTPRemaining()
+}
+
+function copyTotpFieldCode(col: string) {
+  const code = totpCodes.value[col]
+  if (code) {
+    navigator.clipboard.writeText(code)
+    totpCopied.value = col
+    setTimeout(() => { totpCopied.value = null }, 1500)
+  }
+}
+
+function toggleTotpReveal(col: string) {
+  const s = new Set(totpRevealed.value)
+  if (s.has(col)) s.delete(col); else s.add(col)
+  totpRevealed.value = s
+}
+
+watch([currentRow, visibleFields], () => {
+  refreshTotpCodes()
+  totpRevealed.value = new Set()
+}, { immediate: true })
+
+onMounted(() => {
+  totpTimer = setInterval(refreshTotpCodes, 1000)
+})
+onBeforeUnmount(() => { if (totpTimer) clearInterval(totpTimer) })
 
 // ── 字体大小 ──────────────────────────────────────────────────
 type FontSize = 'small' | 'medium' | 'large'
@@ -607,7 +678,7 @@ function pickNote(noteId: string) {
 function typeIcon(type: FieldType): string {
   const map: Record<string, string> = {
     text: 'T', longtext: '¶', number: '#', currency: '¥', percent: '%',
-    email: '@', url: '🔗', date: '📅', datetime: '🕐', checkbox: '☑', select: '◉', image: '🖼', note: '📄', link: '🔗',
+    email: '@', url: '🔗', date: '📅', datetime: '🕐', checkbox: '☑', select: '◉', image: '🖼', note: '📄', link: '🔗', totp: '🔐',
   }
   return map[type] ?? 'T'
 }
@@ -615,7 +686,7 @@ function typeIcon(type: FieldType): string {
 function typeColor(type: FieldType): string {
   const map: Record<string, string> = {
     text: '#666', longtext: '#888', number: '#4f6ef7', currency: '#18a058', percent: '#f0a020',
-    email: '#00adb5', url: '#4f6ef7', date: '#8a2be2', datetime: '#d03050', checkbox: '#18a058', select: '#f0a020', image: '#e91e8c', note: '#8a6d3b', link: '#4f6ef7',
+    email: '#00adb5', url: '#4f6ef7', date: '#8a2be2', datetime: '#d03050', checkbox: '#18a058', select: '#f0a020', image: '#e91e8c', note: '#8a6d3b', link: '#4f6ef7', totp: '#d03050',
   }
   return map[type] ?? '#666'
 }
@@ -801,6 +872,28 @@ function typeColor(type: FieldType): string {
   line-height: 1.8;
 }
 .longtext-toggle:hover { text-decoration: underline; }
+/* TOTP field */
+.totp-field-wrap { display: flex; flex-direction: column; gap: 8px; width: 100%; }
+.totp-code-display {
+  display: flex; align-items: center; gap: 10px;
+}
+.totp-code-big {
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 22px; font-weight: 700; color: #d03050;
+  letter-spacing: 4px;
+}
+.totp-countdown-big {
+  font-size: 12px; color: #999; min-width: 24px;
+}
+.totp-countdown-big.warn { color: #d03050; font-weight: 600; }
+.totp-secret-row {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+}
+.totp-secret {
+  font-size: 11px; padding: 2px 6px; background: #f5f6f8;
+  border-radius: 3px; color: #666; word-break: break-all;
+}
+.totp-secret--hidden { color: #ccc; letter-spacing: 2px; }
 /* Link field */
 .link-field-wrap { display: flex; flex-direction: column; gap: 6px; width: 100%; }
 .link-field-pill {

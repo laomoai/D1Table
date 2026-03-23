@@ -101,6 +101,16 @@
           type="text"
         />
 
+        <!-- totp (secret key input) -->
+        <n-input
+          v-else-if="field.field_type === 'totp'"
+          :value="formData[field.column_name] as string"
+          @update:value="(v: string) => formData[field.column_name] = v"
+          placeholder="Enter TOTP secret key (base32)"
+          type="password"
+          show-password-on="click"
+        />
+
         <!-- link (just show ID input in form — use detail view for picker) -->
         <n-input
           v-else-if="field.field_type === 'link'"

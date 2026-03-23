@@ -269,6 +269,7 @@ fields.post('/:tableName/fields', requireWriteMiddleware, async (c) => {
     date: 'TEXT', datetime: 'TEXT',
     checkbox: 'INTEGER',
     link: 'TEXT',
+    totp: 'TEXT',
   }
   const sqliteType = sqliteTypeMap[body.field_type] ?? 'TEXT'
   const nullable = body.nullable !== false

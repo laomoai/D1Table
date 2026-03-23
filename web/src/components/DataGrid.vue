@@ -613,6 +613,35 @@ function typedCellRenderer(params: { value: unknown; fieldType: FieldType; selec
       return `<span class="ag-cell-text">${esc(String(value))}</span>`
     }
 
+    case 'totp': {
+      const span = document.createElement('span')
+      span.className = 'ag-cell-totp'
+      span.textContent = '······'
+      const secret = String(value)
+      // Generate TOTP and start refresh timer
+      const update = async () => {
+        const { generateTOTP, getTOTPRemaining } = await import('@/utils/totp')
+        const code = await generateTOTP(secret)
+        const rem = getTOTPRemaining()
+        span.innerHTML = `<span class="ag-totp-code">${code ?? '------'}</span><span class="ag-totp-timer">${rem}s</span>`
+      }
+      update()
+      const timer = setInterval(update, 1000)
+      // Cleanup when cell is destroyed
+      const observer = new MutationObserver(() => {
+        if (!span.isConnected) { clearInterval(timer); observer.disconnect() }
+      })
+      requestAnimationFrame(() => {
+        if (span.parentElement) observer.observe(span.parentElement, { childList: true })
+      })
+      span.onclick = (e) => {
+        e.stopPropagation()
+        const code = span.querySelector('.ag-totp-code')?.textContent
+        if (code && code !== '------') navigator.clipboard.writeText(code)
+      }
+      return span
+    }
+
     case 'image': {
       try {
         const img = document.createElement('img')
@@ -952,6 +981,14 @@ async function refreshAll() {
   text-overflow: ellipsis; white-space: nowrap;
 }
 .ag-cell-link-record:hover { background: rgba(79,110,247,0.14); }
+/* TOTP */
+.ag-cell-totp {
+  display: inline-flex; align-items: center; gap: 6px;
+  cursor: pointer; font-family: 'SF Mono', 'Fira Code', monospace;
+}
+.ag-totp-code { font-size: 14px; font-weight: 700; color: #d03050; letter-spacing: 2px; }
+.ag-totp-timer { font-size: 10px; color: #999; }
+.ag-cell-totp:hover .ag-totp-code { color: #b02040; }
 /* "···" 操作按钮 */
 .ag-actions-wrap { display: flex; align-items: center; justify-content: center; height: 100%; }
 .ag-act-menu-btn {
