@@ -43,6 +43,7 @@
           />
         </template>
       </div>
+
     </div>
 
     <!-- Editor area -->
@@ -170,7 +171,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, nextTick, defineAsyncComponent, onBeforeUnmount } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useQuery, useQueryClient, useMutation } from '@tanstack/vue-query'
 import { NSpin, useMessage, useDialog } from 'naive-ui'
 import { api, notesApi, type NoteListItem, type TableMeta } from '@/api/client'
@@ -182,6 +183,7 @@ import IonIcon from '@/components/IonIcon.vue'
 const IconPicker = defineAsyncComponent(() => import('@/components/IconPicker.vue'))
 
 const route = useRoute()
+const router = useRouter()
 const message = useMessage()
 const dialog = useDialog()
 const queryClient = useQueryClient()
@@ -331,8 +333,10 @@ const { data: activeNote, isLoading: noteLoading } = useQuery({
 })
 
 // When query returns data, populate editor — but only if it matches current note
+// and the editor is not yet ready (i.e., initial load only, not cache updates triggered by setQueryData)
 watch(activeNote, (note) => {
   if (!note || note.id !== activeNoteId.value) return
+  if (noteReady.value) return  // Don't overwrite user edits once the note is loaded
   noteTitle.value = note.title
   noteContent.value = note.content
   savedTitle = note.title
@@ -364,6 +368,12 @@ async function switchToNote(id: string | null) {
   savedTitle = ''
   lastSaved.value = false
   activeNoteId.value = id
+
+  // 4. Sync URL
+  const targetPath = id ? `/notes/${id}` : '/notes'
+  if (route.path !== targetPath) {
+    router.replace(targetPath)
+  }
 }
 
 // Sidebar click
@@ -371,9 +381,9 @@ function selectNote(id: string) {
   switchToNote(id)
 }
 
-// Route param change (e.g. from table cell click)
+// Route param change (e.g. from table cell click or direct URL)
 watch(() => route.params.noteId, (id) => {
-  if (id && typeof id === 'string') switchToNote(id)
+  if (id && typeof id === 'string' && id !== activeNoteId.value) switchToNote(id)
 })
 
 // Initialize from route on mount
@@ -494,18 +504,19 @@ async function createChildNote(parentId: string) {
 function confirmDeleteNote(id: string) {
   dialog.warning({
     title: 'Delete Note',
-    content: 'This note and all its sub-notes will be permanently deleted.',
+    content: 'This note and all its sub-notes will be moved to trash.',
     positiveText: 'Delete',
     negativeText: 'Cancel',
     onPositiveClick: async () => {
       try {
         await notesApi.deleteNote(id)
         queryClient.invalidateQueries({ queryKey: ['notes', 'tree'] })
+        queryClient.invalidateQueries({ queryKey: ['notes-trash'], exact: false })
         if (activeNoteId.value === id) {
           noteReady.value = false
           activeNoteId.value = null
         }
-        message.success('Note deleted')
+        message.success('Note moved to trash')
       } catch (err) {
         message.error((err as Error).message)
       }
@@ -968,4 +979,5 @@ async function handleImport(event: Event) {
   font-size: 13px;
   color: #4f6ef7;
 }
+
 </style>

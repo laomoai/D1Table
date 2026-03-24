@@ -150,43 +150,97 @@
       <n-tab-pane name="trash" tab="Trash">
         <div class="tab-content">
           <div class="hint" style="margin-bottom: 16px;">
-            Deleted records are kept in the trash for 30 days, then permanently deleted automatically
+            Deleted items are kept in the trash for 30 days, then permanently deleted automatically
           </div>
 
-          <n-spin v-if="trashLoading" />
-          <template v-else>
-            <div v-if="trashItems?.length" class="trash-list">
-              <div v-for="item in trashItems" :key="item.id" class="trash-card">
-                <div class="trash-card-main">
-                  <div class="trash-card-header">
-                    <span class="trash-card-table">{{ getTableTitle(item.table_name) }}</span>
-                    <code class="trash-card-id">ID: {{ item.record_id }}</code>
+          <!-- Category toggle -->
+          <div class="trash-category-toggle">
+            <button class="trash-cat-btn" :class="{ active: trashCategory === 'tables' }" @click="trashCategory = 'tables'">Tables</button>
+            <button class="trash-cat-btn" :class="{ active: trashCategory === 'notes' }" @click="trashCategory = 'notes'">Notes</button>
+          </div>
+
+          <!-- Tables trash -->
+          <template v-if="trashCategory === 'tables'">
+            <n-spin v-if="trashLoading" />
+            <template v-else>
+              <div v-if="trashItems?.length" class="trash-list">
+                <div v-for="item in trashItems" :key="item.id" class="trash-card">
+                  <div class="trash-card-main">
+                    <div class="trash-card-header">
+                      <span class="trash-card-table">{{ getTableTitle(item.table_name) }}</span>
+                      <code class="trash-card-id">ID: {{ item.record_id }}</code>
+                    </div>
+                    <div class="trash-card-preview">
+                      {{ formatTrashPreview(item.record_data) }}
+                    </div>
+                    <div class="trash-card-meta">
+                      Deleted at {{ formatTrashTime(item.deleted_at) }}
+                    </div>
                   </div>
-                  <div class="trash-card-preview">
-                    {{ formatTrashPreview(item.record_data) }}
+                  <div class="trash-card-actions">
+                    <n-button size="tiny" type="primary" quaternary @click="handleRestore(item.id)">Restore</n-button>
+                    <n-button size="tiny" type="error" quaternary @click="handlePermanentDelete(item.id)">Delete permanently</n-button>
                   </div>
-                  <div class="trash-card-meta">
-                    Deleted at {{ formatTrashTime(item.deleted_at) }}
-                  </div>
-                </div>
-                <div class="trash-card-actions">
-                  <n-button size="tiny" type="primary" quaternary @click="handleRestore(item.id)">Restore</n-button>
-                  <n-button size="tiny" type="error" quaternary @click="handlePermanentDelete(item.id)">Delete permanently</n-button>
                 </div>
               </div>
-            </div>
-            <div v-else class="empty-hint">Trash is empty</div>
+              <div v-else class="empty-hint">Trash is empty</div>
 
-            <n-button
-              v-if="trashItems?.length"
-              type="error"
-              size="small"
-              quaternary
-              style="margin-top: 16px;"
-              @click="handleEmptyTrash"
-            >
-              Empty Trash
-            </n-button>
+              <div v-if="trashTotal > trashPageSize" style="margin-top: 16px; display: flex; justify-content: center;">
+                <n-pagination
+                  v-model:page="trashPage"
+                  v-model:page-size="trashPageSize"
+                  :item-count="trashTotal"
+                  :page-sizes="[20, 50, 100]"
+                  show-size-picker
+                  size="small"
+                />
+              </div>
+
+              <n-button
+                v-if="trashItems?.length"
+                type="error"
+                size="small"
+                quaternary
+                style="margin-top: 16px;"
+                @click="handleEmptyTrash"
+              >
+                Empty Trash
+              </n-button>
+            </template>
+          </template>
+
+          <!-- Notes trash -->
+          <template v-else>
+            <n-spin v-if="notesTrashLoading" />
+            <template v-else>
+              <div v-if="notesTrashItems?.length" class="trash-list">
+                <div v-for="item in notesTrashItems" :key="item.id" class="trash-card">
+                  <div class="trash-card-main">
+                    <div class="trash-card-header">
+                      <span class="trash-note-icon">{{ item.icon && !item.icon.startsWith('ion:') ? item.icon : '📄' }}</span>
+                      <span class="trash-card-table">{{ item.title || 'Untitled' }}</span>
+                    </div>
+                    <div class="trash-card-meta">Deleted at {{ formatNoteTrashTime(item.deleted_at) }}</div>
+                  </div>
+                  <div class="trash-card-actions">
+                    <n-button size="tiny" type="primary" quaternary @click="handleNoteRestore(item.id)">Restore</n-button>
+                    <n-button size="tiny" type="error" quaternary @click="handleNotePermDelete(item.id)">Delete permanently</n-button>
+                  </div>
+                </div>
+              </div>
+              <div v-else class="empty-hint">Trash is empty</div>
+
+              <div v-if="notesTrashTotal > notesTrashPageSize" style="margin-top: 16px; display: flex; justify-content: center;">
+                <n-pagination
+                  v-model:page="notesTrashPage"
+                  v-model:page-size="notesTrashPageSize"
+                  :item-count="notesTrashTotal"
+                  :page-sizes="[20, 50, 100]"
+                  show-size-picker
+                  size="small"
+                />
+              </div>
+            </template>
           </template>
         </div>
       </n-tab-pane>
@@ -385,15 +439,15 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import { useRouter } from 'vue-router'
 import {
   NTabs, NTabPane, NForm, NFormItem, NInput, NButton, NText, NTag, NSpace,
   NSpin, NModal, NAlert, NRadioGroup, NRadio, NCheckboxGroup, NCheckbox,
-  NSlider, useMessage,
+  NSlider, NPagination, useMessage,
 } from 'naive-ui'
-import { api, userApi, getCurrentUser, type ApiKeyInfo, type Group, type TableMeta, type TrashItem, type UserInfo } from '@/api/client'
+import { api, notesApi, userApi, getCurrentUser, type ApiKeyInfo, type Group, type TableMeta, type TrashItem, type UserInfo } from '@/api/client'
 import ExportSchemaModal from '@/components/ExportSchemaModal.vue'
 
 const message = useMessage()
@@ -577,11 +631,18 @@ async function handleSaveGroupTables() {
 }
 
 // ── Trash ──────────────────────────────────────────────────
-const { data: trashItems, isLoading: trashLoading } = useQuery({
-  queryKey: ['trash'],
-  queryFn: api.getTrash,
+const trashCategory = ref<'tables' | 'notes'>('tables')
+const trashPage = ref(1)
+const trashPageSize = ref(20)
+
+const { data: trashResult, isLoading: trashLoading } = useQuery({
+  queryKey: computed(() => ['trash', trashPage.value, trashPageSize.value]),
+  queryFn: () => api.getTrash({ page: trashPage.value, page_size: trashPageSize.value }),
   retry: false,
 })
+
+const trashItems = computed(() => trashResult.value?.data)
+const trashTotal = computed(() => trashResult.value?.meta.total ?? 0)
 
 function formatTrashPreview(data: Record<string, unknown>): string {
   const entries = Object.entries(data).filter(([k]) => k !== 'id' && k !== 'created_at')
@@ -597,7 +658,7 @@ async function handleRestore(id: number) {
   try {
     await api.restoreTrash(id)
     message.success('Record restored')
-    queryClient.invalidateQueries({ queryKey: ['trash'] })
+    queryClient.invalidateQueries({ queryKey: ['trash'], exact: false })
     queryClient.invalidateQueries({ queryKey: ['records'] })
     queryClient.invalidateQueries({ queryKey: ['tables'] })
   } catch (err) {
@@ -611,7 +672,47 @@ async function handlePermanentDelete(id: number) {
   try {
     await api.deleteTrash(id)
     message.success('Permanently deleted')
-    queryClient.invalidateQueries({ queryKey: ['trash'] })
+    queryClient.invalidateQueries({ queryKey: ['trash'], exact: false })
+  } catch (err) {
+    message.error((err as Error).message)
+  }
+}
+
+// ── Notes Trash ──────────────────────────────────────────
+const notesTrashPage = ref(1)
+const notesTrashPageSize = ref(20)
+
+const { data: notesTrashResult, isLoading: notesTrashLoading } = useQuery({
+  queryKey: computed(() => ['notes-trash', notesTrashPage.value, notesTrashPageSize.value]),
+  queryFn: () => notesApi.getTrash({ page: notesTrashPage.value, page_size: notesTrashPageSize.value }),
+  retry: false,
+})
+
+const notesTrashItems = computed(() => notesTrashResult.value?.data)
+const notesTrashTotal = computed(() => notesTrashResult.value?.meta.total ?? 0)
+
+function formatNoteTrashTime(ts: number): string {
+  return new Date(ts * 1000).toLocaleString('en-US', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+}
+
+async function handleNoteRestore(id: string) {
+  try {
+    await notesApi.restoreNote(id)
+    message.success('Note restored')
+    queryClient.invalidateQueries({ queryKey: ['notes-trash'], exact: false })
+    queryClient.invalidateQueries({ queryKey: ['notes', 'tree'] })
+  } catch (err) {
+    message.error((err as Error).message)
+  }
+}
+
+async function handleNotePermDelete(id: string) {
+  const confirmed = window.confirm('Delete permanently? This cannot be undone.')
+  if (!confirmed) return
+  try {
+    await notesApi.permanentDeleteNote(id)
+    message.success('Permanently deleted')
+    queryClient.invalidateQueries({ queryKey: ['notes-trash'], exact: false })
   } catch (err) {
     message.error((err as Error).message)
   }
@@ -623,7 +724,7 @@ async function handleEmptyTrash() {
   try {
     await api.emptyTrash()
     message.success('Trash emptied')
-    queryClient.invalidateQueries({ queryKey: ['trash'] })
+    queryClient.invalidateQueries({ queryKey: ['trash'], exact: false })
   } catch (err) {
     message.error((err as Error).message)
   }
@@ -817,6 +918,41 @@ async function handleToggleRole(u: UserInfo) {
 }
 
 /* ── Trash ── */
+/* ── Trash category toggle ── */
+.trash-category-toggle {
+  display: flex;
+  gap: 0;
+  margin-bottom: 16px;
+  border: 1px solid #e0e3ec;
+  border-radius: 8px;
+  overflow: hidden;
+  width: fit-content;
+}
+.trash-cat-btn {
+  padding: 5px 18px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+  color: #666;
+  transition: background 0.15s, color 0.15s;
+}
+.trash-cat-btn + .trash-cat-btn {
+  border-left: 1px solid #e0e3ec;
+}
+.trash-cat-btn.active {
+  background: #4f6ef7;
+  color: #fff;
+}
+.trash-cat-btn:not(.active):hover {
+  background: #f5f6fb;
+  color: #333;
+}
+.trash-note-icon {
+  font-size: 15px;
+  flex-shrink: 0;
+}
+
 .trash-list {
   display: flex;
   flex-direction: column;

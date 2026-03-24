@@ -74,14 +74,23 @@ notes.get('/trash', async (c) => {
   const userId = c.get('userId')
   const { clause, params } = ownerFilter(userId)
 
-  const rows = await c.env.DB.prepare(
-    `SELECT id, title, icon, deleted_at FROM _notes WHERE ${clause} AND deleted_at IS NOT NULL AND parent_id IS NULL
-     ORDER BY deleted_at DESC
-     LIMIT 50`
-  ).bind(...params)
-    .all<{ id: string; title: string; icon: string | null; deleted_at: number }>()
+  const page = Math.max(1, parseInt(c.req.query('page') ?? '1', 10) || 1)
+  const pageSize = Math.min(100, Math.max(1, parseInt(c.req.query('page_size') ?? '20', 10) || 20))
 
-  return c.json({ data: rows.results })
+  // Show the topmost note of each deletion: deleted notes whose parent is either null or still alive (not deleted)
+  const trashFilter = `${clause} AND deleted_at IS NOT NULL AND (parent_id IS NULL OR parent_id IN (SELECT id FROM _notes WHERE deleted_at IS NULL))`
+
+  const [countRow, rows] = await Promise.all([
+    c.env.DB.prepare(`SELECT COUNT(*) as total FROM _notes WHERE ${trashFilter}`)
+      .bind(...params).first<{ total: number }>(),
+    c.env.DB.prepare(
+      `SELECT id, title, icon, deleted_at FROM _notes WHERE ${trashFilter}
+       ORDER BY deleted_at DESC LIMIT ? OFFSET ?`
+    ).bind(...params, pageSize, (page - 1) * pageSize)
+      .all<{ id: string; title: string; icon: string | null; deleted_at: number }>(),
+  ])
+
+  return c.json({ data: rows.results, meta: { total: countRow?.total ?? 0, page, page_size: pageSize } })
 })
 
 /**
@@ -269,6 +278,29 @@ notes.delete('/:id', requireWriteMiddleware, async (c) => {
   })
 
   await c.env.DB.batch(stmts)
+
+  return c.json({ data: { success: true } })
+})
+
+/**
+ * DELETE /api/notes/:id/permanent
+ * Hard-delete a soft-deleted note (already in trash)
+ */
+notes.delete('/:id/permanent', requireWriteMiddleware, async (c) => {
+  const { id } = c.req.param()
+  const userId = c.get('userId')
+
+  let sql = `DELETE FROM _notes WHERE id = ? AND deleted_at IS NOT NULL`
+  const params: unknown[] = [id]
+  if (userId !== undefined) {
+    sql += ` AND owner_id = ?`
+    params.push(userId)
+  }
+
+  const result = await c.env.DB.prepare(sql).bind(...params).run()
+  if (result.meta.changes === 0) {
+    return c.json({ error: { code: 'NOT_FOUND', message: 'Deleted note not found' } }, 404)
+  }
 
   return c.json({ data: { success: true } })
 })
