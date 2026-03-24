@@ -26,7 +26,7 @@
   <!-- url -->
   <a
     v-else-if="fieldType === 'url' && value"
-    :href="String(value)"
+    :href="/^https?:\/\//i.test(String(value)) ? String(value) : 'https://' + String(value)"
     target="_blank"
     rel="noopener noreferrer"
     :class="detail ? 'cell-link--full' : 'cell-link'"
@@ -182,7 +182,11 @@ const linkInfo = computed<LinkValue | null>(() => {
 
 function goToLinked() {
   if (!linkInfo.value || !props.linkTable) return
-  router.push(`/tables/${props.linkTable}?highlight=${linkInfo.value.id}`)
+  if (props.linkTable === '_notes') {
+    router.push(`/notes/${linkInfo.value.id}`)
+  } else {
+    router.push(`/tables/${props.linkTable}?highlight=${linkInfo.value.id}`)
+  }
 }
 
 const noteInfo = computed(() => {

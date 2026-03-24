@@ -2,13 +2,24 @@
   <n-drawer v-model:show="visible" :width="340" placement="right">
     <n-drawer-content title="Field Management" :native-scrollbar="false">
       <div class="field-list">
-        <div v-for="(field, idx) in localFields" :key="field.column_name">
+        <div
+          v-for="(field, idx) in localFields"
+          :key="field.column_name"
+          class="field-row"
+          :class="{ 'drag-over-top': dragOverIdx === idx && draggingIdx !== null && draggingIdx > idx, 'drag-over-bottom': dragOverIdx === idx && draggingIdx !== null && draggingIdx < idx }"
+          draggable="true"
+          @dragstart="onDragStart(idx, $event)"
+          @dragover.prevent="onDragOver(idx)"
+          @drop.prevent="onDrop(idx)"
+          @dragend="onDragEnd"
+        >
           <!-- 字段行 -->
           <div
             class="field-item"
-            :class="{ active: expandedCol === field.column_name, hidden: field.is_hidden }"
+            :class="{ active: expandedCol === field.column_name, hidden: field.is_hidden, dragging: draggingIdx === idx }"
             @click="toggleExpand(field)"
           >
+            <span class="drag-handle" @click.stop title="Drag to reorder">⠿</span>
             <span class="field-icon" :style="{ color: typeColor(field.field_type) }">
               {{ typeIcon(field.field_type) }}
             </span>
@@ -17,8 +28,6 @@
               <span class="field-col-hint">{{ field.column_name }}</span>
             </div>
             <div class="field-actions" @click.stop>
-              <button class="icon-btn" :disabled="idx === 0" @click="moveField(idx, -1)" title="Move up">↑</button>
-              <button class="icon-btn" :disabled="idx === localFields.length - 1" @click="moveField(idx, 1)" title="Move down">↓</button>
               <button
                 class="icon-btn"
                 :class="{ 'eye-hidden': field.is_hidden }"
@@ -198,7 +207,10 @@ const availableTables = ref<Array<{ label: string; value: string }>>([])
 onMounted(async () => {
   try {
     const tables = await api.getTables()
-    availableTables.value = tables.map(t => ({ label: t.title || t.name, value: t.name }))
+    availableTables.value = [
+      { label: '📄 Notes', value: '_notes' },
+      ...tables.map(t => ({ label: t.title || t.name, value: t.name })),
+    ]
   } catch {}
 })
 
@@ -329,22 +341,41 @@ async function toggleHidden(field: FieldMeta) {
   }
 }
 
-// ── 排序 ──────────────────────────────────────────────────────
-async function moveField(idx: number, dir: -1 | 1) {
-  const target = idx + dir
-  if (target < 0 || target >= localFields.value.length) return
+// ── 拖拽排序 ──────────────────────────────────────────────────
+const draggingIdx = ref<number | null>(null)
+const dragOverIdx = ref<number | null>(null)
+
+function onDragStart(idx: number, e: DragEvent) {
+  draggingIdx.value = idx
+  if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move'
+}
+
+function onDragOver(idx: number) {
+  if (draggingIdx.value !== null && draggingIdx.value !== idx) {
+    dragOverIdx.value = idx
+  }
+}
+
+function onDragEnd() {
+  draggingIdx.value = null
+  dragOverIdx.value = null
+}
+
+async function onDrop(targetIdx: number) {
+  const from = draggingIdx.value
+  draggingIdx.value = null
+  dragOverIdx.value = null
+  if (from === null || from === targetIdx) return
 
   const arr = [...localFields.value]
-  const [moved] = arr.splice(idx, 1)
-  arr.splice(target, 0, moved)
+  const [moved] = arr.splice(from, 1)
+  arr.splice(targetIdx, 0, moved)
   localFields.value = arr
 
   try {
-    // Only the two swapped positions changed; all others retain their order_index
-    await Promise.all([
-      api.updateFieldMeta(props.tableName, arr[idx].column_name, { order_index: idx * 10 }),
-      api.updateFieldMeta(props.tableName, arr[target].column_name, { order_index: target * 10 }),
-    ])
+    await Promise.all(
+      arr.map((f, i) => api.updateFieldMeta(props.tableName, f.column_name, { order_index: i * 10 }))
+    )
     queryClient.invalidateQueries({ queryKey: ['fields', props.tableName] })
     emit('refresh')
   } catch (err) {
@@ -423,6 +454,31 @@ function typeColor(type: FieldType): string {
   flex-direction: column;
   gap: 2px;
 }
+.field-row {
+  position: relative;
+}
+.field-row.drag-over-top::before,
+.field-row.drag-over-bottom::after {
+  content: '';
+  display: block;
+  height: 2px;
+  background: #4f6ef7;
+  border-radius: 2px;
+  margin: 1px 0;
+}
+.field-item.dragging {
+  opacity: 0.4;
+}
+.drag-handle {
+  font-size: 14px;
+  color: #bbb;
+  cursor: grab;
+  padding: 0 2px;
+  flex-shrink: 0;
+  line-height: 1;
+  user-select: none;
+}
+.drag-handle:hover { color: #888; }
 .field-item {
   display: flex;
   align-items: center;

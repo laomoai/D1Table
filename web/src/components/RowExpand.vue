@@ -277,7 +277,7 @@
           class="np-item"
           @click="pickLink(item)"
         >
-          <span class="np-icon">📋</span>
+          <span class="np-icon">{{ linkPickerTable === '_notes' ? '📄' : '📋' }}</span>
           <span class="np-name">{{ item.title }}</span>
           <span style="color:#aaa;font-size:11px;margin-left:auto">#{{ item.id }}</span>
         </div>
@@ -623,8 +623,11 @@ function goToLinkedRecord(field: FieldMeta) {
   const val = parseLinkValue(currentRow.value?.[field.column_name])
   const linkTable = getLinkTable(field)
   if (!val || !linkTable) return
-  // Navigate using router
-  import('@/router').then(m => m.default.push(`/tables/${linkTable}?highlight=${val.id}`))
+  if (linkTable === '_notes') {
+    import('@/router').then(m => m.default.push(`/notes/${val.id}`))
+  } else {
+    import('@/router').then(m => m.default.push(`/tables/${linkTable}?highlight=${val.id}`))
+  }
 }
 
 async function openLinkPicker(field: FieldMeta) {

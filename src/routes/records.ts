@@ -171,6 +171,28 @@ records.get('/:tableName/records', async (c) => {
 records.get('/:tableName/records/search', async (c) => {
   const { tableName } = c.req.param()
   const query = c.req.query()
+  const limit = Math.min(parseInt(query.limit ?? '20', 10) || 20, 50)
+  const q = query.q?.trim()
+
+  // 特殊处理 _notes：直接搜索 _notes 表
+  if (tableName === '_notes') {
+    const userId = c.get('userId')
+    const ownerClause = userId !== undefined ? 'owner_id = ?' : '1=1'
+    const baseParams: unknown[] = userId !== undefined ? [userId] : []
+    let sql: string
+    let params: unknown[]
+    if (q) {
+      sql = `SELECT id, title FROM _notes WHERE ${ownerClause} AND deleted_at IS NULL AND title LIKE ? ORDER BY updated_at DESC LIMIT ?`
+      params = [...baseParams, `%${q}%`, limit]
+    } else {
+      sql = `SELECT id, title FROM _notes WHERE ${ownerClause} AND deleted_at IS NULL ORDER BY updated_at DESC LIMIT ?`
+      params = [...baseParams, limit]
+    }
+    const result = await c.env.DB.prepare(sql).bind(...params).all<{ id: string; title: string | null }>()
+    return c.json({
+      data: result.results.map(r => ({ id: r.id, title: r.title || 'Untitled' }))
+    })
+  }
 
   const allTables = await getUserTables(c.env.DB)
   if (!allTables.includes(tableName)) {
@@ -181,9 +203,6 @@ records.get('/:tableName/records/search', async (c) => {
   if (!primaryField) {
     return c.json({ data: [] })
   }
-
-  const limit = Math.min(parseInt(query.limit ?? '20', 10) || 20, 50)
-  const q = query.q?.trim()
 
   let sql: string
   let params: unknown[]
@@ -627,11 +646,25 @@ async function resolveLinkValues(
   for (const [tableName, ids] of tableIds) {
     if (ids.size === 0) continue
 
+    const idArr = Array.from(ids)
+    const placeholders = idArr.map(() => '?').join(',')
+
+    // 特殊处理 _notes：id 为 TEXT，title 字段直接可用
+    if (tableName === '_notes') {
+      const result = await db.prepare(
+        `SELECT id, title FROM _notes WHERE id IN (${placeholders}) AND deleted_at IS NULL`
+      ).bind(...idArr).all<{ id: string; title: string | null }>()
+      const map = new Map<string, { id: string; title: string }>()
+      for (const r of result.results) {
+        map.set(r.id, { id: r.id, title: r.title || 'Untitled' })
+      }
+      resolved.set(tableName, map)
+      continue
+    }
+
     const primaryField = await getTablePrimaryField(db, tableName)
     if (!primaryField) continue
 
-    const idArr = Array.from(ids)
-    const placeholders = idArr.map(() => '?').join(',')
     const result = await db.prepare(
       `SELECT id, "${primaryField}" as _title FROM "${tableName}" WHERE id IN (${placeholders})`
     ).bind(...idArr).all<{ id: number; _title: string | null }>()

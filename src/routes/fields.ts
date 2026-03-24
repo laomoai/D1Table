@@ -281,9 +281,11 @@ fields.post('/:tableName/fields', requireWriteMiddleware, async (c) => {
     if (!body.link_table?.trim()) {
       return c.json({ error: { code: 'INVALID_BODY', message: 'link_table is required for link fields' } }, 400)
     }
-    const allTables = await getUserTables(c.env.DB)
-    if (!allTables.includes(body.link_table)) {
-      return c.json({ error: { code: 'INVALID_BODY', message: `Target table "${body.link_table}" not found` } }, 400)
+    if (body.link_table !== '_notes') {
+      const allTables = await getUserTables(c.env.DB)
+      if (!allTables.includes(body.link_table)) {
+        return c.json({ error: { code: 'INVALID_BODY', message: `Target table "${body.link_table}" not found` } }, 400)
+      }
     }
   }
 

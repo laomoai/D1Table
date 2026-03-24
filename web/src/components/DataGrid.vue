@@ -569,9 +569,10 @@ function typedCellRenderer(params: { value: unknown; fieldType: FieldType; selec
 
     case 'url': {
       const str = String(value)
-      if (isValidUrl(str)) {
+      if (str) {
+        const href = /^https?:\/\//i.test(str) ? str : 'https://' + str
         const a = document.createElement('a')
-        a.href = str
+        a.href = href
         a.target = '_blank'
         a.rel = 'noopener noreferrer'
         a.className = 'ag-cell-link'
@@ -671,7 +672,10 @@ function typedCellRenderer(params: { value: unknown; fieldType: FieldType; selec
           if (lt) {
             span.onclick = (e) => {
               e.stopPropagation()
-              import('@/router').then(m => m.default.push(`/tables/${lt}?highlight=${linked.id}`))
+              const target = lt === '_notes'
+                ? `/notes/${linked.id}`
+                : `/tables/${lt}?highlight=${linked.id}`
+              import('@/router').then(m => m.default.push(target))
             }
           }
           return span
