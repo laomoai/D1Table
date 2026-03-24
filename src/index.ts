@@ -382,10 +382,10 @@ function openApiSpec(serverUrl: string) {
       '/api/tables/{tableName}/records/search': {
         get: {
           summary: 'Search records (for link field picker)',
-          description: 'Returns a simplified list of {id, title} for use in link field record selectors. The title is the value of the first text field in the table.',
+          description: 'Returns a simplified list of {id, title} for use in link field record selectors. The title is the value of the first text field in the table. Use tableName="_notes" to search notes (returns owner-filtered notes; id is a string like "n_xxx").',
           parameters: [
-            { name: 'tableName', in: 'path', required: true, schema: { type: 'string' } },
-            { name: 'q', in: 'query', schema: { type: 'string' }, description: 'Search keyword (matches against the primary text field)' },
+            { name: 'tableName', in: 'path', required: true, schema: { type: 'string' }, description: 'Table name, or "_notes" to search notes' },
+            { name: 'q', in: 'query', schema: { type: 'string' }, description: 'Search keyword (matches against the primary text field, or note title for _notes)' },
             { name: 'limit', in: 'query', schema: { type: 'integer', default: 20, maximum: 50 }, description: 'Max number of results' },
           ],
           responses: {
@@ -401,7 +401,7 @@ function openApiSpec(serverUrl: string) {
                         items: {
                           type: 'object',
                           properties: {
-                            id: { type: 'integer' },
+                            id: { type: 'string', description: 'Record id (integer string for tables, "n_xxx" string for _notes)' },
                             title: { type: 'string' },
                           },
                         },
@@ -466,7 +466,7 @@ function openApiSpec(serverUrl: string) {
                     field_type: { type: 'string', enum: ['text', 'longtext', 'number', 'currency', 'percent', 'email', 'url', 'date', 'datetime', 'checkbox', 'select', 'image', 'note', 'link', 'totp', 'password'] },
                     nullable: { type: 'boolean', default: true },
                     select_options: { type: 'array', items: { type: 'object', properties: { value: { type: 'string' }, label: { type: 'string' }, color: { type: 'string' } } } },
-                    link_table: { type: 'string', description: 'Required when field_type is "link". The target table name to link to.' },
+                    link_table: { type: 'string', description: 'Required when field_type is "link". The target table name to link to. Use "_notes" to link to a note.' },
                   },
                 },
               },
@@ -630,6 +630,217 @@ function openApiSpec(serverUrl: string) {
             },
           },
           responses: { '200': { description: 'Set successfully' } },
+        },
+      },
+      '/api/notes': {
+        get: {
+          summary: 'List notes',
+          description: 'Returns notes at root level (parent_id IS NULL) by default. Pass `parent_id` to list children of a specific note. Regular users only see their own notes; ADMIN_KEY sees all.',
+          parameters: [
+            { name: 'parent_id', in: 'query', schema: { type: 'string' }, description: 'Filter by parent note ID. Omit or pass "root" for top-level notes.' },
+          ],
+          responses: {
+            '200': {
+              description: 'Note list',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      data: {
+                        type: 'array',
+                        items: {
+                          type: 'object',
+                          properties: {
+                            id: { type: 'string', example: 'n_abc123def456' },
+                            title: { type: 'string' },
+                            icon: { type: 'string', nullable: true },
+                            parent_id: { type: 'string', nullable: true },
+                            sort_order: { type: 'integer' },
+                            created_at: { type: 'integer', description: 'Unix timestamp (seconds)' },
+                            updated_at: { type: 'integer', description: 'Unix timestamp (seconds)' },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        post: {
+          summary: 'Create note',
+          description: 'Creates a new note. Content size is limited to 1MB.',
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    title: { type: 'string', description: 'Note title; defaults to "Untitled" if omitted', example: 'Meeting notes' },
+                    content: { type: 'string', description: 'Note body (Markdown); max 1MB' },
+                    parent_id: { type: 'string', nullable: true, description: 'Parent note ID for nesting; omit for root-level note' },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            '201': { description: 'Created successfully; returns { id, title }' },
+            '400': { description: 'Invalid parent_id' },
+            '413': { description: 'Content exceeds 1MB limit' },
+          },
+        },
+      },
+      '/api/notes/tree': {
+        get: {
+          summary: 'Get full notes tree',
+          description: 'Returns all non-deleted notes (up to 500) as a flat list. Use `parent_id` to reconstruct the hierarchy client-side.',
+          responses: {
+            '200': {
+              description: 'Full note tree (flat list)',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      data: {
+                        type: 'array',
+                        items: {
+                          type: 'object',
+                          properties: {
+                            id: { type: 'string' },
+                            title: { type: 'string' },
+                            icon: { type: 'string', nullable: true },
+                            parent_id: { type: 'string', nullable: true },
+                            sort_order: { type: 'integer' },
+                            is_locked: { type: 'integer', description: '1 = locked, 0 = unlocked' },
+                            created_at: { type: 'integer' },
+                            updated_at: { type: 'integer' },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+      '/api/notes/trash': {
+        get: {
+          summary: 'List deleted notes',
+          description: 'Returns soft-deleted root-level notes (up to 50), ordered by deletion time descending.',
+          responses: {
+            '200': {
+              description: 'Deleted note list',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      data: {
+                        type: 'array',
+                        items: {
+                          type: 'object',
+                          properties: {
+                            id: { type: 'string' },
+                            title: { type: 'string' },
+                            icon: { type: 'string', nullable: true },
+                            deleted_at: { type: 'integer', description: 'Unix timestamp (seconds)' },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+      '/api/notes/{id}': {
+        get: {
+          summary: 'Get note (with content)',
+          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+          responses: {
+            '200': {
+              description: 'Note detail including content',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      data: {
+                        type: 'object',
+                        properties: {
+                          id: { type: 'string' },
+                          title: { type: 'string' },
+                          content: { type: 'string', description: 'Note body (Markdown)' },
+                          icon: { type: 'string', nullable: true },
+                          parent_id: { type: 'string', nullable: true },
+                          sort_order: { type: 'integer' },
+                          is_locked: { type: 'integer' },
+                          created_at: { type: 'integer' },
+                          updated_at: { type: 'integer' },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+            '404': { description: 'Note not found' },
+          },
+        },
+        patch: {
+          summary: 'Update note',
+          description: 'Partially update a note. Only provided fields are updated.',
+          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    title: { type: 'string' },
+                    content: { type: 'string', description: 'Max 1MB' },
+                    icon: { type: 'string', nullable: true },
+                    parent_id: { type: 'string', nullable: true, description: 'Move note to a different parent; null to move to root' },
+                    sort_order: { type: 'integer' },
+                    is_locked: { type: 'boolean' },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            '200': { description: 'Updated successfully' },
+            '400': { description: 'No valid fields / circular reference' },
+            '404': { description: 'Note not found' },
+            '413': { description: 'Content exceeds 1MB limit' },
+          },
+        },
+        delete: {
+          summary: 'Soft-delete note (and all descendants)',
+          description: 'Marks the note and all its descendants as deleted. Use `POST /api/notes/{id}/restore` to undo.',
+          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+          responses: { '200': { description: 'Deleted successfully' } },
+        },
+      },
+      '/api/notes/{id}/restore': {
+        post: {
+          summary: 'Restore deleted note',
+          description: 'Restores a soft-deleted note and all its descendants that were deleted at the same time.',
+          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+          responses: {
+            '200': { description: 'Restored successfully' },
+            '404': { description: 'Deleted note not found' },
+          },
         },
       },
     },
