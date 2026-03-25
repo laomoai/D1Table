@@ -115,11 +115,16 @@ notes.post('/', requireWriteMiddleware, async (c) => {
     return c.json({ error: { code: 'CONTENT_TOO_LARGE', message: 'Note content exceeds 1MB limit' } }, 413)
   }
 
-  // Validate parent_id exists and is not deleted
+  // Validate parent_id exists, not deleted, and belongs to same team
+  const teamId = c.get('teamId')
   if (body.parent_id) {
-    const parent = await c.env.DB.prepare(
-      `SELECT id FROM _notes WHERE id = ? AND deleted_at IS NULL`
-    ).bind(body.parent_id).first()
+    let parentSql = `SELECT id FROM _notes WHERE id = ? AND deleted_at IS NULL`
+    const parentParams: unknown[] = [body.parent_id]
+    if (teamId !== undefined) {
+      parentSql += ` AND team_id = ?`
+      parentParams.push(teamId)
+    }
+    const parent = await c.env.DB.prepare(parentSql).bind(...parentParams).first()
     if (!parent) {
       return c.json({ error: { code: 'INVALID_PARENT', message: 'Parent note not found' } }, 400)
     }
@@ -185,17 +190,34 @@ notes.patch('/:id', requireWriteMiddleware, async (c) => {
       return c.json({ error: { code: 'INVALID_PARENT', message: 'Cannot set note as its own parent' } }, 400)
     }
     if (body.parent_id) {
-      // Walk up from parent_id to check for cycles
+      // Validate parent exists and belongs to same team
+      let parentCheckSql = 'SELECT id FROM _notes WHERE id = ? AND deleted_at IS NULL'
+      const parentCheckParams: unknown[] = [body.parent_id]
+      if (teamId !== undefined) {
+        parentCheckSql += ' AND team_id = ?'
+        parentCheckParams.push(teamId)
+      }
+      const parentExists = await c.env.DB.prepare(parentCheckSql).bind(...parentCheckParams).first()
+      if (!parentExists) {
+        return c.json({ error: { code: 'INVALID_PARENT', message: 'Parent note not found' } }, 400)
+      }
+      // Walk up from parent_id to check for cycles (within same team)
       let cursor: string | null = body.parent_id
       const visited = new Set<string>()
       while (cursor) {
         if (cursor === id) {
           return c.json({ error: { code: 'INVALID_PARENT', message: 'Cannot set a descendant as parent (circular reference)' } }, 400)
         }
-        if (visited.has(cursor)) break // safety: break if already visited
+        if (visited.has(cursor)) break
         visited.add(cursor)
-        const row = await c.env.DB.prepare('SELECT parent_id FROM _notes WHERE id = ?').bind(cursor).first<{ parent_id: string | null }>()
-        cursor = row?.parent_id ?? null
+        let walkSql = 'SELECT parent_id FROM _notes WHERE id = ?'
+        const walkParams: unknown[] = [cursor]
+        if (teamId !== undefined) {
+          walkSql += ' AND team_id = ?'
+          walkParams.push(teamId)
+        }
+        const parentRow = await c.env.DB.prepare(walkSql).bind(...walkParams).first<{ parent_id: string | null }>()
+        cursor = parentRow?.parent_id ?? null
       }
     }
     sets.push('parent_id = ?')
@@ -238,15 +260,31 @@ notes.delete('/:id', requireWriteMiddleware, async (c) => {
   const { id } = c.req.param()
   const teamId = c.get('teamId')
 
+  // Verify the target note belongs to current team
+  let verifySql = `SELECT id FROM _notes WHERE id = ? AND deleted_at IS NULL`
+  const verifyParams: unknown[] = [id]
+  if (teamId !== undefined) {
+    verifySql += ` AND team_id = ?`
+    verifyParams.push(teamId)
+  }
+  const target = await c.env.DB.prepare(verifySql).bind(...verifyParams).first()
+  if (!target) {
+    return c.json({ error: { code: 'NOT_FOUND', message: 'Note not found' } }, 404)
+  }
+
   // Collect all descendant IDs level by level (breadth-first, max 10 levels)
-  // Each level is 1 query instead of 1-per-node
+  // Only traverse within same team
   const allIds: string[] = [id]
   let currentLevel = [id]
   for (let depth = 0; depth < 10 && currentLevel.length > 0; depth++) {
     const placeholders = currentLevel.map(() => '?').join(',')
-    const children = await c.env.DB.prepare(
-      `SELECT id FROM _notes WHERE parent_id IN (${placeholders}) AND deleted_at IS NULL`
-    ).bind(...currentLevel).all<{ id: string }>()
+    let childSql = `SELECT id FROM _notes WHERE parent_id IN (${placeholders}) AND deleted_at IS NULL`
+    const childParams: unknown[] = [...currentLevel]
+    if (teamId !== undefined) {
+      childSql += ` AND team_id = ?`
+      childParams.push(teamId)
+    }
+    const children = await c.env.DB.prepare(childSql).bind(...childParams).all<{ id: string }>()
     currentLevel = children.results.map(r => r.id)
     allIds.push(...currentLevel)
   }
@@ -299,22 +337,31 @@ notes.post('/:id/restore', requireWriteMiddleware, async (c) => {
   const teamId = c.get('teamId')
 
   // Restore note and all descendants deleted at the same timestamp
-  const note = await c.env.DB.prepare(
-    `SELECT deleted_at FROM _notes WHERE id = ?`
-  ).bind(id).first<{ deleted_at: number | null }>()
+  let noteSql = `SELECT deleted_at FROM _notes WHERE id = ?`
+  const noteParams: unknown[] = [id]
+  if (teamId !== undefined) {
+    noteSql += ` AND team_id = ?`
+    noteParams.push(teamId)
+  }
+  const note = await c.env.DB.prepare(noteSql).bind(...noteParams)
+    .first<{ deleted_at: number | null }>()
 
   if (!note || !note.deleted_at) {
     return c.json({ error: { code: 'NOT_FOUND', message: 'Deleted note not found' } }, 404)
   }
 
-  // Use same breadth-first approach as delete to find all descendants
+  // Use same breadth-first approach as delete to find all descendants (within same team)
   const allIds: string[] = [id]
   let currentLevel = [id]
   for (let depth = 0; depth < 10 && currentLevel.length > 0; depth++) {
     const placeholders = currentLevel.map(() => '?').join(',')
-    const children = await c.env.DB.prepare(
-      `SELECT id FROM _notes WHERE parent_id IN (${placeholders}) AND deleted_at = ?`
-    ).bind(...currentLevel, note.deleted_at).all<{ id: string }>()
+    let childSql = `SELECT id FROM _notes WHERE parent_id IN (${placeholders}) AND deleted_at = ?`
+    const childParams: unknown[] = [...currentLevel, note.deleted_at]
+    if (teamId !== undefined) {
+      childSql += ` AND team_id = ?`
+      childParams.push(teamId)
+    }
+    const children = await c.env.DB.prepare(childSql).bind(...childParams).all<{ id: string }>()
     currentLevel = children.results.map(r => r.id)
     allIds.push(...currentLevel)
   }

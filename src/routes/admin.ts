@@ -203,31 +203,30 @@ admin.post('/users', requireAdminMiddleware, async (c) => {
   const name = body.name?.trim() || email
   const role = body.role === 'admin' ? 'admin' : 'user'
 
-  try {
-    // 创建个人团队
-    const teamResult = await c.env.DB
-      .prepare(`INSERT INTO _teams (name) VALUES (?)`)
-      .bind(`${name}'s Team`)
-      .run()
-    const teamId = teamResult.meta.last_row_id
-
-    const result = await c.env.DB
-      .prepare(`INSERT INTO _users (email, name, role, team_id) VALUES (?, ?, ?, ?)`)
-      .bind(email, name, role, teamId)
-      .run()
-
-    // 回填 _teams.created_by
-    await c.env.DB.prepare(`UPDATE _teams SET created_by = ? WHERE id = ?`)
-      .bind(result.meta.last_row_id, teamId).run()
-
-    return c.json({ data: { id: result.meta.last_row_id, email, name, role, status: 'active' } }, 201)
-  } catch (err) {
-    const msg = (err as Error).message ?? ''
-    if (msg.includes('UNIQUE constraint')) {
-      return c.json({ error: { code: 'USER_EXISTS', message: `User "${email}" already exists` } }, 409)
-    }
-    throw err
+  // 先检查是否已存在，避免创建孤儿团队
+  const existing = await c.env.DB.prepare(
+    `SELECT id FROM _users WHERE email = ? LIMIT 1`
+  ).bind(email).first()
+  if (existing) {
+    return c.json({ error: { code: 'USER_EXISTS', message: `User "${email}" already exists` } }, 409)
   }
+
+  // 创建个人团队 + 用户
+  const teamResult = await c.env.DB
+    .prepare(`INSERT INTO _teams (name) VALUES (?)`)
+    .bind(`${name}'s Team`)
+    .run()
+  const teamId = teamResult.meta.last_row_id
+
+  const result = await c.env.DB
+    .prepare(`INSERT INTO _users (email, name, role, team_id) VALUES (?, ?, ?, ?)`)
+    .bind(email, name, role, teamId)
+    .run()
+
+  await c.env.DB.prepare(`UPDATE _teams SET created_by = ? WHERE id = ?`)
+    .bind(result.meta.last_row_id, teamId).run()
+
+  return c.json({ data: { id: result.meta.last_row_id, email, name, role, status: 'active' } }, 201)
 })
 
 /**

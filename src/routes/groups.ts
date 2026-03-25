@@ -139,7 +139,6 @@ groups.delete('/:id', async (c) => {
 groups.put('/:id/tables', async (c) => {
   const { id } = c.req.param()
   const body = await c.req.json<{ tables: string[] }>()
-  const userId = c.get('userId')
 
   if (!Array.isArray(body.tables)) {
     return c.json({ error: { code: 'INVALID_BODY', message: 'tables must be an array' } }, 400)
@@ -157,6 +156,19 @@ groups.put('/:id/tables', async (c) => {
   const group = await c.env.DB.prepare(checkSql).bind(...checkParams).first()
   if (!group) {
     return c.json({ error: { code: 'NOT_FOUND', message: 'Group not found' } }, 404)
+  }
+
+  // 验证所有表名属于当前团队
+  if (teamId !== undefined && body.tables.length > 0) {
+    const placeholders = body.tables.map(() => '?').join(',')
+    const owned = await c.env.DB.prepare(
+      `SELECT table_name FROM _meta WHERE table_name IN (${placeholders}) AND team_id = ?`
+    ).bind(...body.tables, teamId).all<{ table_name: string }>()
+    const ownedSet = new Set(owned.results.map(r => r.table_name))
+    const invalid = body.tables.filter(t => !ownedSet.has(t))
+    if (invalid.length > 0) {
+      return c.json({ error: { code: 'FORBIDDEN', message: `Tables not accessible: ${invalid.join(', ')}` } }, 403)
+    }
   }
 
   const stmts: D1PreparedStatement[] = [

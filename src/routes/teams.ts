@@ -82,9 +82,13 @@ teams.post('/current/members', requireWriteMiddleware, async (c) => {
     if (existingUser.team_id === teamId) {
       return c.json({ error: { code: 'ALREADY_MEMBER', message: 'User is already a member of this team' } }, 409)
     }
-    // 更新用户的 team_id
-    await c.env.DB.prepare(`UPDATE _users SET team_id = ? WHERE id = ?`)
-      .bind(teamId, existingUser.id).run()
+    // 更新用户的 team_id，同步更新其 API key 的 team_id
+    await c.env.DB.batch([
+      c.env.DB.prepare(`UPDATE _users SET team_id = ? WHERE id = ?`)
+        .bind(teamId, existingUser.id),
+      c.env.DB.prepare(`UPDATE _api_keys SET team_id = ? WHERE user_id = ?`)
+        .bind(teamId, existingUser.id),
+    ])
 
     return c.json({ data: { id: existingUser.id, email, message: 'User added to team' } })
   }
@@ -129,9 +133,13 @@ teams.delete('/current/members/:userId', requireWriteMiddleware, async (c) => {
     `INSERT INTO _teams (name, created_by) VALUES (?, ?)`
   ).bind('My Team', targetId).run()
 
-  // 将用户移到个人团队
-  await c.env.DB.prepare(`UPDATE _users SET team_id = ? WHERE id = ?`)
-    .bind(teamResult.meta.last_row_id, targetId).run()
+  // 将用户和其 API key 移到个人团队
+  await c.env.DB.batch([
+    c.env.DB.prepare(`UPDATE _users SET team_id = ? WHERE id = ?`)
+      .bind(teamResult.meta.last_row_id, targetId),
+    c.env.DB.prepare(`UPDATE _api_keys SET team_id = ? WHERE user_id = ?`)
+      .bind(teamResult.meta.last_row_id, targetId),
+  ])
 
   return c.json({ data: { success: true } })
 })
