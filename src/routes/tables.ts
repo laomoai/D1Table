@@ -166,6 +166,8 @@ tables.post('/', requireWriteMiddleware, async (c) => {
       nullable?: boolean
       defaultValue?: string
       select_options?: Array<{ value: string; label: string; color: string }>
+      link_table?: string
+      link_display_field?: string
     }>
   }>()
 
@@ -212,16 +214,25 @@ tables.post('/', requireWriteMiddleware, async (c) => {
 
   // 构建所有列的 field_meta 插入语句（包含自动添加的 id 和 created_at）
   const allColumnsForMeta = [
-    { name: 'id', type: 'INTEGER', title: 'ID', field_type: 'number', select_options: undefined as Array<{ value: string; label: string; color: string }> | undefined },
+    { name: 'id', type: 'INTEGER', title: 'ID', field_type: 'number', select_options: undefined as Array<{ value: string; label: string; color: string }> | undefined, link_table: undefined as string | undefined, link_display_field: undefined as string | undefined },
     ...body.columns.map(col => ({
       ...col,
       title: col.title?.trim() || col.name,
       field_type: col.field_type || inferFieldType(col.name, col.type),
     })),
-    { name: 'created_at', type: 'INTEGER', title: 'Created At', field_type: 'datetime', select_options: undefined },
+    { name: 'created_at', type: 'INTEGER', title: 'Created At', field_type: 'datetime', select_options: undefined, link_table: undefined as string | undefined, link_display_field: undefined as string | undefined },
   ]
-  const fieldMetaStmts = allColumnsForMeta.map((col, idx) =>
-    c.env.DB.prepare(
+  const fieldMetaStmts = allColumnsForMeta.map((col, idx) => {
+    // link 字段的 select_options 存 { link_table: "xxx", link_display_field?: "yyy" }
+    let selectOptionsJson: string | null = null
+    if (col.field_type === 'link' && col.link_table) {
+      const linkConfig: Record<string, string> = { link_table: col.link_table }
+      if (col.link_display_field?.trim()) linkConfig.link_display_field = col.link_display_field.trim()
+      selectOptionsJson = JSON.stringify(linkConfig)
+    } else if (col.select_options) {
+      selectOptionsJson = JSON.stringify(col.select_options)
+    }
+    return c.env.DB.prepare(
       `INSERT OR IGNORE INTO _field_meta (table_name, column_name, title, field_type, select_options, order_index, width, is_hidden)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
     ).bind(
@@ -229,12 +240,21 @@ tables.post('/', requireWriteMiddleware, async (c) => {
       col.name,
       col.title,
       col.field_type,
-      col.select_options ? JSON.stringify(col.select_options) : null,
+      selectOptionsJson,
       idx * 10,
       col.name === 'id' ? 80 : 180,
       col.name === 'created_at' ? 1 : 0
     )
-  )
+  })
+
+  // link 字段插入 _link_meta
+  const linkMetaStmts = body.columns
+    .filter(col => (col.field_type === 'link') && col.link_table)
+    .map(col =>
+      c.env.DB.prepare(
+        `INSERT INTO _link_meta (source_table, source_field, target_table) VALUES (?, ?, ?)`
+      ).bind(body.name, col.name, col.link_table!)
+    )
 
   const displayTitle = body.title?.trim() || body.name
 
@@ -257,6 +277,7 @@ tables.post('/', requireWriteMiddleware, async (c) => {
       `INSERT OR IGNORE INTO _meta (table_name, row_count, title, owner_id) VALUES (?, 0, ?, ?)`
     ).bind(body.name, displayTitle, c.get('userId') ?? null),
     ...fieldMetaStmts,
+    ...linkMetaStmts,
     ...groupStmts,
   ])
 

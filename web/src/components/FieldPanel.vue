@@ -95,10 +95,26 @@
                 </div>
               </div>
 
-              <!-- Link 目标表（只读显示） -->
+              <!-- Link 目标表 -->
               <div v-if="editForm.field_type === 'link'" class="editor-section">
                 <div class="editor-label">Target Table</div>
-                <div class="link-table-display">{{ editForm.link_table || '—' }}</div>
+                <naive-select
+                  v-model:value="editForm.link_table"
+                  :options="availableTables.filter(t => t.value !== props.tableName)"
+                  placeholder="Select target table"
+                  size="small"
+                  @update:value="() => { editForm.link_display_field = null; loadTargetFields(editForm.link_table) }"
+                />
+              </div>
+              <div v-if="editForm.field_type === 'link' && editForm.link_table && targetFieldOptions.length" class="editor-section">
+                <div class="editor-label">Display Field</div>
+                <naive-select
+                  v-model:value="editForm.link_display_field"
+                  :options="targetFieldOptions"
+                  placeholder="Default (first text field)"
+                  size="small"
+                  clearable
+                />
               </div>
 
               <div class="editor-footer">
@@ -156,6 +172,17 @@
                   :options="availableTables.filter(t => t.value !== props.tableName)"
                   placeholder="Select target table"
                   size="small"
+                  @update:value="() => { newField.link_display_field = null; loadTargetFields(newField.link_table) }"
+                />
+              </div>
+              <div v-if="newField.link_table && targetFieldOptions.length" class="editor-section">
+                <div class="editor-label">Display Field</div>
+                <naive-select
+                  v-model:value="newField.link_display_field"
+                  :options="targetFieldOptions"
+                  placeholder="Default (first text field)"
+                  size="small"
+                  clearable
                 />
               </div>
             </template>
@@ -228,7 +255,6 @@ const fieldTypes = [
   { value: 'checkbox', label: 'Checkbox',  icon: '☑',  color: '#18a058' },
   { value: 'select',   label: 'Select',    icon: '◉',  color: '#f0a020' },
   { value: 'image',    label: 'Image',     icon: '🖼',  color: '#e91e8c' },
-  { value: 'note',     label: 'Note',      icon: '📄',  color: '#8a6d3b' },
   { value: 'link',     label: 'Link',      icon: '🔗',  color: '#4f6ef7' },
   { value: 'totp',     label: '2FA',       icon: '🔐',  color: '#d03050' },
   { value: 'password', label: 'Password', icon: '🔑',  color: '#8a6d3b' },
@@ -241,8 +267,22 @@ const editForm = ref({
   title: '',
   field_type: 'text' as FieldType,
   select_options: [] as SelectOption[],
-  link_table: '' as string,
+  link_table: null as string | null,
+  link_display_field: null as string | null,
 })
+
+// 目标表字段列表（link 字段显示字段选择用）
+const targetFieldOptions = ref<Array<{ label: string; value: string }>>([])
+async function loadTargetFields(tableName: string | null) {
+  targetFieldOptions.value = []
+  if (!tableName || tableName === '_notes') return
+  try {
+    const fields = await api.getFieldMeta(tableName)
+    targetFieldOptions.value = fields
+      .filter(f => !['id', 'created_at'].includes(f.column_name))
+      .map(f => ({ label: f.title, value: f.column_name }))
+  } catch {}
+}
 
 function toggleExpand(field: FieldMeta) {
   if (expandedCol.value === field.column_name) {
@@ -251,11 +291,14 @@ function toggleExpand(field: FieldMeta) {
   }
   expandedCol.value = field.column_name
   // link 字段的 select_options 存的是 { link_table: "xxx" }，不是数组
-  let linkTable = ''
+  let linkTable: string | null = null
+  let linkDisplayField: string | null = null
   let selectOpts: SelectOption[] = []
   if (field.field_type === 'link' && field.select_options) {
-    const config = field.select_options as unknown as { link_table?: string }
-    linkTable = config.link_table ?? ''
+    const config = field.select_options as unknown as { link_table?: string; link_display_field?: string }
+    linkTable = config.link_table ?? null
+    linkDisplayField = config.link_display_field ?? null
+    if (linkTable) loadTargetFields(linkTable)
   } else if (field.select_options) {
     selectOpts = (field.select_options as SelectOption[]).map(o => ({ ...o }))
   }
@@ -264,6 +307,7 @@ function toggleExpand(field: FieldMeta) {
     field_type: field.field_type,
     select_options: selectOpts,
     link_table: linkTable,
+    link_display_field: linkDisplayField,
   }
   // 关闭新增表单
   showAddForm.value = false
@@ -309,6 +353,10 @@ async function saveFieldEdit(field: FieldMeta) {
     }
     if (editForm.value.field_type === 'select') {
       patch.select_options = editForm.value.select_options.filter(o => o.label.trim())
+    } else if (editForm.value.field_type === 'link' && editForm.value.link_table) {
+      const linkOpts: Record<string, string> = { link_table: editForm.value.link_table }
+      if (editForm.value.link_display_field) linkOpts.link_display_field = editForm.value.link_display_field
+      patch.select_options = linkOpts as unknown as SelectOption[]
     } else if (field.field_type === 'select') {
       patch.select_options = []
     }
@@ -390,11 +438,12 @@ const newField = ref({
   title: '',
   field_type: 'text' as FieldType,
   select_options: [] as SelectOption[],
-  link_table: '' as string,
+  link_table: null as string | null,
+  link_display_field: null as string | null,
 })
 
 function openAddForm() {
-  newField.value = { title: '', field_type: 'text', select_options: [], link_table: '' }
+  newField.value = { title: '', field_type: 'text', select_options: [], link_table: null, link_display_field: null }
   showAddForm.value = true
   cancelExpand()
 }
@@ -415,7 +464,8 @@ async function submitAddField() {
       title: newField.value.title.trim(),
       field_type: newField.value.field_type,
       select_options: newField.value.field_type === 'select' ? newField.value.select_options : undefined,
-      link_table: newField.value.field_type === 'link' ? newField.value.link_table : undefined,
+      link_table: newField.value.field_type === 'link' ? newField.value.link_table ?? undefined : undefined,
+      link_display_field: newField.value.field_type === 'link' ? newField.value.link_display_field ?? undefined : undefined,
     })
     message.success('Field added')
     queryClient.invalidateQueries({ queryKey: ['fields', props.tableName] })

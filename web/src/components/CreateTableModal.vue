@@ -77,6 +77,22 @@
             </div>
             <button class="add-link-btn" @click="addSelectOption(col)">+ Add option</button>
           </div>
+
+          <!-- Link target table selector -->
+          <div v-if="col.fieldType === 'link'" class="select-opts-block">
+            <div class="select-opts-title">Target table</div>
+            <select :value="col.linkTable ?? ''" @change="(e: Event) => { col.linkTable = (e.target as HTMLSelectElement).value || null; onLinkTableChange(col) }" class="opt-input" style="padding: 6px 8px;">
+              <option value="" disabled>Select target table...</option>
+              <option v-for="t in availableTables" :key="t.value" :value="t.value">{{ t.label }}</option>
+            </select>
+            <template v-if="col.linkTable && col.linkTargetFields.length">
+              <div class="select-opts-title" style="margin-top: 8px;">Display field</div>
+              <select :value="col.linkDisplayField ?? ''" @change="(e: Event) => col.linkDisplayField = (e.target as HTMLSelectElement).value || null" class="opt-input" style="padding: 6px 8px;">
+                <option value="">Default (first text field)</option>
+                <option v-for="f in col.linkTargetFields" :key="f.value" :value="f.value">{{ f.label }}</option>
+              </select>
+            </template>
+          </div>
         </div>
       </div>
 
@@ -93,9 +109,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, nextTick } from 'vue'
+import { ref, nextTick, onMounted } from 'vue'
 import { useMessage } from 'naive-ui'
-import { http } from '@/api/client'
+import { http, api } from '@/api/client'
 import { useQueryClient } from '@tanstack/vue-query'
 import type { FieldType, SelectOption } from '@/api/client'
 import AppModal from './AppModal.vue'
@@ -109,11 +125,26 @@ const nameInputRef = ref<HTMLInputElement>()
 const submitting = ref(false)
 const openTypePicker = ref<number | null>(null)
 
+// 可选的目标表列表（link 字段用）
+const availableTables = ref<Array<{ label: string; value: string }>>([])
+onMounted(async () => {
+  try {
+    const tables = await api.getTables()
+    availableTables.value = [
+      { label: '📄 Notes', value: '_notes' },
+      ...tables.map(t => ({ label: t.title || t.name, value: t.name })),
+    ]
+  } catch {}
+})
+
 interface ColDef {
   displayName: string
   fieldType: FieldType
   type: string
   selectOptions: SelectOption[]
+  linkTable: string | null
+  linkDisplayField: string | null
+  linkTargetFields: Array<{ label: string; value: string }>
 }
 
 const TYPE_META: Record<string, { label: string; icon: string; color: string }> = {
@@ -129,11 +160,14 @@ const TYPE_META: Record<string, { label: string; icon: string; color: string }> 
   checkbox: { label: 'Checkbox',  icon: '☑',  color: '#18a058' },
   select:   { label: 'Select',    icon: '◉',  color: '#f0a020' },
   image:    { label: 'Image',     icon: '🖼', color: '#e91e8c' },
-  note:     { label: 'Note',      icon: '📄', color: '#8a6d3b' },
+  link:     { label: 'Link',      icon: '🔗', color: '#4f6ef7' },
+  totp:     { label: '2FA',       icon: '🔐', color: '#d03050' },
+  password: { label: 'Password',  icon: '🔑', color: '#8a6d3b' },
 }
 
 const fieldTypeToSqlite: Record<string, string> = {
-  text: 'TEXT', longtext: 'TEXT', email: 'TEXT', url: 'TEXT', select: 'TEXT', image: 'TEXT', note: 'TEXT',
+  text: 'TEXT', longtext: 'TEXT', email: 'TEXT', url: 'TEXT', select: 'TEXT', image: 'TEXT',
+  link: 'TEXT', totp: 'TEXT', password: 'TEXT',
   number: 'REAL', currency: 'REAL', percent: 'REAL',
   date: 'TEXT', datetime: 'INTEGER',
   checkbox: 'INTEGER',
@@ -171,6 +205,18 @@ function selectType(col: ColDef, typeKey: FieldType) {
   openTypePicker.value = null
 }
 
+async function onLinkTableChange(col: ColDef) {
+  col.linkDisplayField = null
+  col.linkTargetFields = []
+  if (!col.linkTable || col.linkTable === '_notes') return
+  try {
+    const fields = await api.getFieldMeta(col.linkTable)
+    col.linkTargetFields = fields
+      .filter(f => !['id', 'created_at'].includes(f.column_name))
+      .map(f => ({ label: f.title, value: f.column_name }))
+  } catch {}
+}
+
 interface FormData {
   displayName: string
   columns: ColDef[]
@@ -180,7 +226,7 @@ function defaultForm(): FormData {
   return {
     displayName: '',
     columns: [
-      { displayName: 'Name', fieldType: 'text' as FieldType, type: 'TEXT', selectOptions: [] },
+      { displayName: 'Name', fieldType: 'text' as FieldType, type: 'TEXT', selectOptions: [], linkTable: null, linkDisplayField: null, linkTargetFields: [] },
     ],
   }
 }
@@ -192,7 +238,7 @@ function focusName() {
 }
 
 function addColumn() {
-  form.value.columns.push({ displayName: '', fieldType: 'text', type: 'TEXT', selectOptions: [] })
+  form.value.columns.push({ displayName: '', fieldType: 'text', type: 'TEXT', selectOptions: [], linkTable: null, linkDisplayField: null, linkTargetFields: [] })
 }
 
 function removeColumn(idx: number) {
@@ -223,6 +269,13 @@ async function handleSubmit() {
     return
   }
 
+  // 校验 link 字段必须选择目标表
+  const missingLink = cols.find(c => c.fieldType === 'link' && !c.linkTable?.trim())
+  if (missingLink) {
+    message.warning(`Please select a target table for link field "${missingLink.displayName}"`)
+    return
+  }
+
   const tableName = generateTableName()
   submitting.value = true
   try {
@@ -236,6 +289,8 @@ async function handleSubmit() {
         field_type: c.fieldType,
         nullable: true,
         select_options: c.fieldType === 'select' ? c.selectOptions : undefined,
+        link_table: c.fieldType === 'link' ? c.linkTable ?? undefined : undefined,
+        link_display_field: c.fieldType === 'link' ? c.linkDisplayField ?? undefined : undefined,
       })),
     })
     message.success(`"${form.value.displayName}" created`)

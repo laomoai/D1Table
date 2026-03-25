@@ -24,6 +24,9 @@ trash.get('/', async (c) => {
     ).bind(RETENTION_DAYS * 86400).run()
   )
 
+  const page = Math.max(1, parseInt(c.req.query('page') ?? '1', 10) || 1)
+  const pageSize = Math.min(100, Math.max(1, parseInt(c.req.query('page_size') ?? '20', 10) || 20))
+
   const conditions: string[] = []
   const params: unknown[] = []
   if (userId !== undefined) {
@@ -34,20 +37,21 @@ trash.get('/', async (c) => {
   const allowedTables = c.get('allowedTables')
   if (allowedTables !== null && allowedTables !== undefined) {
     if (allowedTables.length === 0) {
-      return c.json({ data: [] })
+      return c.json({ data: [], meta: { total: 0, page, page_size: pageSize } })
     }
     const placeholders = allowedTables.map(() => '?').join(',')
     conditions.push(`table_name IN (${placeholders})`)
     params.push(...allowedTables)
   }
-  let sql = `SELECT id, table_name, record_id, record_data, deleted_at FROM _trash`
-  if (conditions.length > 0) {
-    sql += ` WHERE ${conditions.join(' AND ')}`
-  }
-  sql += ` ORDER BY deleted_at DESC LIMIT 200`
 
-  const rows = await c.env.DB.prepare(sql).bind(...params)
-    .all<{ id: number; table_name: string; record_id: number; record_data: string; deleted_at: number }>()
+  const where = conditions.length > 0 ? ` WHERE ${conditions.join(' AND ')}` : ''
+
+  const [countRow, rows] = await Promise.all([
+    c.env.DB.prepare(`SELECT COUNT(*) as total FROM _trash${where}`).bind(...params).first<{ total: number }>(),
+    c.env.DB.prepare(`SELECT id, table_name, record_id, record_data, deleted_at FROM _trash${where} ORDER BY deleted_at DESC LIMIT ? OFFSET ?`)
+      .bind(...params, pageSize, (page - 1) * pageSize)
+      .all<{ id: number; table_name: string; record_id: number; record_data: string; deleted_at: number }>(),
+  ])
 
   const data = rows.results.map(r => ({
     id: r.id,
@@ -58,7 +62,7 @@ trash.get('/', async (c) => {
     expires_at: new Date((r.deleted_at + RETENTION_DAYS * 86400) * 1000).toISOString(),
   }))
 
-  return c.json({ data })
+  return c.json({ data, meta: { total: countRow?.total ?? 0, page, page_size: pageSize } })
 })
 
 /**

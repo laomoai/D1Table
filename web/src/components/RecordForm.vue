@@ -97,19 +97,46 @@
           v-else-if="field.field_type === 'url'"
           :value="formData[field.column_name] as string"
           @update:value="(v: string) => formData[field.column_name] = v"
+          @blur="() => { const v = formData[field.column_name] as string; if (v && !/^https?:\/\//i.test(v)) formData[field.column_name] = 'https://' + v }"
           placeholder="https://"
           type="text"
         />
 
         <!-- password -->
-        <n-input
-          v-else-if="field.field_type === 'password'"
-          :value="formData[field.column_name] as string"
-          @update:value="(v: string) => formData[field.column_name] = v"
-          placeholder="Enter password"
-          type="password"
-          show-password-on="click"
-        />
+        <div v-else-if="field.field_type === 'password'" style="display: flex; gap: 6px; width: 100%;">
+          <n-input
+            :value="formData[field.column_name] as string"
+            @update:value="(v: string) => formData[field.column_name] = v"
+            placeholder="Enter password"
+            type="password"
+            show-password-on="click"
+            style="flex: 1;"
+          />
+          <n-tooltip trigger="hover">
+            <template #trigger>
+              <n-button
+                quaternary
+                size="small"
+                @click="formData[field.column_name] = generatePassword(true)"
+              >
+                <span style="font-size: 13px;">A1#</span>
+              </n-button>
+            </template>
+            生成 16 位密码（含特殊符号）
+          </n-tooltip>
+          <n-tooltip trigger="hover">
+            <template #trigger>
+              <n-button
+                quaternary
+                size="small"
+                @click="formData[field.column_name] = generatePassword(false)"
+              >
+                <span style="font-size: 13px;">A1a</span>
+              </n-button>
+            </template>
+            生成 16 位密码（无特殊符号）
+          </n-tooltip>
+        </div>
 
         <!-- totp (secret key input) -->
         <n-input
@@ -121,12 +148,19 @@
           show-password-on="click"
         />
 
-        <!-- link (just show ID input in form — use detail view for picker) -->
-        <n-input
+        <!-- link (record picker) -->
+        <n-select
           v-else-if="field.field_type === 'link'"
-          :value="linkDisplayValue(formData[field.column_name])"
-          @update:value="(v: string) => formData[field.column_name] = v"
-          placeholder="Enter linked record ID"
+          :value="extractLinkId(formData[field.column_name])"
+          @update:value="(v: string | null) => formData[field.column_name] = v"
+          filterable
+          remote
+          clearable
+          :options="linkOptions[field.column_name] ?? []"
+          :loading="linkLoading[field.column_name]"
+          @search="(q: string) => searchLinkRecords(field, q)"
+          @focus="() => { if (!linkOptions[field.column_name]?.length) searchLinkRecords(field, '') }"
+          placeholder="Select record"
         />
 
         <!-- image -->
@@ -158,13 +192,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, reactive, computed, watch } from 'vue'
 import {
   NModal, NForm, NFormItem, NInput, NInputNumber, NButton,
-  NSwitch, NSelect, NDatePicker,
-  type FormInst,
+  NSwitch, NSelect, NDatePicker, NTooltip,
+  type FormInst, type SelectOption,
 } from 'naive-ui'
 import type { FieldMeta, RecordRow } from '@/api/client'
+import { api } from '@/api/client'
 import ImageUpload from './ImageUpload.vue'
 
 const formRef = ref<FormInst>()
@@ -200,6 +235,24 @@ watch(
   (rec) => {
     if (rec) {
       formData.value = { ...rec }
+      // 预填 link/note 字段的选项，确保当前值能显示
+      for (const f of writableFields.value) {
+        const val = rec[f.column_name]
+        if (!val) continue
+        if (f.field_type === 'link') {
+          const id = extractLinkId(val)
+          if (id) {
+            try {
+              const parsed = JSON.parse(String(val))
+              if (parsed?.title) {
+                linkOptions[f.column_name] = [{ label: parsed.title, value: id }]
+              }
+            } catch {
+              linkOptions[f.column_name] = [{ label: `#${id}`, value: id }]
+            }
+          }
+        }
+      }
     } else {
       // 新增模式：设置默认值
       const defaults: Record<string, unknown> = {}
@@ -234,15 +287,65 @@ async function handleSubmit() {
   }
 }
 
-// ── Link field display ──────────────────────────────────────
-function linkDisplayValue(val: unknown): string {
-  if (!val) return ''
-  // If it's a JSON object from the API, extract the ID
+// ── 随机密码生成 ──────────────────────────────────────────
+function generatePassword(withSymbols: boolean): string {
+  const length = 16
+  const upper = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+  const lower = 'abcdefghijklmnopqrstuvwxyz'
+  const digits = '0123456789'
+  const symbols = '!@#$%^&*_+-='
+  const all = upper + lower + digits + (withSymbols ? symbols : '')
+  const arr = new Uint8Array(length)
+  crypto.getRandomValues(arr)
+  const pick = (charset: string, byte: number) => charset[byte % charset.length]
+  const chars = withSymbols
+    ? [pick(upper, arr[0]), pick(lower, arr[1]), pick(digits, arr[2]), pick(symbols, arr[3])]
+    : [pick(upper, arr[0]), pick(lower, arr[1]), pick(digits, arr[2])]
+  const start = chars.length
+  for (let i = start; i < length; i++) {
+    chars.push(all[arr[i] % all.length])
+  }
+  for (let i = chars.length - 1; i > 0; i--) {
+    const j = arr[i] % (i + 1)
+    ;[chars[i], chars[j]] = [chars[j], chars[i]]
+  }
+  return chars.join('')
+}
+
+// ── Link field picker ──────────────────────────────────────
+const linkOptions = reactive<Record<string, SelectOption[]>>({})
+const linkLoading = reactive<Record<string, boolean>>({})
+let linkSearchTimers: Record<string, ReturnType<typeof setTimeout>> = {}
+
+function getLinkConfig(field: FieldMeta): { table: string; displayField?: string } | null {
+  if (field.field_type !== 'link' || !field.select_options) return null
+  const config = field.select_options as unknown as { link_table?: string; link_display_field?: string }
+  if (!config.link_table) return null
+  return { table: config.link_table, displayField: config.link_display_field }
+}
+
+function extractLinkId(val: unknown): string | null {
+  if (!val) return null
   try {
     const parsed = JSON.parse(String(val))
     if (parsed && typeof parsed === 'object' && parsed.id) return String(parsed.id)
   } catch {}
   return String(val)
+}
+
+function searchLinkRecords(field: FieldMeta, query: string) {
+  const cfg = getLinkConfig(field)
+  if (!cfg) return
+  const col = field.column_name
+  if (linkSearchTimers[col]) clearTimeout(linkSearchTimers[col])
+  linkSearchTimers[col] = setTimeout(async () => {
+    linkLoading[col] = true
+    try {
+      const results = await api.searchRecords(cfg.table, query || undefined, 50, cfg.displayField)
+      linkOptions[col] = results.map(r => ({ label: r.title, value: r.id }))
+    } catch {}
+    linkLoading[col] = false
+  }, query ? 300 : 0)
 }
 
 // ── 日期工具（兼容数字、数字字符串、日期字符串）──────────────

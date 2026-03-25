@@ -141,7 +141,7 @@ fields.patch('/:tableName/fields/:colName', requireWriteMiddleware, async (c) =>
   const body = await c.req.json<{
     title?: string
     field_type?: string
-    select_options?: Array<{ id?: string; value: string; label: string; color: string }>
+    select_options?: Array<{ id?: string; value: string; label: string; color: string }> | Record<string, unknown>
     width?: number
     is_hidden?: boolean
     order_index?: number
@@ -152,7 +152,13 @@ fields.patch('/:tableName/fields/:colName', requireWriteMiddleware, async (c) =>
 
   if (body.title !== undefined) { updates.push('title = ?'); params.push(body.title) }
   if (body.field_type !== undefined) { updates.push('field_type = ?'); params.push(body.field_type) }
-  if (body.select_options !== undefined) { updates.push('select_options = ?'); params.push(JSON.stringify(ensureOptionColors(body.select_options))) }
+  if (body.select_options !== undefined) {
+    // link 字段的 select_options 是 { link_table: "xxx" } 对象，非数组
+    const soJson = Array.isArray(body.select_options)
+      ? JSON.stringify(ensureOptionColors(body.select_options))
+      : JSON.stringify(body.select_options)
+    updates.push('select_options = ?'); params.push(soJson)
+  }
   if (body.width !== undefined) { updates.push('width = ?'); params.push(body.width) }
   if (body.is_hidden !== undefined) { updates.push('is_hidden = ?'); params.push(body.is_hidden ? 1 : 0) }
   if (body.order_index !== undefined) { updates.push('order_index = ?'); params.push(body.order_index) }
@@ -163,7 +169,7 @@ fields.patch('/:tableName/fields/:colName', requireWriteMiddleware, async (c) =>
 
   // 如果 select_options 有变化，通过稳定 ID 匹配新旧选项，找出 value 被重命名的项
   const valueRenames: Array<{ oldVal: string; newVal: string }> = []
-  if (body.select_options !== undefined) {
+  if (body.select_options !== undefined && Array.isArray(body.select_options)) {
     const oldMeta = await c.env.DB.prepare(
       `SELECT select_options FROM _field_meta WHERE table_name = ? AND column_name = ?`
     ).bind(tableName, colName).first<{ select_options: string | null }>()
@@ -239,6 +245,7 @@ fields.post('/:tableName/fields', requireWriteMiddleware, async (c) => {
     default_value?: string
     select_options?: Array<{ value: string; label: string; color: string }>
     link_table?: string
+    link_display_field?: string
   }>()
 
   if (!body.title?.trim()) {
@@ -299,7 +306,9 @@ fields.post('/:tableName/fields', requireWriteMiddleware, async (c) => {
   // 计算 select_options JSON（link 字段存 link_table 配置）
   let selectOptionsJson: string | null = null
   if (body.field_type === 'link' && body.link_table) {
-    selectOptionsJson = JSON.stringify({ link_table: body.link_table })
+    const linkConfig: Record<string, string> = { link_table: body.link_table }
+    if (body.link_display_field?.trim()) linkConfig.link_display_field = body.link_display_field.trim()
+    selectOptionsJson = JSON.stringify(linkConfig)
   } else if (body.select_options) {
     selectOptionsJson = JSON.stringify(ensureOptionColors(body.select_options))
   }

@@ -71,7 +71,14 @@ const queryClient = useQueryClient()
 
 const tableName = computed(() => route.params.tableName as string)
 const highlightId = ref<string | null>((route.query.highlight as string) ?? null)
-const viewMode = ref<'grid' | 'gallery' | 'chart' | 'kanban'>('grid')
+type ViewMode = 'grid' | 'gallery' | 'chart' | 'kanban'
+
+function getStoredViewMode(table: string): ViewMode {
+  const stored = localStorage.getItem(`d1table_viewmode_${table}`)
+  return (['grid', 'gallery', 'chart', 'kanban'].includes(stored ?? '') ? stored : 'grid') as ViewMode
+}
+
+const viewMode = ref<ViewMode>(getStoredViewMode(tableName.value))
 
 // 监听路由变化（从 link 跳转过来）
 watch(() => route.query.highlight, (v) => {
@@ -90,11 +97,13 @@ function clearHighlight() {
   }
 }
 
-// 切换表时重置视图
-watch(tableName, () => { viewMode.value = 'grid' })
+// 切换表时恢复该表上次的视图
+watch(tableName, (newTable) => { viewMode.value = getStoredViewMode(newTable) })
 
 function switchView(v: string) {
-  viewMode.value = v as 'grid' | 'gallery' | 'chart' | 'kanban'
+  const mode = v as ViewMode
+  viewMode.value = mode
+  localStorage.setItem(`d1table_viewmode_${tableName.value}`, mode)
 }
 
 const {

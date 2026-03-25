@@ -146,8 +146,8 @@ export const api = {
     http.delete(`/tables/${tableName}/records/${id}`),
 
   /** 搜索记录（用于 link 字段选择器）*/
-  searchRecords: (tableName: string, q?: string, limit?: number) =>
-    http.get<{ data: LinkValue[] }>(`/tables/${tableName}/records/search`, { params: { q, limit } }).then((r) => r.data.data),
+  searchRecords: (tableName: string, q?: string, limit?: number, displayField?: string) =>
+    http.get<{ data: LinkValue[] }>(`/tables/${tableName}/records/search`, { params: { q, limit, display_field: displayField } }).then((r) => r.data.data),
 
   /** 字段元数据 */
   getFieldMeta: (tableName: string) =>
@@ -156,7 +156,7 @@ export const api = {
   updateFieldMeta: (tableName: string, colName: string, patch: Partial<Pick<FieldMeta, 'title' | 'field_type' | 'select_options' | 'width' | 'is_hidden' | 'order_index'>>) =>
     http.patch<{ data: { success: boolean } }>(`/tables/${tableName}/fields/${colName}`, patch).then((r) => r.data.data),
 
-  addField: (tableName: string, data: { title: string; column_name?: string; field_type: FieldType; nullable?: boolean; default_value?: string; select_options?: SelectOption[]; link_table?: string }) =>
+  addField: (tableName: string, data: { title: string; column_name?: string; field_type: FieldType; nullable?: boolean; default_value?: string; select_options?: SelectOption[]; link_table?: string; link_display_field?: string }) =>
     http.post<{ data: { column_name: string; title: string; field_type: string } }>(`/tables/${tableName}/fields`, data).then((r) => r.data.data),
 
   deleteField: (tableName: string, colName: string) =>
@@ -202,8 +202,8 @@ export const api = {
     http.delete('/upload/image', { data: { thumb, display } }).then(() => {}),
 
   /** 回收站 */
-  getTrash: () =>
-    http.get<{ data: TrashItem[] }>('/trash').then((r) => r.data.data),
+  getTrash: (params?: { page?: number; page_size?: number }) =>
+    http.get<{ data: TrashItem[]; meta: { total: number; page: number; page_size: number } }>('/trash', { params }).then((r) => r.data),
   restoreTrash: (id: number) =>
     http.post<{ data: { success: boolean } }>(`/trash/${id}/restore`).then((r) => r.data.data),
   deleteTrash: (id: number) =>
@@ -339,9 +339,13 @@ export const notesApi = {
   restoreNote: (id: string) =>
     http.post<{ data: { success: boolean } }>(`/notes/${id}/restore`).then(r => r.data.data),
 
+  /** 永久删除（仅限已软删的笔记） */
+  permanentDeleteNote: (id: string) =>
+    http.delete(`/notes/${id}/permanent`),
+
   /** 获取已删除的笔记 */
-  getTrash: () =>
-    http.get<{ data: { id: string; title: string; icon: string | null; deleted_at: number }[] }>('/notes/trash').then(r => r.data.data),
+  getTrash: (params?: { page?: number; page_size?: number }) =>
+    http.get<{ data: { id: string; title: string; icon: string | null; deleted_at: number }[]; meta: { total: number; page: number; page_size: number } }>('/notes/trash', { params }).then(r => r.data),
 }
 
 export const getCurrentUser = (): Promise<CurrentUser> =>

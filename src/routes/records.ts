@@ -199,25 +199,52 @@ records.get('/:tableName/records/search', async (c) => {
     return c.json({ error: { code: 'TABLE_NOT_FOUND', message: `Table "${tableName}" not found` } }, 404)
   }
 
-  const primaryField = await getTablePrimaryField(c.env.DB, tableName)
-  if (!primaryField) {
+  // 支持指定显示字段（link_display_field），否则用 primaryField；校验列是否存在
+  const displayFieldParam = query.display_field?.trim()
+  let displayField: string | null = null
+  if (displayFieldParam && isValidIdentifier(displayFieldParam)) {
+    const exists = await c.env.DB.prepare(
+      `SELECT 1 FROM _field_meta WHERE table_name = ? AND column_name = ?`
+    ).bind(tableName, displayFieldParam).first()
+    if (exists) displayField = displayFieldParam
+  }
+  if (!displayField) {
+    displayField = await getTablePrimaryField(c.env.DB, tableName)
+  }
+  if (!displayField) {
     return c.json({ data: [] })
   }
 
   let sql: string
   let params: unknown[]
   if (q) {
-    sql = `SELECT id, "${primaryField}" as title FROM "${tableName}" WHERE "${primaryField}" LIKE ? ORDER BY id DESC LIMIT ?`
+    sql = `SELECT id, "${displayField}" as title FROM "${tableName}" WHERE "${displayField}" LIKE ? ORDER BY id DESC LIMIT ?`
     params = [`%${q}%`, limit]
   } else {
-    sql = `SELECT id, "${primaryField}" as title FROM "${tableName}" ORDER BY id DESC LIMIT ?`
+    sql = `SELECT id, "${displayField}" as title FROM "${tableName}" ORDER BY id DESC LIMIT ?`
     params = [limit]
   }
 
   const result = await c.env.DB.prepare(sql).bind(...params).all<{ id: number; title: string | null }>()
-  return c.json({
-    data: result.results.map(r => ({ id: String(r.id), title: r.title ?? `#${r.id}` }))
-  })
+  let rows = result.results.map(r => ({ id: String(r.id), title: r.title ?? `#${r.id}` }))
+
+  // 如果 displayField 本身是 link 类型，title 存的是 ID，需要嵌套解析
+  const dfMeta = await c.env.DB.prepare(
+    `SELECT field_type, select_options FROM _field_meta WHERE table_name = ? AND column_name = ?`
+  ).bind(tableName, displayField).first<{ field_type: string; select_options: string | null }>()
+
+  if (dfMeta?.field_type === 'link' && dfMeta.select_options) {
+    const cfg = JSON.parse(dfMeta.select_options) as { link_table?: string; link_display_field?: string }
+    if (cfg.link_table) {
+      const ids = rows.map(r => r.title).filter(t => t && !t.startsWith('#'))
+      if (ids.length > 0) {
+        const resolved = await resolveNestedLinkIds(c.env.DB, cfg.link_table, ids, cfg.link_display_field)
+        rows = rows.map(r => ({ ...r, title: resolved.get(r.title) ?? r.title }))
+      }
+    }
+  }
+
+  return c.json({ data: rows })
 })
 
 /**
@@ -585,17 +612,58 @@ records.get('/:tableName/export', async (c) => {
 /**
  * 解析 link 字段的配置（从 select_options JSON 中提取 link_table）
  */
-function getLinkFields(fieldMeta: FieldMetaRow[]): Array<{ column_name: string; link_table: string }> {
-  const result: Array<{ column_name: string; link_table: string }> = []
+function getLinkFields(fieldMeta: FieldMetaRow[]): Array<{ column_name: string; link_table: string; link_display_field?: string }> {
+  const result: Array<{ column_name: string; link_table: string; link_display_field?: string }> = []
   for (const f of fieldMeta) {
     if (f.field_type !== 'link') continue
     if (!f.select_options) continue
-    // select_options stores { link_table: "xxx" } for link fields
-    const config = f.select_options as unknown as { link_table?: string }
+    const config = f.select_options as unknown as { link_table?: string; link_display_field?: string }
     if (config.link_table) {
-      result.push({ column_name: f.column_name, link_table: config.link_table })
+      result.push({ column_name: f.column_name, link_table: config.link_table, link_display_field: config.link_display_field })
     }
   }
+  return result
+}
+
+/**
+ * 解析嵌套 link ID → 标题（当 display_field 本身是 link 类型时使用）
+ */
+async function resolveNestedLinkIds(
+  db: D1Database,
+  targetTable: string,
+  ids: string[],
+  displayField?: string
+): Promise<Map<string, string>> {
+  const result = new Map<string, string>()
+  const uniqueIds = [...new Set(ids.filter(Boolean))]
+  if (uniqueIds.length === 0) return result
+
+  if (targetTable === '_notes') {
+    const ph = uniqueIds.map(() => '?').join(',')
+    const rows = await db.prepare(
+      `SELECT id, title FROM _notes WHERE id IN (${ph}) AND deleted_at IS NULL`
+    ).bind(...uniqueIds).all<{ id: string; title: string | null }>()
+    for (const r of rows.results) result.set(r.id, r.title || 'Untitled')
+    return result
+  }
+
+  if (!isValidIdentifier(targetTable)) return result
+
+  let col = displayField && isValidIdentifier(displayField) ? displayField : null
+  if (col) {
+    const exists = await db.prepare(
+      `SELECT 1 FROM _field_meta WHERE table_name = ? AND column_name = ?`
+    ).bind(targetTable, col).first()
+    if (!exists) col = null
+  }
+  if (!col) col = await getTablePrimaryField(db, targetTable)
+  if (!col) return result
+
+  const ph = uniqueIds.map(() => '?').join(',')
+  const rows = await db.prepare(
+    `SELECT id, "${col}" as _t FROM "${targetTable}" WHERE id IN (${ph})`
+  ).bind(...uniqueIds).all<{ id: number | string; _t: string | null }>()
+  for (const r of rows.results) result.set(String(r.id), r._t ?? `#${r.id}`)
   return result
 }
 
@@ -623,34 +691,37 @@ async function getTablePrimaryField(db: D1Database, tableName: string): Promise<
 async function resolveLinkValues(
   db: D1Database,
   rows: Record<string, unknown>[],
-  linkFields: Array<{ column_name: string; link_table: string }>
+  linkFields: Array<{ column_name: string; link_table: string; link_display_field?: string }>
 ): Promise<void> {
   if (linkFields.length === 0 || rows.length === 0) return
 
-  // 按 link_table 分组收集需要查的 IDs
-  const tableIds = new Map<string, Set<string>>()
+  // 按 link_table + display_field 分组收集需要查的 IDs
+  // 同一目标表可能有不同的 display_field，用 key 区分
+  interface TableGroup { table: string; displayField?: string; ids: Set<string> }
+  const groups = new Map<string, TableGroup>()
 
   for (const lf of linkFields) {
     if (!isValidIdentifier(lf.link_table)) continue
-    if (!tableIds.has(lf.link_table)) tableIds.set(lf.link_table, new Set())
-    const idSet = tableIds.get(lf.link_table)!
+    const key = `${lf.link_table}::${lf.link_display_field ?? ''}`
+    if (!groups.has(key)) groups.set(key, { table: lf.link_table, displayField: lf.link_display_field, ids: new Set() })
+    const g = groups.get(key)!
     for (const row of rows) {
       const val = row[lf.column_name]
-      if (val != null && val !== '') idSet.add(String(val))
+      if (val != null && val !== '') g.ids.add(String(val))
     }
   }
 
   // 批量查询每个目标表
   const resolved = new Map<string, Map<string, { id: string; title: string }>>()
 
-  for (const [tableName, ids] of tableIds) {
-    if (ids.size === 0) continue
+  for (const [key, g] of groups) {
+    if (g.ids.size === 0) continue
 
-    const idArr = Array.from(ids)
+    const idArr = Array.from(g.ids)
     const placeholders = idArr.map(() => '?').join(',')
 
-    // 特殊处理 _notes：id 为 TEXT，title 字段直接可用
-    if (tableName === '_notes') {
+    // 特殊处理 _notes
+    if (g.table === '_notes') {
       const result = await db.prepare(
         `SELECT id, title FROM _notes WHERE id IN (${placeholders}) AND deleted_at IS NULL`
       ).bind(...idArr).all<{ id: string; title: string | null }>()
@@ -658,27 +729,57 @@ async function resolveLinkValues(
       for (const r of result.results) {
         map.set(r.id, { id: r.id, title: r.title || 'Untitled' })
       }
-      resolved.set(tableName, map)
+      resolved.set(key, map)
       continue
     }
 
-    const primaryField = await getTablePrimaryField(db, tableName)
-    if (!primaryField) continue
+    // 使用配置的 display_field，否则取 primaryField；校验列是否存在
+    let displayCol: string | null = null
+    if (g.displayField && isValidIdentifier(g.displayField)) {
+      const exists = await db.prepare(
+        `SELECT 1 FROM _field_meta WHERE table_name = ? AND column_name = ?`
+      ).bind(g.table, g.displayField).first()
+      if (exists) displayCol = g.displayField
+    }
+    if (!displayCol) {
+      displayCol = await getTablePrimaryField(db, g.table)
+    }
+    if (!displayCol) continue
 
     const result = await db.prepare(
-      `SELECT id, "${primaryField}" as _title FROM "${tableName}" WHERE id IN (${placeholders})`
+      `SELECT id, "${displayCol}" as _title FROM "${g.table}" WHERE id IN (${placeholders})`
     ).bind(...idArr).all<{ id: number; _title: string | null }>()
 
     const map = new Map<string, { id: string; title: string }>()
     for (const r of result.results) {
       map.set(String(r.id), { id: String(r.id), title: r._title ?? `#${r.id}` })
     }
-    resolved.set(tableName, map)
+
+    // 如果 displayCol 本身是 link 类型，title 存的是 ID，需要嵌套解析
+    const dcMeta = await db.prepare(
+      `SELECT field_type, select_options FROM _field_meta WHERE table_name = ? AND column_name = ?`
+    ).bind(g.table, displayCol).first<{ field_type: string; select_options: string | null }>()
+    if (dcMeta?.field_type === 'link' && dcMeta.select_options) {
+      const cfg = JSON.parse(dcMeta.select_options) as { link_table?: string; link_display_field?: string }
+      if (cfg.link_table) {
+        const nestedIds = [...map.values()].map(v => v.title).filter(t => !t.startsWith('#'))
+        if (nestedIds.length > 0) {
+          const nested = await resolveNestedLinkIds(db, cfg.link_table, nestedIds, cfg.link_display_field)
+          for (const [id, entry] of map) {
+            const resolved_title = nested.get(entry.title)
+            if (resolved_title) entry.title = resolved_title
+          }
+        }
+      }
+    }
+
+    resolved.set(key, map)
   }
 
   // 替换行数据中的 link 字段值
   for (const lf of linkFields) {
-    const map = resolved.get(lf.link_table)
+    const key = `${lf.link_table}::${lf.link_display_field ?? ''}`
+    const map = resolved.get(key)
     if (!map) continue
     for (const row of rows) {
       const val = row[lf.column_name]

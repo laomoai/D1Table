@@ -613,10 +613,15 @@ function parseLinkValue(val: unknown): LinkValue | null {
   return { id: String(val), title: `#${val}` }
 }
 
-function getLinkTable(field: FieldMeta): string | null {
+function getLinkConfig(field: FieldMeta): { table: string; displayField?: string } | null {
   if (!field.select_options) return null
-  const config = field.select_options as unknown as { link_table?: string }
-  return config.link_table ?? null
+  const config = field.select_options as unknown as { link_table?: string; link_display_field?: string }
+  if (!config.link_table) return null
+  return { table: config.link_table, displayField: config.link_display_field }
+}
+
+function getLinkTable(field: FieldMeta): string | null {
+  return getLinkConfig(field)?.table ?? null
 }
 
 function goToLinkedRecord(field: FieldMeta) {
@@ -630,17 +635,21 @@ function goToLinkedRecord(field: FieldMeta) {
   }
 }
 
+// 当前 link picker 使用的 display_field
+const linkPickerDisplayField = ref<string | undefined>()
+
 async function openLinkPicker(field: FieldMeta) {
-  const linkTable = getLinkTable(field)
-  if (!linkTable) return
+  const cfg = getLinkConfig(field)
+  if (!cfg) return
   linkPickerField.value = field.column_name
-  linkPickerTable.value = linkTable
+  linkPickerTable.value = cfg.table
+  linkPickerDisplayField.value = cfg.displayField
   linkPickerSearch.value = ''
   linkPickerResults.value = []
   linkPickerLoading.value = true
   showLinkPicker.value = true
   try {
-    linkPickerResults.value = await api.searchRecords(linkTable)
+    linkPickerResults.value = await api.searchRecords(cfg.table, undefined, undefined, cfg.displayField)
   } finally {
     linkPickerLoading.value = false
   }
@@ -653,7 +662,7 @@ function debouncedSearchLinks() {
     if (!linkPickerTable.value) return
     linkPickerLoading.value = true
     try {
-      linkPickerResults.value = await api.searchRecords(linkPickerTable.value, linkPickerSearch.value)
+      linkPickerResults.value = await api.searchRecords(linkPickerTable.value, linkPickerSearch.value, undefined, linkPickerDisplayField.value)
     } finally {
       linkPickerLoading.value = false
     }
