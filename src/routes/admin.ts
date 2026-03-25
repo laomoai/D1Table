@@ -15,14 +15,14 @@ admin.use('*', requireWriteMiddleware)
  * 获取当前用户的 API Key 列表
  */
 admin.get('/keys', async (c) => {
-  const userId = c.get('userId')
+  const teamId = c.get('teamId')
 
-  const keySql = userId !== undefined
-    ? `SELECT id, key_prefix, name, type, scope, created_at, is_active, last_used_at FROM _api_keys WHERE (user_id = ? OR user_id IS NULL) ORDER BY created_at DESC LIMIT 200`
+  const keySql = teamId !== undefined
+    ? `SELECT id, key_prefix, name, type, scope, created_at, is_active, last_used_at FROM _api_keys WHERE team_id = ? ORDER BY created_at DESC LIMIT 200`
     : `SELECT id, key_prefix, name, type, scope, created_at, is_active, last_used_at FROM _api_keys ORDER BY created_at DESC LIMIT 200`
 
-  const rows = userId !== undefined
-    ? await c.env.DB.prepare(keySql).bind(userId).all<{ id: number; key_prefix: string; name: string; type: string; scope: string; created_at: number; is_active: number; last_used_at: number | null }>()
+  const rows = teamId !== undefined
+    ? await c.env.DB.prepare(keySql).bind(teamId).all<{ id: number; key_prefix: string; name: string; type: string; scope: string; created_at: number; is_active: number; last_used_at: number | null }>()
     : await c.env.DB.prepare(keySql).all<{ id: number; key_prefix: string; name: string; type: string; scope: string; created_at: number; is_active: number; last_used_at: number | null }>()
 
   // 获取每个 key 关联的分组
@@ -71,8 +71,8 @@ admin.post('/keys', async (c) => {
   const keyPrefix = plainKey.slice(0, 10)
 
   const insertResult = await c.env.DB
-    .prepare(`INSERT INTO _api_keys (key_prefix, key_hash, name, type, scope, user_id) VALUES (?, ?, ?, ?, ?, ?)`)
-    .bind(keyPrefix, keyHash, body.name.trim(), keyType, scope, c.get('userId') ?? null)
+    .prepare(`INSERT INTO _api_keys (key_prefix, key_hash, name, type, scope, user_id, team_id) VALUES (?, ?, ?, ?, ?, ?, ?)`)
+    .bind(keyPrefix, keyHash, body.name.trim(), keyType, scope, c.get('userId') ?? null, c.get('teamId') ?? null)
     .run()
 
   const newKeyId = insertResult.meta.last_row_id
@@ -106,17 +106,17 @@ admin.post('/keys', async (c) => {
  */
 admin.patch('/keys/:id', async (c) => {
   const { id } = c.req.param()
-  const userId = c.get('userId')
+  const teamId = c.get('teamId')
   const body = await c.req.json<{
     scope?: 'all' | 'groups'
     group_ids?: number[]
   }>()
 
   // 验证 key 归属
-  if (userId !== undefined) {
+  if (teamId !== undefined) {
     const key = await c.env.DB.prepare(
-      `SELECT id FROM _api_keys WHERE id = ? AND (user_id = ? OR user_id IS NULL)`
-    ).bind(id, userId).first()
+      `SELECT id FROM _api_keys WHERE id = ? AND team_id = ?`
+    ).bind(id, teamId).first()
     if (!key) return c.json({ error: { code: 'NOT_FOUND', message: 'Key not found' } }, 404)
   }
 
@@ -154,13 +154,13 @@ admin.patch('/keys/:id', async (c) => {
  */
 admin.delete('/keys/:id', async (c) => {
   const { id } = c.req.param()
-  const userId = c.get('userId')
+  const teamId = c.get('teamId')
 
   let sql = `UPDATE _api_keys SET is_active = 0 WHERE id = ?`
   const params: unknown[] = [id]
-  if (userId !== undefined) {
-    sql += ` AND (user_id = ? OR user_id IS NULL)`
-    params.push(userId)
+  if (teamId !== undefined) {
+    sql += ` AND team_id = ?`
+    params.push(teamId)
   }
 
   const result = await c.env.DB.prepare(sql).bind(...params).run()
@@ -180,10 +180,10 @@ admin.delete('/keys/:id', async (c) => {
  */
 admin.get('/users', requireAdminMiddleware, async (c) => {
   const rows = await c.env.DB
-    .prepare(`SELECT u.id, u.email, u.name, u.picture, u.role, u.status, u.created_at, u.last_login,
-              (SELECT COUNT(*) FROM _meta WHERE owner_id = u.id) as table_count
-              FROM _users u ORDER BY u.id ASC`)
-    .all<{ id: number; email: string; name: string; picture: string; role: string; status: string; created_at: number; last_login: number | null; table_count: number }>()
+    .prepare(`SELECT u.id, u.email, u.name, u.picture, u.role, u.status, u.created_at, u.last_login, u.team_id,
+              t.name as team_name
+              FROM _users u LEFT JOIN _teams t ON t.id = u.team_id ORDER BY u.id ASC`)
+    .all<{ id: number; email: string; name: string; picture: string; role: string; status: string; created_at: number; last_login: number | null; team_id: number | null; team_name: string | null }>()
 
   return c.json({ data: rows.results })
 })
@@ -204,10 +204,21 @@ admin.post('/users', requireAdminMiddleware, async (c) => {
   const role = body.role === 'admin' ? 'admin' : 'user'
 
   try {
-    const result = await c.env.DB
-      .prepare(`INSERT INTO _users (email, name, role) VALUES (?, ?, ?)`)
-      .bind(email, name, role)
+    // 创建个人团队
+    const teamResult = await c.env.DB
+      .prepare(`INSERT INTO _teams (name) VALUES (?)`)
+      .bind(`${name}'s Team`)
       .run()
+    const teamId = teamResult.meta.last_row_id
+
+    const result = await c.env.DB
+      .prepare(`INSERT INTO _users (email, name, role, team_id) VALUES (?, ?, ?, ?)`)
+      .bind(email, name, role, teamId)
+      .run()
+
+    // 回填 _teams.created_by
+    await c.env.DB.prepare(`UPDATE _teams SET created_by = ? WHERE id = ?`)
+      .bind(result.meta.last_row_id, teamId).run()
 
     return c.json({ data: { id: result.meta.last_row_id, email, name, role, status: 'active' } }, 201)
   } catch (err) {

@@ -55,4 +55,5 @@ export type AuthVariables = {
   user?: SessionUser
   userId?: number               // _users.id，ADMIN_KEY 时为 undefined
   userRole?: 'admin' | 'user'   // _users.role
+  teamId?: number               // _users.team_id，ADMIN_KEY 时为 undefined
 }

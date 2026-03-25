@@ -41,17 +41,17 @@ tables.get('/', async (c) => {
     tableNames = tableNames.filter(name => allowedTables.includes(name))
   }
 
-  // owner 过滤：有 userId 时只查自己的表
-  const userId = c.get('userId')
-  const metaQuery = userId !== undefined
-    ? c.env.DB.prepare(`SELECT table_name, title, row_count, icon, is_locked FROM _meta WHERE owner_id = ? OR owner_id IS NULL`).bind(userId)
+  // team 过滤：有 teamId 时只查自己团队的表
+  const teamId = c.get('teamId')
+  const metaQuery = teamId !== undefined
+    ? c.env.DB.prepare(`SELECT table_name, title, row_count, icon, is_locked FROM _meta WHERE team_id = ?`).bind(teamId)
     : c.env.DB.prepare(`SELECT table_name, title, row_count, icon, is_locked FROM _meta`)
-  const groupQuery = userId !== undefined
+  const groupQuery = teamId !== undefined
     ? c.env.DB.prepare(
         `SELECT gt.table_name, gt.group_id, g.name as group_name
          FROM _group_tables gt JOIN _groups g ON g.id = gt.group_id
-         WHERE g.owner_id = ? OR g.owner_id IS NULL`
-      ).bind(userId)
+         WHERE g.team_id = ?`
+      ).bind(teamId)
     : c.env.DB.prepare(
         `SELECT gt.table_name, gt.group_id, g.name as group_name
          FROM _group_tables gt JOIN _groups g ON g.id = gt.group_id`
@@ -84,10 +84,10 @@ tables.get('/', async (c) => {
     groupsByTable.set(r.table_name, arr)
   }
 
-  // owner 过滤：如果有 userId，只返回 _meta 中属于自己的表
-  const ownedSet = userId !== undefined ? new Set(metaRows.results.map(r => r.table_name)) : null
-  if (ownedSet) {
-    tableNames = tableNames.filter(name => ownedSet.has(name))
+  // team 过滤：如果有 teamId，只返回 _meta 中属于自己团队的表
+  const teamSet = teamId !== undefined ? new Set(metaRows.results.map(r => r.table_name)) : null
+  if (teamSet) {
+    tableNames = tableNames.filter(name => teamSet.has(name))
   }
 
   const result = tableNames.map((name) => ({
@@ -274,8 +274,8 @@ tables.post('/', requireWriteMiddleware, async (c) => {
   await c.env.DB.batch([
     c.env.DB.prepare(createSQL),
     c.env.DB.prepare(
-      `INSERT OR IGNORE INTO _meta (table_name, row_count, title, owner_id) VALUES (?, 0, ?, ?)`
-    ).bind(body.name, displayTitle, c.get('userId') ?? null),
+      `INSERT OR IGNORE INTO _meta (table_name, row_count, title, owner_id, team_id) VALUES (?, 0, ?, ?, ?)`
+    ).bind(body.name, displayTitle, c.get('userId') ?? null, c.get('teamId') ?? null),
     ...fieldMetaStmts,
     ...linkMetaStmts,
     ...groupStmts,

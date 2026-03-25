@@ -1,27 +1,18 @@
 import { Hono } from 'hono'
 import type { AuthVariables, Env } from '../types'
-import { requireWriteMiddleware } from '../middleware/auth'
+import { requireWriteMiddleware, teamFilter } from '../middleware/auth'
 
 const groups = new Hono<{ Bindings: Env; Variables: AuthVariables }>()
 
 // 所有分组管理路由都需要读写权限
 groups.use('*', requireWriteMiddleware)
 
-/** owner 过滤条件辅助 */
-function ownerFilter(userId: number | undefined): { clause: string; params: unknown[] } {
-  if (userId !== undefined) {
-    return { clause: `(owner_id = ? OR owner_id IS NULL)`, params: [userId] }
-  }
-  return { clause: '1=1', params: [] }
-}
-
 /**
  * GET /api/groups
  * 获取所有分组（含分组内的表名列表）
  */
 groups.get('/', async (c) => {
-  const userId = c.get('userId')
-  const { clause, params } = ownerFilter(userId)
+  const { clause, params } = teamFilter(c.get('teamId'))
 
   const [groupRows, gtRows] = await Promise.all([
     c.env.DB
@@ -62,8 +53,8 @@ groups.post('/', async (c) => {
 
   try {
     const result = await c.env.DB
-      .prepare(`INSERT INTO _groups (name, sort_order, owner_id) VALUES (?, ?, ?)`)
-      .bind(body.name.trim(), body.sort_order ?? 0, c.get('userId') ?? null)
+      .prepare(`INSERT INTO _groups (name, sort_order, owner_id, team_id) VALUES (?, ?, ?, ?)`)
+      .bind(body.name.trim(), body.sort_order ?? 0, c.get('userId') ?? null, c.get('teamId') ?? null)
       .run()
 
     return c.json({ data: { id: result.meta.last_row_id, name: body.name.trim() } }, 201)
@@ -83,7 +74,7 @@ groups.post('/', async (c) => {
 groups.patch('/:id', async (c) => {
   const { id } = c.req.param()
   const body = await c.req.json<{ name?: string; sort_order?: number }>()
-  const userId = c.get('userId')
+  const teamId = c.get('teamId')
 
   const sets: string[] = []
   const params: unknown[] = []
@@ -103,9 +94,9 @@ groups.patch('/:id', async (c) => {
 
   params.push(id)
   let sql = `UPDATE _groups SET ${sets.join(', ')} WHERE id = ?`
-  if (userId !== undefined) {
-    sql += ` AND (owner_id = ? OR owner_id IS NULL)`
-    params.push(userId)
+  if (teamId !== undefined) {
+    sql += ` AND team_id = ?`
+    params.push(teamId)
   }
 
   const result = await c.env.DB.prepare(sql).bind(...params).run()
@@ -123,13 +114,13 @@ groups.patch('/:id', async (c) => {
  */
 groups.delete('/:id', async (c) => {
   const { id } = c.req.param()
-  const userId = c.get('userId')
+  const teamId = c.get('teamId')
 
   let sql = `DELETE FROM _groups WHERE id = ?`
   const params: unknown[] = [id]
-  if (userId !== undefined) {
-    sql += ` AND (owner_id = ? OR owner_id IS NULL)`
-    params.push(userId)
+  if (teamId !== undefined) {
+    sql += ` AND team_id = ?`
+    params.push(teamId)
   }
 
   const result = await c.env.DB.prepare(sql).bind(...params).run()
@@ -154,12 +145,13 @@ groups.put('/:id/tables', async (c) => {
     return c.json({ error: { code: 'INVALID_BODY', message: 'tables must be an array' } }, 400)
   }
 
-  // 验证分组存在且属于当前用户
+  // 验证分组存在且属于当前团队
+  const teamId = c.get('teamId')
   let checkSql = `SELECT id FROM _groups WHERE id = ?`
   const checkParams: unknown[] = [id]
-  if (userId !== undefined) {
-    checkSql += ` AND (owner_id = ? OR owner_id IS NULL)`
-    checkParams.push(userId)
+  if (teamId !== undefined) {
+    checkSql += ` AND team_id = ?`
+    checkParams.push(teamId)
   }
 
   const group = await c.env.DB.prepare(checkSql).bind(...checkParams).first()
@@ -189,7 +181,7 @@ groups.put('/:id/tables', async (c) => {
 groups.put('/:id/keys', async (c) => {
   const { id } = c.req.param()
   const body = await c.req.json<{ key_ids: number[] }>()
-  const userId = c.get('userId')
+  const teamId = c.get('teamId')
 
   if (!Array.isArray(body.key_ids)) {
     return c.json({ error: { code: 'INVALID_BODY', message: 'key_ids must be an array' } }, 400)
@@ -197,9 +189,9 @@ groups.put('/:id/keys', async (c) => {
 
   let checkSql = `SELECT id FROM _groups WHERE id = ?`
   const checkParams: unknown[] = [id]
-  if (userId !== undefined) {
-    checkSql += ` AND (owner_id = ? OR owner_id IS NULL)`
-    checkParams.push(userId)
+  if (teamId !== undefined) {
+    checkSql += ` AND team_id = ?`
+    checkParams.push(teamId)
   }
 
   const group = await c.env.DB.prepare(checkSql).bind(...checkParams).first()

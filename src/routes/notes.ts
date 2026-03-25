@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import type { AuthVariables, Env } from '../types'
-import { requireWriteMiddleware } from '../middleware/auth'
+import { requireWriteMiddleware, teamFilter } from '../middleware/auth'
 
 const notes = new Hono<{ Bindings: Env; Variables: AuthVariables }>()
 
@@ -9,24 +9,11 @@ function generateId(): string {
 }
 
 /**
- * Owner filter: strict ownership for regular users, full access for ADMIN_KEY.
- * Regular users can only see/edit their own notes (owner_id = userId).
- * ADMIN_KEY (userId = undefined) bypasses ownership checks.
- */
-function ownerFilter(userId: number | undefined): { clause: string; params: unknown[] } {
-  if (userId !== undefined) {
-    return { clause: `owner_id = ?`, params: [userId] }
-  }
-  return { clause: '1=1', params: [] }
-}
-
-/**
  * GET /api/notes
  * 获取笔记列表（支持按 parent_id 过滤）
  */
 notes.get('/', async (c) => {
-  const userId = c.get('userId')
-  const { clause, params } = ownerFilter(userId)
+  const { clause, params } = teamFilter(c.get('teamId'))
 
   const parentId = c.req.query('parent_id')
 
@@ -52,8 +39,7 @@ notes.get('/', async (c) => {
  * 获取所有笔记的树形结构
  */
 notes.get('/tree', async (c) => {
-  const userId = c.get('userId')
-  const { clause, params } = ownerFilter(userId)
+  const { clause, params } = teamFilter(c.get('teamId'))
 
   const rows = await c.env.DB.prepare(
     `SELECT id, title, icon, parent_id, sort_order, is_locked, created_at, updated_at
@@ -71,8 +57,7 @@ notes.get('/tree', async (c) => {
  * List soft-deleted notes
  */
 notes.get('/trash', async (c) => {
-  const userId = c.get('userId')
-  const { clause, params } = ownerFilter(userId)
+  const { clause, params } = teamFilter(c.get('teamId'))
 
   const page = Math.max(1, parseInt(c.req.query('page') ?? '1', 10) || 1)
   const pageSize = Math.min(100, Math.max(1, parseInt(c.req.query('page_size') ?? '20', 10) || 20))
@@ -99,8 +84,7 @@ notes.get('/trash', async (c) => {
  */
 notes.get('/:id', async (c) => {
   const { id } = c.req.param()
-  const userId = c.get('userId')
-  const { clause, params } = ownerFilter(userId)
+  const { clause, params } = teamFilter(c.get('teamId'))
 
   const row = await c.env.DB.prepare(
     `SELECT id, title, content, icon, parent_id, sort_order, is_locked, created_by, owner_id, created_at, updated_at
@@ -145,8 +129,8 @@ notes.post('/', requireWriteMiddleware, async (c) => {
   const userId = c.get('userId')
 
   await c.env.DB.prepare(
-    `INSERT INTO _notes (id, title, content, parent_id, created_by, owner_id)
-     VALUES (?, ?, ?, ?, ?, ?)`
+    `INSERT INTO _notes (id, title, content, parent_id, created_by, owner_id, team_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`
   ).bind(
     id,
     body.title?.trim() || 'Untitled',
@@ -154,6 +138,7 @@ notes.post('/', requireWriteMiddleware, async (c) => {
     body.parent_id ?? null,
     userId ?? null,
     userId ?? null,
+    c.get('teamId') ?? null,
   ).run()
 
   return c.json({ data: { id, title: body.title?.trim() || 'Untitled' } }, 201)
@@ -173,7 +158,7 @@ notes.patch('/:id', requireWriteMiddleware, async (c) => {
     sort_order?: number
     is_locked?: boolean
   }>()
-  const userId = c.get('userId')
+  const teamId = c.get('teamId')
 
   const sets: string[] = ['updated_at = unixepoch()']
   const params: unknown[] = []
@@ -231,9 +216,9 @@ notes.patch('/:id', requireWriteMiddleware, async (c) => {
 
   params.push(id)
   let sql = `UPDATE _notes SET ${sets.join(', ')} WHERE id = ?`
-  if (userId !== undefined) {
-    sql += ` AND owner_id = ?`
-    params.push(userId)
+  if (teamId !== undefined) {
+    sql += ` AND team_id = ?`
+    params.push(teamId)
   }
 
   const result = await c.env.DB.prepare(sql).bind(...params).run()
@@ -251,7 +236,7 @@ notes.patch('/:id', requireWriteMiddleware, async (c) => {
  */
 notes.delete('/:id', requireWriteMiddleware, async (c) => {
   const { id } = c.req.param()
-  const userId = c.get('userId')
+  const teamId = c.get('teamId')
 
   // Collect all descendant IDs level by level (breadth-first, max 10 levels)
   // Each level is 1 query instead of 1-per-node
@@ -270,9 +255,9 @@ notes.delete('/:id', requireWriteMiddleware, async (c) => {
   const stmts = allIds.map(noteId => {
     let sql = `UPDATE _notes SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL`
     const params: unknown[] = [now, noteId]
-    if (userId !== undefined) {
-      sql += ` AND owner_id = ?`
-      params.push(userId)
+    if (teamId !== undefined) {
+      sql += ` AND team_id = ?`
+      params.push(teamId)
     }
     return c.env.DB.prepare(sql).bind(...params)
   })
@@ -288,13 +273,13 @@ notes.delete('/:id', requireWriteMiddleware, async (c) => {
  */
 notes.delete('/:id/permanent', requireWriteMiddleware, async (c) => {
   const { id } = c.req.param()
-  const userId = c.get('userId')
+  const teamId = c.get('teamId')
 
   let sql = `DELETE FROM _notes WHERE id = ? AND deleted_at IS NOT NULL`
   const params: unknown[] = [id]
-  if (userId !== undefined) {
-    sql += ` AND owner_id = ?`
-    params.push(userId)
+  if (teamId !== undefined) {
+    sql += ` AND team_id = ?`
+    params.push(teamId)
   }
 
   const result = await c.env.DB.prepare(sql).bind(...params).run()
@@ -311,7 +296,7 @@ notes.delete('/:id/permanent', requireWriteMiddleware, async (c) => {
  */
 notes.post('/:id/restore', requireWriteMiddleware, async (c) => {
   const { id } = c.req.param()
-  const userId = c.get('userId')
+  const teamId = c.get('teamId')
 
   // Restore note and all descendants deleted at the same timestamp
   const note = await c.env.DB.prepare(
@@ -337,9 +322,9 @@ notes.post('/:id/restore', requireWriteMiddleware, async (c) => {
   const stmts = allIds.map(noteId => {
     let sql = `UPDATE _notes SET deleted_at = NULL WHERE id = ? AND deleted_at = ?`
     const params: unknown[] = [noteId, note.deleted_at]
-    if (userId !== undefined) {
-      sql += ` AND owner_id = ?`
-      params.push(userId)
+    if (teamId !== undefined) {
+      sql += ` AND team_id = ?`
+      params.push(teamId)
     }
     return c.env.DB.prepare(sql).bind(...params)
   })

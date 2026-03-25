@@ -87,8 +87,8 @@ auth.get('/callback', async (c) => {
 
   // 5. 检查 _users 表
   const existingUser = await c.env.DB.prepare(
-    `SELECT id, status FROM _users WHERE email = ? LIMIT 1`
-  ).bind(userInfo.email).first<{ id: number; status: string }>()
+    `SELECT id, status, team_id FROM _users WHERE email = ? LIMIT 1`
+  ).bind(userInfo.email).first<{ id: number; status: string; team_id: number | null }>()
 
   if (existingUser) {
     // 用户已存在
@@ -99,6 +99,16 @@ auth.get('/callback', async (c) => {
     await c.env.DB.prepare(
       `UPDATE _users SET last_login = unixepoch(), name = ?, picture = ? WHERE id = ?`
     ).bind(userInfo.name, userInfo.picture, existingUser.id).run()
+
+    // 如果用户没有团队，自动创建个人团队
+    if (!existingUser.team_id) {
+      const teamResult = await c.env.DB.prepare(
+        `INSERT INTO _teams (name, created_by) VALUES (?, ?)`
+      ).bind(`${userInfo.name}'s Team`, existingUser.id).run()
+      await c.env.DB.prepare(
+        `UPDATE _users SET team_id = ? WHERE id = ?`
+      ).bind(teamResult.meta.last_row_id, existingUser.id).run()
+    }
   } else {
     // 用户不存在，检查是否为引导模式（_users 表空）
     const userCount = await c.env.DB.prepare(
@@ -111,10 +121,20 @@ auth.get('/callback', async (c) => {
       if (allowedEmails.length > 0 && !allowedEmails.includes(userInfo.email)) {
         return c.redirect('/login?error=unauthorized_email')
       }
-      // 创建为 admin
+      // 创建个人团队
+      const teamResult = await c.env.DB.prepare(
+        `INSERT INTO _teams (name) VALUES (?)`
+      ).bind(`${userInfo.name}'s Team`).run()
+      const teamId = teamResult.meta.last_row_id
+      // 创建为 admin 并关联团队
       await c.env.DB.prepare(
-        `INSERT INTO _users (email, name, picture, role, last_login) VALUES (?, ?, ?, 'admin', unixepoch())`
-      ).bind(userInfo.email, userInfo.name, userInfo.picture).run()
+        `INSERT INTO _users (email, name, picture, role, last_login, team_id) VALUES (?, ?, ?, 'admin', unixepoch(), ?)`
+      ).bind(userInfo.email, userInfo.name, userInfo.picture, teamId).run()
+      // 回填 _teams.created_by
+      const newUser = await c.env.DB.prepare(`SELECT id FROM _users WHERE email = ?`).bind(userInfo.email).first<{ id: number }>()
+      if (newUser) {
+        await c.env.DB.prepare(`UPDATE _teams SET created_by = ? WHERE id = ?`).bind(newUser.id, teamId).run()
+      }
     } else {
       // _users 表非空，但该邮箱不在其中 → 拒绝
       return c.redirect('/login?error=unauthorized_email')
@@ -160,14 +180,21 @@ auth.get('/me', async (c) => {
   }
 
   const userRow = await c.env.DB.prepare(
-    `SELECT id, role, status FROM _users WHERE email = ? LIMIT 1`
-  ).bind(user.email).first<{ id: number; role: string; status: string }>()
+    `SELECT u.id, u.role, u.status, u.team_id, t.name as team_name
+     FROM _users u LEFT JOIN _teams t ON t.id = u.team_id
+     WHERE u.email = ? LIMIT 1`
+  ).bind(user.email).first<{ id: number; role: string; status: string; team_id: number | null; team_name: string | null }>()
 
   if (!userRow || userRow.status !== 'active') {
     return c.json({ error: { code: 'UNAUTHORIZED', message: 'User account not found or disabled' } }, 401)
   }
 
-  return c.json({ data: { id: userRow.id, email: user.email, name: user.name, picture: user.picture, role: userRow.role } })
+  return c.json({
+    data: {
+      id: userRow.id, email: user.email, name: user.name, picture: user.picture, role: userRow.role,
+      team: userRow.team_id ? { id: userRow.team_id, name: userRow.team_name } : null,
+    }
+  })
 })
 
 export default auth

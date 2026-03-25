@@ -56,7 +56,19 @@
 
             <!-- 即时交互：password -->
             <template v-else-if="field.field_type === 'password'">
-              <div v-if="currentRow[field.column_name]" class="pw-field-wrap">
+              <!-- 编辑中 -->
+              <div v-if="editingField === field.column_name" style="width:100%">
+                <PasswordInput
+                  ref="activeInputRef"
+                  :model-value="draft as string"
+                  @update:model-value="(v: string) => draft = v"
+                  @blur="commitEdit(field.column_name)"
+                  @enter="commitEdit(field.column_name)"
+                  @escape="cancelEdit"
+                />
+              </div>
+              <!-- 展示 -->
+              <div v-else-if="currentRow[field.column_name]" class="pw-field-wrap">
                 <code v-if="pwRevealed.has(field.column_name)" class="pw-value">{{ currentRow[field.column_name] }}</code>
                 <code v-else class="pw-value pw-value--hidden">••••••••••••</code>
                 <button class="note-field-btn" @click="togglePwReveal(field.column_name)">
@@ -72,7 +84,21 @@
 
             <!-- 即时交互：totp (2FA code) -->
             <template v-else-if="field.field_type === 'totp'">
-              <div v-if="currentRow[field.column_name]" class="totp-field-wrap">
+              <!-- 编辑中 -->
+              <div v-if="editingField === field.column_name" style="width:100%">
+                <n-input
+                  ref="activeInputRef"
+                  :value="draft as string"
+                  @update:value="(v: string) => draft = v"
+                  @blur="commitEdit(field.column_name)"
+                  @keyup.enter="commitEdit(field.column_name)"
+                  @keyup.escape="cancelEdit"
+                  placeholder="Enter base32 secret key"
+                  style="width:100%"
+                />
+              </div>
+              <!-- 展示 -->
+              <div v-else-if="currentRow[field.column_name]" class="totp-field-wrap">
                 <div class="totp-code-display">
                   <span class="totp-code-big">{{ totpCodes[field.column_name] || '······' }}</span>
                   <span class="totp-countdown-big" :class="{ warn: totpRemaining <= 5 }">{{ totpRemaining }}s</span>
@@ -327,6 +353,7 @@ import { api, type FieldMeta, type FieldType, type LinkValue } from '@/api/clien
 import { useQueryClient } from '@tanstack/vue-query'
 import CellValue from './CellValue.vue'
 import ImageUpload from './ImageUpload.vue'
+import PasswordInput from './PasswordInput.vue'
 import { decodeNoteValue, encodeNoteValue } from '@/utils/noteValue'
 import { copyText } from '@/utils/clipboard'
 import { useNoteTree, type NoteTreeNode } from '@/utils/useNoteTree'

@@ -257,12 +257,18 @@ export interface ApiKeyInfo {
   groups: GroupInfo[]
 }
 
+export interface TeamInfo {
+  id: number
+  name: string
+}
+
 export interface CurrentUser {
   id: number
   email: string
   name: string
   picture: string
   role: 'admin' | 'user'
+  team: TeamInfo | null
 }
 
 export interface UserInfo {
@@ -274,7 +280,25 @@ export interface UserInfo {
   status: 'active' | 'disabled'
   created_at: number
   last_login: number | null
-  table_count: number
+  team_id: number | null
+  team_name: string | null
+}
+
+export interface TeamMember {
+  id: number
+  email: string
+  name: string
+  picture: string
+  role: 'admin' | 'user'
+  status: 'active' | 'disabled'
+}
+
+export interface TeamDetail {
+  id: number
+  name: string
+  created_by: number | null
+  created_at: number
+  members: TeamMember[]
 }
 
 // ── Notes 类型定义 ──────────────────────────────────────────────────
@@ -361,4 +385,15 @@ export const userApi = {
     http.patch<{ data: { success: boolean } }>(`/admin/users/${id}`, data).then(r => r.data.data),
   disableUser: (id: number) =>
     http.delete(`/admin/users/${id}`),
+}
+
+export const teamApi = {
+  getTeamInfo: () =>
+    http.get<{ data: TeamDetail }>('/teams/current').then(r => r.data.data),
+  renameTeam: (name: string) =>
+    http.patch<{ data: { success: boolean } }>('/teams/current', { name }).then(r => r.data.data),
+  addMember: (email: string) =>
+    http.post<{ data: { id: number; email: string; message: string } }>('/teams/current/members', { email }).then(r => r.data.data),
+  removeMember: (userId: number) =>
+    http.delete(`/teams/current/members/${userId}`),
 }

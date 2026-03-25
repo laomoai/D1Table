@@ -15,8 +15,6 @@ trash.use('*', requireWriteMiddleware)
  * 获取回收站列表（按删除时间倒序，按 owner 过滤）
  */
 trash.get('/', async (c) => {
-  const userId = c.get('userId')
-
   // 自动清理过期记录
   c.executionCtx.waitUntil(
     c.env.DB.prepare(
@@ -27,11 +25,12 @@ trash.get('/', async (c) => {
   const page = Math.max(1, parseInt(c.req.query('page') ?? '1', 10) || 1)
   const pageSize = Math.min(100, Math.max(1, parseInt(c.req.query('page_size') ?? '20', 10) || 20))
 
+  const teamId = c.get('teamId')
   const conditions: string[] = []
   const params: unknown[] = []
-  if (userId !== undefined) {
-    conditions.push(`(owner_id = ? OR owner_id IS NULL)`)
-    params.push(userId)
+  if (teamId !== undefined) {
+    conditions.push(`team_id = ?`)
+    params.push(teamId)
   }
   // scope=groups 限制：只显示允许访问的表的回收站记录
   const allowedTables = c.get('allowedTables')
@@ -71,13 +70,13 @@ trash.get('/', async (c) => {
  */
 trash.post('/:id/restore', async (c) => {
   const { id } = c.req.param()
-  const userId = c.get('userId')
+  const teamId = c.get('teamId')
 
   let selectSql = `SELECT table_name, record_id, record_data FROM _trash WHERE id = ?`
   const selectParams: unknown[] = [id]
-  if (userId !== undefined) {
-    selectSql += ` AND (owner_id = ? OR owner_id IS NULL)`
-    selectParams.push(userId)
+  if (teamId !== undefined) {
+    selectSql += ` AND team_id = ?`
+    selectParams.push(teamId)
   }
 
   const row = await c.env.DB.prepare(selectSql).bind(...selectParams)
@@ -135,13 +134,13 @@ trash.post('/:id/restore', async (c) => {
  */
 trash.delete('/:id', async (c) => {
   const { id } = c.req.param()
-  const userId = c.get('userId')
+  const teamId = c.get('teamId')
 
   let sql = `DELETE FROM _trash WHERE id = ?`
   const params: unknown[] = [id]
-  if (userId !== undefined) {
-    sql += ` AND (owner_id = ? OR owner_id IS NULL)`
-    params.push(userId)
+  if (teamId !== undefined) {
+    sql += ` AND team_id = ?`
+    params.push(teamId)
   }
 
   const result = await c.env.DB.prepare(sql).bind(...params).run()
@@ -158,9 +157,9 @@ trash.delete('/:id', async (c) => {
  * 清空回收站（仅清空自己的）
  */
 trash.delete('/', async (c) => {
-  const userId = c.get('userId')
-  if (userId !== undefined) {
-    await c.env.DB.prepare(`DELETE FROM _trash WHERE owner_id = ? OR owner_id IS NULL`).bind(userId).run()
+  const teamId = c.get('teamId')
+  if (teamId !== undefined) {
+    await c.env.DB.prepare(`DELETE FROM _trash WHERE team_id = ?`).bind(teamId).run()
   } else {
     await c.env.DB.prepare(`DELETE FROM _trash`).run()
   }

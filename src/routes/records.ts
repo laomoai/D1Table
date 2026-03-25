@@ -176,16 +176,16 @@ records.get('/:tableName/records/search', async (c) => {
 
   // 特殊处理 _notes：直接搜索 _notes 表
   if (tableName === '_notes') {
-    const userId = c.get('userId')
-    const ownerClause = userId !== undefined ? 'owner_id = ?' : '1=1'
-    const baseParams: unknown[] = userId !== undefined ? [userId] : []
+    const teamId = c.get('teamId')
+    const teamClause = teamId !== undefined ? 'team_id = ?' : '1=1'
+    const baseParams: unknown[] = teamId !== undefined ? [teamId] : []
     let sql: string
     let params: unknown[]
     if (q) {
-      sql = `SELECT id, title FROM _notes WHERE ${ownerClause} AND deleted_at IS NULL AND title LIKE ? ORDER BY updated_at DESC LIMIT ?`
+      sql = `SELECT id, title FROM _notes WHERE ${teamClause} AND deleted_at IS NULL AND title LIKE ? ORDER BY updated_at DESC LIMIT ?`
       params = [...baseParams, `%${q}%`, limit]
     } else {
-      sql = `SELECT id, title FROM _notes WHERE ${ownerClause} AND deleted_at IS NULL ORDER BY updated_at DESC LIMIT ?`
+      sql = `SELECT id, title FROM _notes WHERE ${teamClause} AND deleted_at IS NULL ORDER BY updated_at DESC LIMIT ?`
       params = [...baseParams, limit]
     }
     const result = await c.env.DB.prepare(sql).bind(...params).all<{ id: string; title: string | null }>()
@@ -443,8 +443,8 @@ records.delete('/:tableName/records/:id', requireWriteMiddleware, async (c) => {
   await c.env.DB.batch([
     // 存入回收站
     c.env.DB.prepare(
-      `INSERT INTO _trash (table_name, record_id, record_data, owner_id) VALUES (?, ?, ?, ?)`
-    ).bind(tableName, id, JSON.stringify(existing), c.get('userId') ?? null),
+      `INSERT INTO _trash (table_name, record_id, record_data, owner_id, team_id) VALUES (?, ?, ?, ?, ?)`
+    ).bind(tableName, id, JSON.stringify(existing), c.get('userId') ?? null, c.get('teamId') ?? null),
     // 从原表删除
     c.env.DB.prepare(`DELETE FROM "${tableName}" WHERE id = ?`).bind(id),
     c.env.DB.prepare(

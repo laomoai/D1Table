@@ -273,7 +273,7 @@
                 </div>
                 <n-tag :type="u.role === 'admin' ? 'warning' : 'info'" size="small">{{ u.role }}</n-tag>
                 <n-tag :type="u.status === 'active' ? 'success' : 'error'" size="small">{{ u.status }}</n-tag>
-                <span class="user-table-count">{{ u.table_count }} tables</span>
+                <n-tag v-if="u.team_name" size="small" :bordered="false">{{ u.team_name }}</n-tag>
                 <div class="user-actions">
                   <n-button
                     v-if="u.status === 'active' && u.id !== currentUserId"
@@ -298,6 +298,75 @@
               </div>
             </div>
             <div v-else class="empty-hint">No users yet</div>
+          </n-spin>
+        </div>
+      </n-tab-pane>
+
+      <!-- ─── Tab: Team ──────────────────────────────────────── -->
+      <n-tab-pane name="team" tab="Team">
+        <div class="tab-content">
+          <div class="hint" style="margin-bottom: 16px;">
+            Team members share the same tables, groups, notes and trash.
+          </div>
+
+          <n-spin :show="teamLoading">
+            <template v-if="teamData">
+              <!-- Team name -->
+              <div class="section" style="margin-bottom: 20px;">
+                <div class="section-title" style="font-size: 13px; font-weight: 600; color: #555; margin-bottom: 8px;">Team Name</div>
+                <div style="display: flex; gap: 8px; align-items: center;">
+                  <n-input
+                    v-model:value="editTeamName"
+                    size="small"
+                    style="width: 260px;"
+                    @keyup.enter="handleRenameTeam"
+                  />
+                  <n-button
+                    size="small"
+                    type="primary"
+                    :disabled="editTeamName.trim() === teamData.name"
+                    :loading="renamingTeam"
+                    @click="handleRenameTeam"
+                  >Rename</n-button>
+                </div>
+              </div>
+
+              <!-- Add member -->
+              <div class="section" style="margin-bottom: 20px;">
+                <div class="section-title" style="font-size: 13px; font-weight: 600; color: #555; margin-bottom: 8px;">Add Member</div>
+                <div style="display: flex; gap: 8px;">
+                  <n-input v-model:value="newMemberEmail" size="small" placeholder="Email address" style="width: 260px;" @keyup.enter="handleAddMember" />
+                  <n-button size="small" type="primary" :loading="addingMember" @click="handleAddMember">Add</n-button>
+                </div>
+              </div>
+
+              <!-- Members list -->
+              <div class="section">
+                <div class="section-title" style="font-size: 13px; font-weight: 600; color: #555; margin-bottom: 8px;">Members ({{ teamData.members.length }})</div>
+                <div class="user-list">
+                  <div v-for="m in teamData.members" :key="m.id" class="user-row">
+                    <img v-if="m.picture" :src="m.picture" class="user-avatar" referrerpolicy="no-referrer" />
+                    <div v-else class="user-avatar-placeholder">{{ (m.name || m.email)[0] }}</div>
+                    <div class="user-info">
+                      <div class="user-name">{{ m.name || m.email }}</div>
+                      <div class="user-email">{{ m.email }}</div>
+                    </div>
+                    <n-tag v-if="m.id === teamData.created_by" size="small" type="warning">Owner</n-tag>
+                    <div class="user-actions">
+                      <n-button
+                        v-if="m.id !== currentUserId"
+                        size="tiny"
+                        quaternary
+                        type="error"
+                        :loading="removingMember === m.id"
+                        @click="handleRemoveMember(m.id, m.name || m.email)"
+                      >Remove</n-button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </template>
+            <div v-else class="empty-hint">No team info available</div>
           </n-spin>
         </div>
       </n-tab-pane>
@@ -447,7 +516,7 @@ import {
   NSpin, NModal, NAlert, NRadioGroup, NRadio, NCheckboxGroup, NCheckbox,
   NSlider, NPagination, useMessage,
 } from 'naive-ui'
-import { api, notesApi, userApi, getCurrentUser, type ApiKeyInfo, type Group, type TableMeta, type TrashItem, type UserInfo } from '@/api/client'
+import { api, notesApi, userApi, teamApi, getCurrentUser, type ApiKeyInfo, type Group, type TableMeta, type TrashItem, type UserInfo, type TeamDetail } from '@/api/client'
 import ExportSchemaModal from '@/components/ExportSchemaModal.vue'
 
 const message = useMessage()
@@ -760,6 +829,72 @@ function resetSidebarPrefs() {
   sidebarFontSize.value = 14
   sidebarTextColor.value = '#b0bcd4'
   saveSidebarPrefs()
+}
+
+// ── Team Management ──────────────────────────────────────────
+const newMemberEmail = ref('')
+const addingMember = ref(false)
+const renamingTeam = ref(false)
+const removingMember = ref<number | null>(null)
+const editTeamName = ref('')
+
+const { data: teamData, isLoading: teamLoading } = useQuery({
+  queryKey: ['team-current'],
+  queryFn: async () => {
+    const data = await teamApi.getTeamInfo()
+    editTeamName.value = data.name
+    return data
+  },
+  retry: false,
+})
+
+async function handleRenameTeam() {
+  const name = editTeamName.value.trim()
+  if (!name) return
+  renamingTeam.value = true
+  try {
+    await teamApi.renameTeam(name)
+    message.success('Team renamed')
+    queryClient.invalidateQueries({ queryKey: ['team-current'] })
+  } catch (err) {
+    message.error((err as Error).message)
+  } finally {
+    renamingTeam.value = false
+  }
+}
+
+async function handleAddMember() {
+  const email = newMemberEmail.value.trim()
+  if (!email) {
+    message.warning('Please enter an email')
+    return
+  }
+  addingMember.value = true
+  try {
+    await teamApi.addMember(email)
+    message.success(`Member "${email}" added`)
+    newMemberEmail.value = ''
+    queryClient.invalidateQueries({ queryKey: ['team-current'] })
+  } catch (err) {
+    message.error((err as Error).message)
+  } finally {
+    addingMember.value = false
+  }
+}
+
+async function handleRemoveMember(userId: number, name: string) {
+  const confirmed = window.confirm(`Remove "${name}" from the team?`)
+  if (!confirmed) return
+  removingMember.value = userId
+  try {
+    await teamApi.removeMember(userId)
+    message.success('Member removed')
+    queryClient.invalidateQueries({ queryKey: ['team-current'] })
+  } catch (err) {
+    message.error((err as Error).message)
+  } finally {
+    removingMember.value = null
+  }
 }
 
 // ── User Management ──────────────────────────────────────────

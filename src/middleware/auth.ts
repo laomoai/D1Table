@@ -22,8 +22,8 @@ export const authMiddleware: MiddlewareHandler<{
     if (user) {
       // 查 _users 表确认用户存在且未禁用
       const userRow = await c.env.DB.prepare(
-        `SELECT id, role FROM _users WHERE email = ? AND status = 'active' LIMIT 1`
-      ).bind(user.email).first<{ id: number; role: 'admin' | 'user' }>()
+        `SELECT id, role, team_id FROM _users WHERE email = ? AND status = 'active' LIMIT 1`
+      ).bind(user.email).first<{ id: number; role: 'admin' | 'user'; team_id: number | null }>()
 
       if (!userRow) {
         return c.json({ error: { code: 'UNAUTHORIZED', message: 'User account not found or disabled' } }, 401)
@@ -36,6 +36,7 @@ export const authMiddleware: MiddlewareHandler<{
       c.set('user', user)
       c.set('userId', userRow.id)
       c.set('userRole', userRow.role)
+      if (userRow.team_id) c.set('teamId', userRow.team_id)
       return next()
     }
   }
@@ -59,10 +60,10 @@ export const authMiddleware: MiddlewareHandler<{
   // 2b. 数据库 API Key
   const hash = await sha256(apiKey)
   const row = await c.env.DB.prepare(
-    `SELECT id, type, scope, user_id FROM _api_keys WHERE key_hash = ? AND is_active = 1 LIMIT 1`
+    `SELECT id, type, scope, user_id, team_id FROM _api_keys WHERE key_hash = ? AND is_active = 1 LIMIT 1`
   )
     .bind(hash)
-    .first<{ id: number; type: 'readonly' | 'readwrite'; scope: 'all' | 'groups'; user_id: number | null }>()
+    .first<{ id: number; type: 'readonly' | 'readwrite'; scope: 'all' | 'groups'; user_id: number | null; team_id: number | null }>()
 
   if (!row) {
     return c.json({ error: { code: 'UNAUTHORIZED', message: 'Invalid or disabled API Key' } }, 401)
@@ -79,6 +80,10 @@ export const authMiddleware: MiddlewareHandler<{
   // 设置 userId（API Key 继承创建者的 user_id）
   if (row.user_id) {
     c.set('userId', row.user_id)
+  }
+  // 设置 teamId（API Key 继承创建时的 team_id）
+  if (row.team_id) {
+    c.set('teamId', row.team_id)
   }
 
   // scope=groups → 查询允许访问的表列表和组 ID
@@ -144,15 +149,15 @@ export const tableAccessMiddleware: MiddlewareHandler<{
     }
   }
 
-  // owner 校验：有 userId 时检查表归属
-  const userId = c.get('userId')
-  if (userId !== undefined) {
+  // team 校验：有 teamId 时检查表归属
+  const teamId = c.get('teamId')
+  if (teamId !== undefined) {
     const meta = await c.env.DB.prepare(
-      `SELECT owner_id FROM _meta WHERE table_name = ?`
-    ).bind(tableName).first<{ owner_id: number | null }>()
+      `SELECT team_id FROM _meta WHERE table_name = ?`
+    ).bind(tableName).first<{ team_id: number | null }>()
 
-    // 表存在于 _meta 且有 owner_id 且不匹配 → 拒绝
-    if (meta && meta.owner_id !== null && meta.owner_id !== userId) {
+    // 表存在于 _meta 且有 team_id 且不匹配 → 拒绝
+    if (meta && meta.team_id !== null && meta.team_id !== teamId) {
       return c.json(
         { error: { code: 'FORBIDDEN', message: `Access to table "${tableName}" is not allowed` } },
         403
@@ -161,6 +166,14 @@ export const tableAccessMiddleware: MiddlewareHandler<{
   }
 
   return next()
+}
+
+/** team_id 过滤条件辅助（替代原 ownerFilter） */
+export function teamFilter(teamId: number | undefined): { clause: string; params: unknown[] } {
+  if (teamId !== undefined) {
+    return { clause: 'team_id = ?', params: [teamId] }
+  }
+  return { clause: '1=1', params: [] }
 }
 
 /**
