@@ -1,52 +1,6 @@
 <template>
   <div class="notes-page">
-    <!-- Notes sidebar list -->
-    <div class="notes-sidebar">
-      <div class="notes-sidebar-header">
-        <span class="notes-sidebar-title">Notes</span>
-        <div class="notes-header-actions">
-          <button class="notes-action-btn" @click="showImportExport = true" title="Import / Export">⇅</button>
-          <button class="notes-add-btn" @click="createNewNote" title="New Note">+</button>
-        </div>
-      </div>
-
-      <div class="notes-search">
-        <input
-          v-model="searchQuery"
-          class="notes-search-input"
-          placeholder="Search notes..."
-        />
-      </div>
-
-      <div class="notes-list">
-        <n-spin v-if="treeLoading" size="small" style="padding: 20px; display: flex; justify-content: center;" />
-        <div v-else-if="filteredNotes.length === 0" class="notes-empty">
-          {{ searchQuery ? 'No matching notes' : 'No notes yet' }}
-        </div>
-        <template v-else>
-          <NoteTreeItem
-            v-for="note in filteredNotes"
-            :key="note.id"
-            :note="note"
-            :children="childrenMap.get(note.id) ?? []"
-            :children-map="childrenMap"
-            :active-id="activeNoteId"
-            :expanded-ids="expandedFolders"
-            :drop-target-id="dropState.id"
-            :drop-position="dropState.position"
-            @select="selectNote"
-            @toggle="toggleFolder"
-            @create-child="createChildNote"
-            @delete="confirmDeleteNote"
-            @reorder="handleReorder"
-            @update:drop-state="dropState = $event"
-          />
-        </template>
-      </div>
-
-    </div>
-
-    <!-- Editor area -->
+    <!-- Editor area (full width) -->
     <div class="notes-editor-area">
       <n-spin v-if="activeNoteId && !noteReady" style="padding: 60px; display: flex; justify-content: center;" />
       <template v-else-if="activeNoteId && noteReady && activeNote">
@@ -70,6 +24,7 @@
             <button class="note-lock-btn" @click="toggleNoteLock" :title="activeNote.is_locked ? 'Unlock note' : 'Lock note'">
               {{ activeNote.is_locked ? '🔒' : '🔓' }}
             </button>
+            <button class="note-action-btn" @click="showImportExport = true" title="Import / Export">⇅</button>
             <span v-if="activeNote.updated_at" class="note-time">
               Updated {{ formatTime(activeNote.updated_at) }}
             </span>
@@ -87,12 +42,18 @@
           @insert-table-ref="showTablePicker = true"
         />
         <!-- Sub-pages listing -->
-        <div v-if="activeSubPages.length > 0" class="subpages-section">
+        <div v-if="activeSubPages.length > 0" class="subpages-section" :style="subpagesSectionStyle">
+          <div class="subpages-resize-handle" @mousedown="startSubpagesResize" />
           <div class="subpages-header">
             <span class="subpages-title">📂 Sub-pages ({{ activeSubPages.length }})</span>
-            <button class="subpages-add" @click="createChildNote(activeNoteId!)">+ Add</button>
+            <div class="subpages-header-actions">
+              <button class="subpages-add" @click="createChildNote(activeNoteId!)">+ Add</button>
+              <button class="subpages-minimize-btn" @click="toggleSubpagesMinimized" :title="subpagesMinimized ? 'Expand' : 'Minimize'">
+                {{ subpagesMinimized ? '▲' : '▼' }}
+              </button>
+            </div>
           </div>
-          <div class="subpages-list">
+          <div v-show="!subpagesMinimized" class="subpages-list">
             <div
               v-for="sub in activeSubPages"
               :key="sub.id"
@@ -170,13 +131,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, nextTick, defineAsyncComponent, onBeforeUnmount } from 'vue'
+import { ref, computed, watch, nextTick, defineAsyncComponent, onBeforeUnmount, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { useQuery, useQueryClient, useMutation } from '@tanstack/vue-query'
-import { NSpin, useMessage, useDialog } from 'naive-ui'
+import { useQuery, useQueryClient } from '@tanstack/vue-query'
+import { NSpin, useMessage } from 'naive-ui'
 import { api, notesApi, type NoteListItem, type TableMeta } from '@/api/client'
 const NoteEditor = defineAsyncComponent(() => import('@/components/NoteEditor.vue'))
-import NoteTreeItem from '@/components/NoteTreeItem.vue'
 import AppModal from '@/components/AppModal.vue'
 import IonIcon from '@/components/IonIcon.vue'
 
@@ -185,7 +145,6 @@ const IconPicker = defineAsyncComponent(() => import('@/components/IconPicker.vu
 const route = useRoute()
 const router = useRouter()
 const message = useMessage()
-const dialog = useDialog()
 const queryClient = useQueryClient()
 const showIconPicker = ref(false)
 const showImportExport = ref(false)
@@ -196,15 +155,11 @@ const importMode = ref<'new-single' | 'new-batch' | 'append'>('new-single')
 const importProgress = ref('')
 const noteEditorRef = ref<InstanceType<typeof NoteEditor> | null>(null)
 
-// ── Notes tree ──────────────────────────────────────────────
-const { data: treeData, isLoading: treeLoading } = useQuery({
+// ── Notes tree (for sub-pages) ───────────────────────────────
+const { data: treeData } = useQuery({
   queryKey: ['notes', 'tree'],
   queryFn: notesApi.getTree,
 })
-
-const rootNotes = computed(() =>
-  (treeData.value ?? []).filter(n => !n.parent_id)
-)
 
 const childrenMap = computed(() => {
   const map = new Map<string, NoteListItem[]>()
@@ -245,72 +200,6 @@ const activeSubPages = computed(() => {
   return childrenMap.value.get(activeNoteId.value) ?? []
 })
 
-// ── Search ──────────────────────────────────────────────────
-const searchQuery = ref('')
-
-const filteredNotes = computed(() => {
-  if (!searchQuery.value.trim()) return rootNotes.value
-  const q = searchQuery.value.toLowerCase()
-  return (treeData.value ?? []).filter(n =>
-    n.title.toLowerCase().includes(q)
-  )
-})
-
-// ── Drag reorder ────────────────────────────────────────────
-const dropState = ref<{ id: string | null; position: 'above' | 'child' | null }>({ id: null, position: null })
-
-async function handleReorder({ dragId, dropId, mode }: { dragId: string; dropId: string; mode: 'above' | 'child' }) {
-  const allNotes = treeData.value ?? []
-  const dropNote = allNotes.find(n => n.id === dropId)
-  if (!dropNote) return
-
-  try {
-    if (mode === 'child') {
-      // Make dragged note a child of the drop target
-      await notesApi.updateNote(dragId, { parent_id: dropId, sort_order: 0 })
-      expandedFolders.value.add(dropId)
-    } else {
-      // Place before the drop target at same level
-      const siblings = allNotes
-        .filter(n => n.parent_id === dropNote.parent_id)
-        .sort((a, b) => a.sort_order - b.sort_order)
-      const dropIndex = siblings.findIndex(n => n.id === dropId)
-      const prevOrder = dropIndex > 0 ? siblings[dropIndex - 1].sort_order : dropNote.sort_order - 1000
-      const gap = dropNote.sort_order - prevOrder
-
-      if (gap <= 1) {
-        // No room — rebalance all siblings with spacing of 1000
-        for (let i = 0; i < siblings.length; i++) {
-          if (siblings[i].id !== dragId) {
-            await notesApi.updateNote(siblings[i].id, { sort_order: (i + 1) * 1000 })
-          }
-        }
-        // Insert before drop target
-        const newDropIndex = siblings.findIndex(n => n.id === dropId)
-        const newOrder = newDropIndex > 0 ? newDropIndex * 1000 - 500 : 500
-        await notesApi.updateNote(dragId, { sort_order: newOrder, parent_id: dropNote.parent_id ?? null })
-      } else {
-        const newOrder = Math.floor((prevOrder + dropNote.sort_order) / 2)
-        await notesApi.updateNote(dragId, { sort_order: newOrder, parent_id: dropNote.parent_id ?? null })
-      }
-    }
-    queryClient.invalidateQueries({ queryKey: ['notes', 'tree'] })
-  } catch (err) {
-    message.error((err as Error).message)
-  }
-}
-
-// ── Folder expand/collapse ──────────────────────────────────
-const expandedFolders = ref(new Set<string>())
-
-function toggleFolder(id: string) {
-  if (expandedFolders.value.has(id)) {
-    expandedFolders.value.delete(id)
-  } else {
-    expandedFolders.value.add(id)
-  }
-}
-
 // ── Active note state ────────────────────────────────────────
 const activeNoteId = ref<string | null>(null)
 const noteTitle = ref('')
@@ -318,49 +207,48 @@ const noteContent = ref('')
 const saving = ref(false)
 const lastSaved = ref(false)
 const saveError = ref<string | null>(null)
-// Snapshot of content as loaded from server — used to detect real changes
 let savedContent = ''
 let savedTitle = ''
-// Auto-save timer
 let saveTimer: ReturnType<typeof setTimeout> | null = null
-// Whether we've loaded the note and are ready for editing
 const noteReady = ref(false)
 
-const { data: activeNote, isLoading: noteLoading } = useQuery({
+const { data: activeNote } = useQuery({
   queryKey: computed(() => ['notes', activeNoteId.value]),
   queryFn: () => notesApi.getNote(activeNoteId.value!),
   enabled: computed(() => !!activeNoteId.value),
+  refetchInterval: 5000,
 })
 
-// When query returns data, populate editor — but only if it matches current note
-// and the editor is not yet ready (i.e., initial load only, not cache updates triggered by setQueryData)
 watch(activeNote, (note) => {
   if (!note || note.id !== activeNoteId.value) return
-  if (noteReady.value) return  // Don't overwrite user edits once the note is loaded
-  noteTitle.value = note.title
-  noteContent.value = note.content
-  savedTitle = note.title
-  savedContent = note.content
-  lastSaved.value = false
-  nextTick(() => { noteReady.value = true })
+  if (!noteReady.value) {
+    noteTitle.value = note.title
+    noteContent.value = note.content
+    savedTitle = note.title
+    savedContent = note.content
+    lastSaved.value = false
+    nextTick(() => { noteReady.value = true })
+    return
+  }
+  // Auto-refresh: sync external changes only when local content is unchanged
+  const hasLocalTitleChange = noteTitle.value.trim() !== savedTitle
+  const hasLocalContentChange = noteContent.value !== savedContent
+  if (!hasLocalTitleChange && note.title !== savedTitle) {
+    noteTitle.value = note.title
+    savedTitle = note.title
+  }
+  if (!hasLocalContentChange && note.content !== savedContent) {
+    noteContent.value = note.content
+    savedContent = note.content
+  }
 })
 
-/**
- * Central function for switching notes. All paths go through here:
- * - sidebar click, route change, create new, click subpage
- */
 async function switchToNote(id: string | null) {
   if (id === activeNoteId.value) return
-
-  // 1. Cancel pending auto-save timer
   if (saveTimer) { clearTimeout(saveTimer); saveTimer = null }
-
-  // 2. Save current note if there are unsaved changes
   if (activeNoteId.value && noteReady.value) {
     await flushSave()
   }
-
-  // 3. Reset state and switch
   noteReady.value = false
   noteTitle.value = ''
   noteContent.value = ''
@@ -368,36 +256,29 @@ async function switchToNote(id: string | null) {
   savedTitle = ''
   lastSaved.value = false
   activeNoteId.value = id
-
-  // 4. Sync URL
   const targetPath = id ? `/notes/${id}` : '/notes'
   if (route.path !== targetPath) {
     router.replace(targetPath)
   }
 }
 
-// Sidebar click
 function selectNote(id: string) {
   switchToNote(id)
 }
 
-// Route param change (e.g. from table cell click or direct URL)
 watch(() => route.params.noteId, (id) => {
   if (id && typeof id === 'string' && id !== activeNoteId.value) switchToNote(id)
 })
 
-// Initialize from route on mount
 if (route.params.noteId) {
   activeNoteId.value = route.params.noteId as string
 }
 
-// ── Save logic (no race conditions) ─────────────────────────
-/** Flush any pending changes immediately. Returns a promise. */
+// ── Save logic ───────────────────────────────────────────────
 async function flushSave(): Promise<void> {
   if (!activeNoteId.value || !noteReady.value) return
   const id = activeNoteId.value
 
-  // Save title if changed
   if (noteTitle.value.trim() && noteTitle.value.trim() !== savedTitle) {
     try {
       await notesApi.updateNote(id, { title: noteTitle.value.trim() })
@@ -408,7 +289,6 @@ async function flushSave(): Promise<void> {
     }
   }
 
-  // Save content if changed
   if (noteContent.value !== savedContent) {
     try {
       await notesApi.updateNote(id, { content: noteContent.value })
@@ -457,71 +337,34 @@ async function saveContent() {
   saving.value = false
 }
 
-// Auto-save: debounce content changes + throttle (min 3s between saves)
 let lastSaveTime = 0
 watch(noteContent, () => {
   if (!activeNoteId.value || !noteReady.value) return
   if (saveTimer) clearTimeout(saveTimer)
   const elapsed = Date.now() - lastSaveTime
-  const delay = Math.max(1500, 3000 - elapsed) // At least 3s between saves
+  const delay = Math.max(1500, 3000 - elapsed)
   saveTimer = setTimeout(() => {
     lastSaveTime = Date.now()
     saveContent()
   }, delay)
 })
 
-// Cleanup on unmount
 onBeforeUnmount(() => {
   if (saveTimer) { clearTimeout(saveTimer); saveTimer = null }
-  // Synchronously flush save if there are pending changes
   if (activeNoteId.value && noteReady.value && noteContent.value !== savedContent) {
     notesApi.updateNote(activeNoteId.value, { content: noteContent.value }).catch(() => {})
   }
 })
 
-// ── CRUD ──────────────────────────────────────────────────────
-async function createNewNote() {
-  try {
-    const result = await notesApi.createNote({ title: 'Untitled' })
-    queryClient.invalidateQueries({ queryKey: ['notes', 'tree'] })
-    switchToNote(result.id)
-  } catch (err) {
-    message.error((err as Error).message)
-  }
-}
-
+// ── CRUD ─────────────────────────────────────────────────────
 async function createChildNote(parentId: string) {
   try {
     const result = await notesApi.createNote({ title: 'Untitled', parent_id: parentId })
     queryClient.invalidateQueries({ queryKey: ['notes', 'tree'] })
-    expandedFolders.value.add(parentId)
     switchToNote(result.id)
   } catch (err) {
     message.error((err as Error).message)
   }
-}
-
-function confirmDeleteNote(id: string) {
-  dialog.warning({
-    title: 'Delete Note',
-    content: 'This note and all its sub-notes will be moved to trash.',
-    positiveText: 'Delete',
-    negativeText: 'Cancel',
-    onPositiveClick: async () => {
-      try {
-        await notesApi.deleteNote(id)
-        queryClient.invalidateQueries({ queryKey: ['notes', 'tree'] })
-        queryClient.invalidateQueries({ queryKey: ['notes-trash'], exact: false })
-        if (activeNoteId.value === id) {
-          noteReady.value = false
-          activeNoteId.value = null
-        }
-        message.success('Note moved to trash')
-      } catch (err) {
-        message.error((err as Error).message)
-      }
-    },
-  })
 }
 
 async function toggleNoteLock() {
@@ -559,8 +402,56 @@ function formatTime(ts: number) {
   return d.toLocaleDateString()
 }
 
-// ── Import / Export ──────────────────────────────────────────
+// ── Sub-pages resize & minimize ──────────────────────────────
+const SUBPAGES_HEIGHT_KEY = 'notes-subpages-height'
+const SUBPAGES_MINIMIZED_KEY = 'notes-subpages-minimized'
+const subpagesHeight = ref(parseInt(localStorage.getItem(SUBPAGES_HEIGHT_KEY) || '0', 10) || 0)
+const subpagesMinimized = ref(localStorage.getItem(SUBPAGES_MINIMIZED_KEY) === 'true')
 
+const subpagesSectionStyle = computed(() => {
+  if (subpagesMinimized.value) return { flexShrink: 0 }
+  if (subpagesHeight.value > 0) {
+    return { height: `${subpagesHeight.value}px`, flexShrink: 0 }
+  }
+  // Default: 20% of parent
+  return { height: '20%', flexShrink: 0 }
+})
+
+function toggleSubpagesMinimized() {
+  subpagesMinimized.value = !subpagesMinimized.value
+  localStorage.setItem(SUBPAGES_MINIMIZED_KEY, String(subpagesMinimized.value))
+}
+
+function startSubpagesResize(e: MouseEvent) {
+  if (subpagesMinimized.value) return
+  e.preventDefault()
+  const editorArea = (e.target as HTMLElement).closest('.notes-editor-area') as HTMLElement
+  if (!editorArea) return
+  const startY = e.clientY
+  const section = (e.target as HTMLElement).closest('.subpages-section') as HTMLElement
+  const startHeight = section.getBoundingClientRect().height
+
+  function onMove(ev: MouseEvent) {
+    const delta = startY - ev.clientY
+    const newHeight = Math.max(60, Math.min(editorArea.getBoundingClientRect().height * 0.7, startHeight + delta))
+    subpagesHeight.value = Math.round(newHeight)
+  }
+  function onUp() {
+    document.removeEventListener('mousemove', onMove)
+    document.removeEventListener('mouseup', onUp)
+    document.body.style.cursor = ''
+    document.body.style.userSelect = ''
+    if (subpagesHeight.value > 0) {
+      localStorage.setItem(SUBPAGES_HEIGHT_KEY, String(subpagesHeight.value))
+    }
+  }
+  document.body.style.cursor = 'row-resize'
+  document.body.style.userSelect = 'none'
+  document.addEventListener('mousemove', onMove)
+  document.addEventListener('mouseup', onUp)
+}
+
+// ── Import / Export ──────────────────────────────────────────
 function downloadFile(filename: string, content: string) {
   const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' })
   const url = URL.createObjectURL(blob)
@@ -583,7 +474,6 @@ async function exportAllNotes() {
   const notes = treeData.value
   if (!notes?.length) { message.warning('No notes to export'); return }
 
-  // Fetch all note contents
   importProgress.value = 'Fetching notes...'
   const fullNotes: { title: string; content: string }[] = []
   for (const n of notes) {
@@ -594,12 +484,9 @@ async function exportAllNotes() {
   }
 
   if (fullNotes.length === 1) {
-    // Single note — just download .md
     const n = fullNotes[0]
     downloadFile(`${n.title.replace(/[/\\?%*:|"<>]/g, '_')}.md`, n.content)
   } else {
-    // Multiple notes — create a simple concatenated download
-    // For a real zip we'd need a library; let's download individually
     for (const n of fullNotes) {
       downloadFile(`${n.title.replace(/[/\\?%*:|"<>]/g, '_')}.md`, n.content)
     }
@@ -627,12 +514,10 @@ async function handleImport(event: Event) {
   if (!files?.length) return
 
   if (importMode.value === 'append') {
-    // Append file content to current note at cursor
     const file = files[0]
     const content = await file.text()
     if (noteEditorRef.value) {
       noteEditorRef.value.insertAtEnd(content)
-      // Trigger save
       await saveContent()
     }
     showImportExport.value = false
@@ -640,7 +525,6 @@ async function handleImport(event: Event) {
     return
   }
 
-  // Import as new notes
   importProgress.value = `Importing ${files.length} file(s)...`
   let imported = 0
 
@@ -671,75 +555,6 @@ async function handleImport(event: Event) {
   height: 100%;
   overflow: hidden;
 }
-/* Sidebar */
-.notes-sidebar {
-  width: 260px;
-  min-width: 260px;
-  border-right: 1px solid #e9e9e7;
-  display: flex;
-  flex-direction: column;
-  background: #fbfbfa;
-}
-.notes-sidebar-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 16px 16px 8px;
-}
-.notes-sidebar-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: #37352f;
-}
-.notes-add-btn {
-  background: none;
-  border: 1px solid #e9e9e7;
-  border-radius: 3px;
-  width: 26px;
-  height: 26px;
-  font-size: 16px;
-  color: #787774;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.1s;
-}
-.notes-add-btn:hover {
-  background: rgba(55, 53, 47, 0.08);
-  color: #37352f;
-}
-.notes-search {
-  padding: 4px 12px 8px;
-}
-.notes-search-input {
-  width: 100%;
-  padding: 6px 10px;
-  border: 1px solid #e9e9e7;
-  border-radius: 4px;
-  font-size: 13px;
-  color: #37352f;
-  background: #fff;
-  outline: none;
-  transition: border-color 0.15s;
-}
-.notes-search-input:focus {
-  border-color: #b3b0ab;
-}
-.notes-search-input::placeholder {
-  color: #b3b0ab;
-}
-.notes-list {
-  flex: 1;
-  overflow-y: auto;
-  padding: 0 6px;
-}
-.notes-empty {
-  padding: 20px 16px;
-  text-align: center;
-  font-size: 13px;
-  color: #a3a19d;
-}
 /* Editor area */
 .notes-editor-area {
   flex: 1;
@@ -768,9 +583,7 @@ async function handleImport(event: Event) {
   transition: background 0.1s;
   flex-shrink: 0;
 }
-.note-icon-btn:hover {
-  background: rgba(55, 53, 47, 0.06);
-}
+.note-icon-btn:hover { background: rgba(55, 53, 47, 0.06); }
 .note-icon-emoji { font-size: 24px; }
 .note-icon-placeholder { opacity: 0.4; font-size: 24px; }
 .note-title-input {
@@ -784,9 +597,7 @@ async function handleImport(event: Event) {
   background: none;
   min-width: 0;
 }
-.note-title-input::placeholder {
-  color: #c4c4c0;
-}
+.note-title-input::placeholder { color: #c4c4c0; }
 .note-meta {
   display: flex;
   align-items: center;
@@ -806,23 +617,21 @@ async function handleImport(event: Event) {
   transition: opacity 0.1s;
 }
 .note-lock-btn:hover { opacity: 1; }
-.note-time {
-  font-size: 12px;
-  color: #a3a19d;
+.note-action-btn {
+  background: none;
+  border: 1px solid #e9e9e7;
+  border-radius: 3px;
+  padding: 2px 6px;
+  font-size: 13px;
+  color: #787774;
+  cursor: pointer;
+  transition: all 0.1s;
 }
-.note-error {
-  font-size: 12px;
-  color: #e03e3e;
-  font-weight: 500;
-}
-.note-saving {
-  font-size: 12px;
-  color: #b3b0ab;
-}
-.note-saved {
-  font-size: 12px;
-  color: #a3a19d;
-}
+.note-action-btn:hover { background: rgba(55,53,47,0.06); color: #37352f; }
+.note-time { font-size: 12px; color: #a3a19d; }
+.note-error { font-size: 12px; color: #e03e3e; font-weight: 500; }
+.note-saving { font-size: 12px; color: #b3b0ab; }
+.note-saved { font-size: 12px; color: #a3a19d; }
 .notes-placeholder {
   flex: 1;
   display: flex;
@@ -831,32 +640,52 @@ async function handleImport(event: Event) {
   justify-content: center;
   color: #a3a19d;
 }
-.placeholder-icon {
-  font-size: 48px;
-  margin-bottom: 12px;
-  opacity: 0.5;
-}
-.notes-placeholder p {
-  font-size: 14px;
-  margin: 0;
-}
+.placeholder-icon { font-size: 48px; margin-bottom: 12px; opacity: 0.5; }
+.notes-placeholder p { font-size: 14px; margin: 0; }
 /* Sub-pages section */
 .subpages-section {
   border-top: 1px solid #e9e9e7;
-  padding: 12px 24px 16px;
+  padding: 0 24px 16px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+}
+.subpages-resize-handle {
+  height: 6px;
+  cursor: row-resize;
   flex-shrink: 0;
+  position: relative;
+  z-index: 1;
+}
+.subpages-resize-handle::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 2px;
+  transform: translateX(-50%);
+  width: 32px;
+  height: 3px;
+  border-radius: 2px;
+  background: transparent;
+  transition: background 0.15s;
+}
+.subpages-resize-handle:hover::after {
+  background: #c4c4c0;
 }
 .subpages-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   margin-bottom: 8px;
+  flex-shrink: 0;
 }
-.subpages-title {
-  font-size: 13px;
-  font-weight: 600;
-  color: #787774;
+.subpages-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
+.subpages-title { font-size: 13px; font-weight: 600; color: #787774; }
 .subpages-add {
   background: none;
   border: 1px solid #e9e9e7;
@@ -868,11 +697,19 @@ async function handleImport(event: Event) {
   transition: all 0.1s;
 }
 .subpages-add:hover { background: rgba(55,53,47,0.06); color: #37352f; }
-.subpages-list {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
+.subpages-minimize-btn {
+  background: none;
+  border: 1px solid #e9e9e7;
+  border-radius: 3px;
+  padding: 2px 6px;
+  font-size: 10px;
+  color: #787774;
+  cursor: pointer;
+  transition: all 0.1s;
+  line-height: 1;
 }
+.subpages-minimize-btn:hover { background: rgba(55,53,47,0.06); color: #37352f; }
+.subpages-list { display: flex; flex-direction: column; gap: 2px; overflow-y: auto; flex: 1; min-height: 0; }
 .subpage-item {
   display: flex;
   align-items: center;
@@ -908,76 +745,21 @@ async function handleImport(event: Event) {
 .tp-info { display: flex; flex-direction: column; min-width: 0; }
 .tp-name { font-size: 13px; font-weight: 500; color: #37352f; }
 .tp-meta { font-size: 11px; color: #a3a19d; }
-/* Header actions */
-.notes-header-actions {
-  display: flex;
-  gap: 4px;
-}
-.notes-action-btn {
-  background: none;
-  border: 1px solid #e9e9e7;
-  border-radius: 3px;
-  width: 26px;
-  height: 26px;
-  font-size: 14px;
-  color: #787774;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.1s;
-}
-.notes-action-btn:hover {
-  background: rgba(55, 53, 47, 0.08);
-  color: #37352f;
-}
 /* Import/Export modal */
-.ie-section {
-  padding-bottom: 16px;
-}
-.ie-section + .ie-section {
-  border-top: 1px solid #e9e9e7;
-  padding-top: 16px;
-}
-.ie-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: #37352f;
-  margin: 0 0 4px;
-}
-.ie-desc {
-  font-size: 13px;
-  color: #787774;
-  margin: 0 0 10px;
-}
-.ie-actions {
-  display: flex;
-  gap: 8px;
-}
+.ie-section { padding-bottom: 16px; }
+.ie-section + .ie-section { border-top: 1px solid #e9e9e7; padding-top: 16px; }
+.ie-title { font-size: 14px; font-weight: 600; color: #37352f; margin: 0 0 4px; }
+.ie-desc { font-size: 13px; color: #787774; margin: 0 0 10px; }
+.ie-actions { display: flex; gap: 8px; }
 .ie-btn {
-  padding: 6px 14px;
-  border: 1px solid #e9e9e7;
-  border-radius: 4px;
-  background: #fff;
-  font-size: 13px;
-  color: #37352f;
-  cursor: pointer;
-  transition: all 0.1s;
+  padding: 6px 14px; border: 1px solid #e9e9e7; border-radius: 4px;
+  background: #fff; font-size: 13px; color: #37352f; cursor: pointer; transition: all 0.1s;
 }
 .ie-btn:hover { background: #f7f7f5; }
-.ie-btn.primary {
-  background: #37352f;
-  color: #fff;
-  border-color: #37352f;
-}
+.ie-btn.primary { background: #37352f; color: #fff; border-color: #37352f; }
 .ie-btn.primary:hover { background: #2f2d28; }
 .ie-progress {
-  margin-top: 12px;
-  padding: 8px 12px;
-  background: #f0f4ff;
-  border-radius: 4px;
-  font-size: 13px;
-  color: #4f6ef7;
+  margin-top: 12px; padding: 8px 12px; background: #f0f4ff;
+  border-radius: 4px; font-size: 13px; color: #4f6ef7;
 }
-
 </style>

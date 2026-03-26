@@ -18,10 +18,10 @@
               <button class="fs-btn fs-btn--md" :class="{ active: fontSize === 'medium' }" @click="setFontSize('medium')" title="Medium">A</button>
               <button class="fs-btn fs-btn--lg" :class="{ active: fontSize === 'large' }" @click="setFontSize('large')" title="Large">A</button>
             </div>
-            <n-button size="small" quaternary :disabled="currentIndex <= 0" @click="navigate(-1)">
+            <n-button size="small" quaternary :disabled="currentIndex < 0 || currentIndex <= 0" @click="navigate(-1)">
               ← Previous
             </n-button>
-            <n-button size="small" quaternary :disabled="currentIndex >= allRows.length - 1" @click="navigate(1)">
+            <n-button size="small" quaternary :disabled="currentIndex < 0 || currentIndex >= allRows.length - 1" @click="navigate(1)">
               Next →
             </n-button>
           </div>
@@ -288,25 +288,55 @@
   <n-modal v-model:show="showLinkPicker" :mask-closable="true">
     <div class="note-picker-modal">
       <div class="np-header">
-        <span class="np-title">Select a record</span>
+        <span class="np-title">{{ linkPickerTable === '_notes' ? 'Select a note' : 'Select a record' }}</span>
         <button class="np-close" @click="showLinkPicker = false">×</button>
       </div>
       <div class="np-search">
-        <input v-model="linkPickerSearch" class="np-input" placeholder="Search records..." @input="debouncedSearchLinks" />
+        <input
+          v-model="linkPickerSearch"
+          class="np-input"
+          :placeholder="linkPickerTable === '_notes' ? 'Search notes...' : 'Search records...'"
+          @input="linkPickerTable !== '_notes' && debouncedSearchLinks()"
+        />
       </div>
       <div class="np-list">
-        <div v-if="linkPickerLoading" class="np-empty" style="padding:20px;text-align:center"><n-spin size="small" /></div>
-        <div v-else-if="!linkPickerResults.length" class="np-empty">No records found</div>
-        <div
-          v-for="item in linkPickerResults"
-          :key="item.id"
-          class="np-item"
-          @click="pickLink(item)"
-        >
-          <span class="np-icon">{{ linkPickerTable === '_notes' ? '📄' : '📋' }}</span>
-          <span class="np-name">{{ item.title }}</span>
-          <span style="color:#aaa;font-size:11px;margin-left:auto">#{{ item.id }}</span>
-        </div>
+        <!-- Notes: hierarchical tree -->
+        <template v-if="linkPickerTable === '_notes'">
+          <div v-if="!allNotes" class="np-empty" style="padding:20px;text-align:center"><n-spin size="small" /></div>
+          <div v-else-if="!filteredLinkNotes.length" class="np-empty">No notes found</div>
+          <div
+            v-for="item in filteredLinkNotes"
+            :key="item.note.id"
+            class="np-item"
+            :style="{ paddingLeft: `${10 + item.depth * 20}px` }"
+            @click="pickLink({ id: item.note.id, title: item.note.title || 'Untitled' })"
+          >
+            <span
+              v-if="item.hasChildren"
+              class="np-arrow"
+              :class="{ expanded: linkNoteExpanded.has(item.note.id) }"
+              @click.stop="toggleLinkNoteExpand(item.note.id)"
+            >›</span>
+            <span v-else class="np-arrow-ph" />
+            <span class="np-icon">{{ item.note.icon || (item.hasChildren ? '📁' : '📄') }}</span>
+            <span class="np-name">{{ item.note.title || 'Untitled' }}</span>
+          </div>
+        </template>
+        <!-- Regular tables: flat list -->
+        <template v-else>
+          <div v-if="linkPickerLoading" class="np-empty" style="padding:20px;text-align:center"><n-spin size="small" /></div>
+          <div v-else-if="!linkPickerResults.length" class="np-empty">No records found</div>
+          <div
+            v-for="item in linkPickerResults"
+            :key="item.id"
+            class="np-item"
+            @click="pickLink(item)"
+          >
+            <span class="np-icon">📋</span>
+            <span class="np-name">{{ item.title }}</span>
+            <span style="color:#aaa;font-size:11px;margin-left:auto">#{{ item.id }}</span>
+          </div>
+        </template>
       </div>
     </div>
   </n-modal>
@@ -355,6 +385,8 @@ import CellValue from './CellValue.vue'
 import ImageUpload from './ImageUpload.vue'
 import PasswordInput from './PasswordInput.vue'
 import { decodeNoteValue, encodeNoteValue } from '@/utils/noteValue'
+import router from '@/router'
+import { navigateToLinkedRecord } from '@/utils/recordNavigation'
 import { copyText } from '@/utils/clipboard'
 import { useNoteTree, type NoteTreeNode } from '@/utils/useNoteTree'
 
@@ -363,6 +395,7 @@ const props = defineProps<{
   fields: FieldMeta[]
   allRows: Record<string, unknown>[]
   initialIndex: number
+  initialRow?: Record<string, unknown> | null
 }>()
 
 const emit = defineEmits<{ refresh: [] }>()
@@ -373,8 +406,13 @@ const queryClient = useQueryClient()
 
 const currentIndex = ref(props.initialIndex)
 watch(() => props.initialIndex, (v) => { currentIndex.value = v })
+const detachedRow = ref<Record<string, unknown> | null>(props.initialRow ?? null)
+watch(() => props.initialRow, (v) => { detachedRow.value = v ?? null })
 
-const currentRow = computed(() => props.allRows[currentIndex.value] ?? null)
+const currentRow = computed(() => {
+  if (currentIndex.value >= 0) return props.allRows[currentIndex.value] ?? detachedRow.value
+  return detachedRow.value
+})
 const visibleFields = computed(() => props.fields.filter(f => !f.is_hidden))
 
 // ── Password field ────────────────────────────────────────────
@@ -470,6 +508,7 @@ function toggleLongtext(columnName: string) {
 watch(currentIndex, () => { expandedLongtext.value = new Set() })
 
 function navigate(dir: -1 | 1) {
+  if (currentIndex.value < 0) return
   const next = currentIndex.value + dir
   if (next >= 0 && next < props.allRows.length) {
     cancelEdit()
@@ -655,15 +694,25 @@ function goToLinkedRecord(field: FieldMeta) {
   const val = parseLinkValue(currentRow.value?.[field.column_name])
   const linkTable = getLinkTable(field)
   if (!val || !linkTable) return
-  if (linkTable === '_notes') {
-    import('@/router').then(m => m.default.push(`/notes/${val.id}`))
-  } else {
-    import('@/router').then(m => m.default.push(`/tables/${linkTable}?highlight=${val.id}`))
-  }
+  navigateToLinkedRecord(router, linkTable, val.id)
 }
 
 // 当前 link picker 使用的 display_field
 const linkPickerDisplayField = ref<string | undefined>()
+
+// Link picker: notes tree view
+const linkNoteExpanded = ref(new Set<string>())
+const linkNoteTreeList = buildTreeList(linkNoteExpanded)
+const linkNoteSearchList = searchNotes(linkPickerSearch)
+const filteredLinkNotes = computed<NoteTreeNode[]>(() =>
+  linkPickerSearch.value.trim() ? linkNoteSearchList.value : linkNoteTreeList.value
+)
+
+function toggleLinkNoteExpand(id: string) {
+  const s = new Set(linkNoteExpanded.value)
+  if (s.has(id)) s.delete(id); else s.add(id)
+  linkNoteExpanded.value = s
+}
 
 async function openLinkPicker(field: FieldMeta) {
   const cfg = getLinkConfig(field)
@@ -673,8 +722,12 @@ async function openLinkPicker(field: FieldMeta) {
   linkPickerDisplayField.value = cfg.displayField
   linkPickerSearch.value = ''
   linkPickerResults.value = []
-  linkPickerLoading.value = true
   showLinkPicker.value = true
+  if (cfg.table === '_notes') {
+    // Notes use the tree view from useNoteTree, no need to call searchRecords
+    return
+  }
+  linkPickerLoading.value = true
   try {
     linkPickerResults.value = await api.searchRecords(cfg.table, undefined, undefined, cfg.displayField)
   } finally {
