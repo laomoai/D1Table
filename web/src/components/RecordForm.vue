@@ -121,17 +121,18 @@
 
         <!-- link to notes (tree picker) -->
         <div v-else-if="field.field_type === 'link' && isNotesLink(field)" class="notes-link-picker">
-          <div class="nlp-selected" v-if="extractLinkId(formData[field.column_name])">
-            <span class="nlp-pill">
+          <div class="nlp-input-wrap">
+            <span v-if="extractLinkId(formData[field.column_name])" class="nlp-pill">
               {{ getSelectedNoteTitle(field.column_name) }}
+              <button class="nlp-clear" @click.stop="formData[field.column_name] = null">&times;</button>
             </span>
-            <button class="nlp-clear" @click="formData[field.column_name] = null" title="Clear">&times;</button>
+            <input
+              v-else
+              v-model="notesLinkSearch[field.column_name]"
+              class="nlp-search-inline"
+              placeholder="Search notes..."
+            />
           </div>
-          <input
-            v-model="notesLinkSearch[field.column_name]"
-            class="nlp-search"
-            placeholder="Search notes..."
-          />
           <div class="nlp-tree">
             <template v-if="!allNotes">
               <div class="nlp-empty"><n-spin size="small" /></div>
@@ -400,40 +401,53 @@ function datetimeToTs(v: unknown): number | null {
 .notes-link-picker {
   width: 100%;
 }
-.nlp-selected {
+.nlp-input-wrap {
+  height: 34px;
   display: flex;
   align-items: center;
-  gap: 6px;
-  margin-bottom: 6px;
+  border: 1px solid #e9e9e7;
+  border-radius: 4px;
+  padding: 0 8px;
+  margin-bottom: 4px;
+  background: #fff;
+  box-sizing: border-box;
 }
+.nlp-input-wrap:focus-within { border-color: #b3b0ab; }
 .nlp-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   padding: 2px 8px;
   background: #f0f0ef;
   border-radius: 4px;
   font-size: 13px;
   color: #37352f;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .nlp-clear {
   background: none;
   border: none;
   cursor: pointer;
-  font-size: 16px;
+  font-size: 14px;
   color: #9b9a97;
-  padding: 0 4px;
+  padding: 0 2px;
   line-height: 1;
+  flex-shrink: 0;
 }
 .nlp-clear:hover { color: #e03e3e; }
-.nlp-search {
-  width: 100%;
-  padding: 5px 8px;
-  border: 1px solid #e9e9e7;
-  border-radius: 4px;
-  font-size: 13px;
+.nlp-search-inline {
+  flex: 1;
+  border: none;
   outline: none;
-  box-sizing: border-box;
-  margin-bottom: 4px;
+  font-size: 13px;
+  color: #37352f;
+  background: transparent;
+  height: 100%;
 }
-.nlp-search:focus { border-color: #b3b0ab; }
+.nlp-search-inline::placeholder { color: #c4c4c0; }
 .nlp-tree {
   max-height: 200px;
   overflow-y: auto;

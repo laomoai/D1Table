@@ -397,7 +397,8 @@ watch(showNewGroup, (v) => {
 
 <style scoped>
 .dashboard {
-  min-height: 100%;
+  height: 100%;
+  overflow-y: auto;
   background: #fff;
   color: #37352f;
 }
