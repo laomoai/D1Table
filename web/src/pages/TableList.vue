@@ -43,6 +43,8 @@
             {{ tab }}
             <span v-if="activeTab === tab" class="tab-indicator" />
           </button>
+          <span class="tab-separator" />
+          <button class="tab-add-btn" @click="showNewGroup = true" title="New Group">+</button>
         </div>
       </div>
 
@@ -120,12 +122,43 @@
         v-model:show="showCreateTable"
         @created="(name: string) => { queryClient.invalidateQueries({ queryKey: ['tables'] }); router.push(`/tables/${name}`) }"
       />
+
+      <!-- New Group modal -->
+      <AppModal v-model:show="showNewGroup" title="New Group" width="440px" height="auto">
+        <div class="ng-form">
+          <label class="ng-label">Group Name</label>
+          <input v-model="newGroupName" class="ng-input" placeholder="e.g. Marketing, Engineering..." />
+          <label class="ng-label" style="margin-top:16px;">Included Tables</label>
+          <div class="ng-hint">{{ newGroupTables.size }} selected</div>
+          <div class="ng-table-list">
+            <label
+              v-for="t in tables ?? []"
+              :key="t.name"
+              class="ng-table-item"
+            >
+              <input
+                type="checkbox"
+                :checked="newGroupTables.has(t.name)"
+                @change="toggleNewGroupTable(t.name)"
+                class="ng-checkbox"
+              />
+              <span class="ng-table-icon">{{ t.icon && !t.icon.startsWith('ion:') ? t.icon : '📊' }}</span>
+              <span class="ng-table-name">{{ t.title || t.name }}</span>
+              <span v-if="getTableGroup(t.name)" class="ng-table-badge">in {{ getTableGroup(t.name) }}</span>
+            </label>
+          </div>
+          <div class="ng-footer">
+            <button class="ng-btn" @click="showNewGroup = false">Cancel</button>
+            <button class="ng-btn primary" :disabled="!newGroupName.trim()" @click="createGroup">Save</button>
+          </div>
+        </div>
+      </AppModal>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, defineAsyncComponent } from 'vue'
+import { ref, reactive, computed, watch, defineAsyncComponent } from 'vue'
 import { useRouter } from 'vue-router'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import { NSpin, useMessage } from 'naive-ui'
@@ -320,6 +353,46 @@ async function onIconSelect(icon: string | null) {
   }
   iconPickerTarget.value = null
 }
+
+// ── New Group ──
+const showNewGroup = ref(false)
+const newGroupName = ref('')
+const newGroupTables = ref(new Set<string>())
+
+function toggleNewGroupTable(name: string) {
+  const s = new Set(newGroupTables.value)
+  if (s.has(name)) s.delete(name); else s.add(name)
+  newGroupTables.value = s
+}
+
+function getTableGroup(tableName: string): string | null {
+  if (!groups.value) return null
+  for (const g of groups.value) {
+    if (g.tables.includes(tableName)) return g.name
+  }
+  return null
+}
+
+async function createGroup() {
+  if (!newGroupName.value.trim()) return
+  try {
+    const result = await api.createGroup(newGroupName.value.trim())
+    if (newGroupTables.value.size > 0) {
+      await api.setGroupTables(result.id, [...newGroupTables.value])
+    }
+    queryClient.invalidateQueries({ queryKey: ['groups'] })
+    showNewGroup.value = false
+    newGroupName.value = ''
+    newGroupTables.value = new Set()
+    message.success('Group created')
+  } catch (err) {
+    message.error((err as Error).message)
+  }
+}
+
+watch(showNewGroup, (v) => {
+  if (v) { newGroupName.value = ''; newGroupTables.value = new Set() }
+})
 </script>
 
 <style scoped>
@@ -481,6 +554,33 @@ async function onIconSelect(icon: string | null) {
 }
 .tab-btn.active:hover {
   background: transparent;
+}
+
+.tab-separator {
+  width: 1px;
+  height: 20px;
+  background: #e9e9e7;
+  margin: 0 4px;
+  flex-shrink: 0;
+}
+.tab-add-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 18px;
+  color: #9b9a97;
+  transition: color 0.15s, background 0.15s;
+  flex-shrink: 0;
+}
+.tab-add-btn:hover {
+  background: #f1f1ef;
+  color: #37352f;
 }
 
 .tab-clock-icon {
@@ -684,4 +784,88 @@ async function onIconSelect(icon: string | null) {
   color: #787774;
   margin: 0;
 }
+
+/* ── New Group modal ── */
+.ng-form {
+  display: flex;
+  flex-direction: column;
+}
+.ng-label {
+  font-size: 14px;
+  font-weight: 500;
+  color: #37352f;
+  margin-bottom: 6px;
+}
+.ng-hint {
+  font-size: 12px;
+  color: #9b9a97;
+  margin-bottom: 8px;
+  text-align: right;
+  margin-top: -20px;
+}
+.ng-input {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #e9e9e7;
+  border-radius: 6px;
+  font-size: 14px;
+  outline: none;
+  box-sizing: border-box;
+  color: #37352f;
+}
+.ng-input:focus { border-color: #2383e2; box-shadow: 0 0 0 2px rgba(35, 131, 226, 0.2); }
+.ng-table-list {
+  max-height: 300px;
+  overflow-y: auto;
+  border: 1px solid #e9e9e7;
+  border-radius: 6px;
+}
+.ng-table-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  cursor: pointer;
+  transition: background 0.1s;
+  font-size: 14px;
+  color: #37352f;
+}
+.ng-table-item:hover { background: #f7f7f5; }
+.ng-checkbox {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  accent-color: #2383e2;
+  cursor: pointer;
+}
+.ng-table-icon { font-size: 16px; flex-shrink: 0; }
+.ng-table-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ng-table-badge {
+  font-size: 11px;
+  color: #9b9a97;
+  background: #f1f1ef;
+  padding: 1px 6px;
+  border-radius: 3px;
+  white-space: nowrap;
+}
+.ng-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+.ng-btn {
+  padding: 8px 20px;
+  border: 1px solid #e9e9e7;
+  border-radius: 6px;
+  background: #fff;
+  font-size: 14px;
+  color: #37352f;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.ng-btn:hover { background: #f7f7f5; }
+.ng-btn.primary { background: #2383e2; color: #fff; border-color: #2383e2; }
+.ng-btn.primary:hover { background: #1b6ec2; }
+.ng-btn.primary:disabled { opacity: 0.5; cursor: not-allowed; }
 </style>

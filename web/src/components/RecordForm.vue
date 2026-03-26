@@ -119,7 +119,48 @@
           show-password-on="click"
         />
 
-        <!-- link (record picker) -->
+        <!-- link to notes (tree picker) -->
+        <div v-else-if="field.field_type === 'link' && isNotesLink(field)" class="notes-link-picker">
+          <div class="nlp-selected" v-if="extractLinkId(formData[field.column_name])">
+            <span class="nlp-pill">
+              {{ getSelectedNoteTitle(field.column_name) }}
+            </span>
+            <button class="nlp-clear" @click="formData[field.column_name] = null" title="Clear">&times;</button>
+          </div>
+          <input
+            v-model="notesLinkSearch[field.column_name]"
+            class="nlp-search"
+            placeholder="Search notes..."
+          />
+          <div class="nlp-tree">
+            <template v-if="!allNotes">
+              <div class="nlp-empty"><n-spin size="small" /></div>
+            </template>
+            <template v-else-if="!getFilteredNotes(field.column_name).length">
+              <div class="nlp-empty">No notes found</div>
+            </template>
+            <div
+              v-for="item in getFilteredNotes(field.column_name)"
+              :key="item.note.id"
+              class="nlp-item"
+              :class="{ selected: extractLinkId(formData[field.column_name]) === item.note.id }"
+              :style="{ paddingLeft: `${8 + item.depth * 18}px` }"
+              @click="formData[field.column_name] = item.note.id"
+            >
+              <span
+                v-if="item.hasChildren"
+                class="nlp-arrow"
+                :class="{ expanded: notesLinkExpanded.has(item.note.id) }"
+                @click.stop="toggleNotesLinkExpand(item.note.id)"
+              >&rsaquo;</span>
+              <span v-else class="nlp-arrow-ph" />
+              <span class="nlp-icon">{{ item.note.icon || (item.hasChildren ? '📁' : '📄') }}</span>
+              <span class="nlp-name">{{ item.note.title || 'Untitled' }}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- link to regular table (select picker) -->
         <n-select
           v-else-if="field.field_type === 'link'"
           :value="extractLinkId(formData[field.column_name])"
@@ -166,13 +207,14 @@
 import { ref, reactive, computed, watch } from 'vue'
 import {
   NModal, NForm, NFormItem, NInput, NInputNumber, NButton,
-  NSwitch, NSelect, NDatePicker, NTooltip,
+  NSwitch, NSelect, NDatePicker, NTooltip, NSpin,
   type FormInst, type SelectOption,
 } from 'naive-ui'
 import type { FieldMeta, RecordRow } from '@/api/client'
 import { api } from '@/api/client'
 import ImageUpload from './ImageUpload.vue'
 import PasswordInput from './PasswordInput.vue'
+import { useNoteTree, type NoteTreeNode } from '@/utils/useNoteTree'
 
 const formRef = ref<FormInst>()
 
@@ -295,6 +337,39 @@ function searchLinkRecords(field: FieldMeta, query: string) {
   }, query ? 300 : 0)
 }
 
+// ── Notes link tree picker ────────────────────────────────
+const { treeData: allNotes, buildTreeList, searchNotes } = useNoteTree()
+const notesLinkExpanded = ref(new Set<string>())
+const notesLinkSearch = reactive<Record<string, string>>({})
+
+const notesTreeList = buildTreeList(notesLinkExpanded)
+
+function isNotesLink(field: FieldMeta): boolean {
+  const cfg = getLinkConfig(field)
+  return cfg?.table === '_notes'
+}
+
+function toggleNotesLinkExpand(id: string) {
+  const s = new Set(notesLinkExpanded.value)
+  if (s.has(id)) s.delete(id); else s.add(id)
+  notesLinkExpanded.value = s
+}
+
+function getFilteredNotes(colName: string): NoteTreeNode[] {
+  const q = (notesLinkSearch[colName] || '').toLowerCase().trim()
+  if (!q) return notesTreeList.value
+  return (allNotes.value ?? [])
+    .filter(n => n.title.toLowerCase().includes(q))
+    .map(n => ({ note: n, depth: 0, hasChildren: false }))
+}
+
+function getSelectedNoteTitle(colName: string): string {
+  const id = extractLinkId(formData.value[colName])
+  if (!id) return ''
+  const note = (allNotes.value ?? []).find(n => n.id === id)
+  return note ? `${note.icon || '📄'} ${note.title || 'Untitled'}` : `#${id}`
+}
+
 // ── 日期工具（兼容数字、数字字符串、日期字符串）──────────────
 function dateToTs(v: unknown): number | null {
   if (!v) return null
@@ -320,3 +395,81 @@ function datetimeToTs(v: unknown): number | null {
   return isNaN(d.getTime()) ? null : d.getTime()
 }
 </script>
+
+<style scoped>
+.notes-link-picker {
+  width: 100%;
+}
+.nlp-selected {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.nlp-pill {
+  padding: 2px 8px;
+  background: #f0f0ef;
+  border-radius: 4px;
+  font-size: 13px;
+  color: #37352f;
+}
+.nlp-clear {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 16px;
+  color: #9b9a97;
+  padding: 0 4px;
+  line-height: 1;
+}
+.nlp-clear:hover { color: #e03e3e; }
+.nlp-search {
+  width: 100%;
+  padding: 5px 8px;
+  border: 1px solid #e9e9e7;
+  border-radius: 4px;
+  font-size: 13px;
+  outline: none;
+  box-sizing: border-box;
+  margin-bottom: 4px;
+}
+.nlp-search:focus { border-color: #b3b0ab; }
+.nlp-tree {
+  max-height: 200px;
+  overflow-y: auto;
+  border: 1px solid #e9e9e7;
+  border-radius: 4px;
+}
+.nlp-empty {
+  padding: 16px;
+  text-align: center;
+  color: #9b9a97;
+  font-size: 13px;
+}
+.nlp-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 8px;
+  cursor: pointer;
+  font-size: 13px;
+  color: #37352f;
+  transition: background 0.1s;
+}
+.nlp-item:hover { background: #f7f7f5; }
+.nlp-item.selected { background: #e8f0fe; }
+.nlp-arrow {
+  display: inline-flex;
+  width: 16px;
+  justify-content: center;
+  font-size: 14px;
+  color: #9b9a97;
+  cursor: pointer;
+  transition: transform 0.15s;
+  flex-shrink: 0;
+}
+.nlp-arrow.expanded { transform: rotate(90deg); }
+.nlp-arrow-ph { width: 16px; flex-shrink: 0; }
+.nlp-icon { font-size: 14px; flex-shrink: 0; }
+.nlp-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+</style>
