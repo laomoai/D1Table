@@ -119,7 +119,8 @@ function openApiSpec(serverUrl: string) {
 - Pagination: cursor-based pagination (keyset) — pass the previous page's \`next_cursor\` as the \`cursor\` parameter
 - Datetime format: datetime fields are returned as ISO 8601 UTC strings, e.g. \`2026-03-15T04:37:31.000Z\`
 - Each table has an API name (name, e.g. tbl_abc123) and a display name (title, e.g. "Customer List")
-- Each field has a column name (column_name) and a display name (title); use the column name in API requests — the response includes a display name mapping`,
+- Each field has a column name (column_name) and a display name (title); use the column name in API requests — the response includes a display name mapping
+- Image fields: To set an image field, first upload via POST /api/upload/image, then use the returned paths in a record update/create.`,
     },
     servers: [{ url: serverUrl }],
     security: [{ ApiKeyAuth: [] }],
@@ -842,6 +843,95 @@ function openApiSpec(serverUrl: string) {
           responses: {
             '200': { description: 'Restored successfully' },
             '404': { description: 'Deleted note not found' },
+          },
+        },
+      },
+      '/api/upload/image': {
+        post: {
+          summary: 'Upload image',
+          description: 'Upload an image file (thumb + display). Returns R2 storage paths. Use the returned paths to set image field values on records. Requires write permission.',
+          security: [{ ApiKeyAuth: [] }],
+          requestBody: {
+            required: true,
+            content: {
+              'multipart/form-data': {
+                schema: {
+                  type: 'object',
+                  required: ['thumb', 'display'],
+                  properties: {
+                    thumb: { type: 'string', format: 'binary', description: 'Thumbnail image' },
+                    display: { type: 'string', format: 'binary', description: 'Display-size image' },
+                    name: { type: 'string', description: 'Original filename, defaults to "image"' },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            '201': {
+              description: 'Upload successful',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      data: {
+                        type: 'object',
+                        properties: {
+                          thumb: { type: 'string', description: 'R2 path for thumbnail' },
+                          display: { type: 'string', description: 'R2 path for display image' },
+                          name: { type: 'string', description: 'Original filename' },
+                          size: { type: 'integer', description: 'File size in bytes' },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+            '400': { description: 'Missing required fields' },
+            '403': { description: 'Read-only key' },
+          },
+        },
+        delete: {
+          summary: 'Delete image',
+          description: 'Delete uploaded image files from storage.',
+          security: [{ ApiKeyAuth: [] }],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['thumb', 'display'],
+                  properties: {
+                    thumb: { type: 'string', description: 'R2 path for thumbnail to delete' },
+                    display: { type: 'string', description: 'R2 path for display image to delete' },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            '200': {
+              description: 'Deleted successfully',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      data: {
+                        type: 'object',
+                        properties: {
+                          success: { type: 'boolean' },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+            '403': { description: 'Read-only key' },
           },
         },
       },
