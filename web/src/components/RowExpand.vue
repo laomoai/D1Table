@@ -700,13 +700,8 @@ function goToLinkedRecord(field: FieldMeta) {
 // 当前 link picker 使用的 display_field
 const linkPickerDisplayField = ref<string | undefined>()
 
-// Link picker: notes tree view
+// Link picker: notes tree view (useNoteTree destructured below at note picker section)
 const linkNoteExpanded = ref(new Set<string>())
-const linkNoteTreeList = buildTreeList(linkNoteExpanded)
-const linkNoteSearchList = searchNotes(linkPickerSearch)
-const filteredLinkNotes = computed<NoteTreeNode[]>(() =>
-  linkPickerSearch.value.trim() ? linkNoteSearchList.value : linkNoteTreeList.value
-)
 
 function toggleLinkNoteExpand(id: string) {
   const s = new Set(linkNoteExpanded.value)
@@ -764,6 +759,11 @@ const notePickerField = ref<string | null>(null)
 const pickerExpanded = ref(new Set<string>())
 
 const { treeData: allNotes, buildTreeList, searchNotes, getNoteTitle } = useNoteTree()
+const linkNoteTreeList = buildTreeList(linkNoteExpanded)
+const linkNoteSearchList = searchNotes(linkPickerSearch)
+const filteredLinkNotes = computed<NoteTreeNode[]>(() =>
+  linkPickerSearch.value.trim() ? linkNoteSearchList.value : linkNoteTreeList.value
+)
 const pickerTreeNotes = buildTreeList(pickerExpanded)
 const pickerSearchNotes = searchNotes(notePickerSearch)
 const filteredPickerNotes = computed<NoteTreeNode[]>(() =>
