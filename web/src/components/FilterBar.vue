@@ -7,17 +7,18 @@
         placeholder="Select field"
         style="width: 140px;"
         size="small"
+        @update:value="() => handleFieldChange(filter)"
       />
       <n-select
         v-model:value="filter.op"
-        :options="opOptions"
+        :options="getOpOptions(filter.field)"
         style="width: 110px;"
         size="small"
       />
       <n-input
         v-model:value="filter.value"
-        placeholder="Value"
-        style="width: 160px;"
+        :placeholder="filter.field === '__all' ? 'Search all visible fields' : 'Value'"
+        style="width: 220px;"
         size="small"
         @keyup.enter="emitFilters()"
       />
@@ -66,12 +67,15 @@ function emitFilters() {
 }
 
 const columnOptions = computed(() =>
-  props.columns
-    .filter((c) => !c.isPrimaryKey)
-    .map((c) => ({ label: c.title || c.column_name, value: c.column_name }))
+  [
+    { label: 'All fields', value: '__all' },
+    ...props.columns
+      .filter((c) => !c.isPrimaryKey)
+      .map((c) => ({ label: c.title || c.column_name, value: c.column_name }))
+  ]
 )
 
-const opOptions = [
+const baseOpOptions = [
   { label: 'Equals', value: 'eq' },
   { label: 'Not equals', value: 'ne' },
   { label: 'Contains', value: 'like' },
@@ -82,10 +86,23 @@ const opOptions = [
   { label: 'Less than or equal', value: 'lte' },
 ]
 
+function getOpOptions(field: string) {
+  if (field === '__all') {
+    return baseOpOptions.filter((item) => item.value === 'like' || item.value === 'nlike')
+  }
+  return baseOpOptions
+}
+
+function handleFieldChange(filter: Filter) {
+  if (filter.field === '__all' && filter.op !== 'like' && filter.op !== 'nlike') {
+    filter.op = 'like'
+  }
+}
+
 function addFilter() {
   filters.value.push({
-    field: props.columns.find((c) => !c.isPrimaryKey)?.column_name ?? '',
-    op: 'eq',
+    field: '__all',
+    op: 'like',
     value: '',
   })
 }

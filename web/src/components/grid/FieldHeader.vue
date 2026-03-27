@@ -1,6 +1,8 @@
 <template>
   <div class="fh-wrap" @click="onSortClick" @contextmenu.prevent="openMenu">
-    <span class="fh-icon" :style="{ color: typeColor }">{{ typeIcon }}</span>
+    <span class="fh-icon" :style="{ color: typeColor }">
+      <IonIcon :name="typeIcon.slice(4)" :size="12" />
+    </span>
 
     <template v-if="renaming">
       <input
@@ -13,9 +15,12 @@
         @click.stop
       />
     </template>
-    <span v-else class="fh-title" @dblclick.stop="startRename">
-      {{ params.displayName }}
-    </span>
+    <HoverTooltipText
+      v-else
+      :text="params.displayName"
+      class-name="fh-title"
+      @dblclick.stop="startRename"
+    />
 
     <span v-if="sortState" class="fh-sort">{{ sortState === 'asc' ? '↑' : '↓' }}</span>
   </div>
@@ -36,6 +41,8 @@
 import { ref, computed, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { NDropdown } from 'naive-ui'
 import type { FieldMeta, FieldType } from '@/api/client'
+import HoverTooltipText from '@/components/HoverTooltipText.vue'
+import IonIcon from '@/components/IonIcon.vue'
 
 const props = defineProps<{
   params: {
@@ -132,17 +139,32 @@ function onMenuSelect(key: string) {
 
 // ── Type icon & color ──────────────────────────────────────────
 const iconMap: Record<string, string> = {
-  text: 'T', longtext: '¶', number: '#', currency: '¥', percent: '%',
-  email: '@', url: '🔗', date: '📅', datetime: '🕐', checkbox: '☑', select: '◉',
+  text: 'ion:TextOutline',
+  longtext: 'ion:DocumentTextOutline',
+  number: 'ion:CalculatorOutline',
+  currency: 'ion:CashOutline',
+  percent: 'ion:PercentOutline',
+  email: 'ion:MailOutline',
+  url: 'ion:LinkOutline',
+  date: 'ion:CalendarOutline',
+  datetime: 'ion:TimeOutline',
+  checkbox: 'ion:CheckboxOutline',
+  select: 'ion:OptionsOutline',
+  image: 'ion:ImageOutline',
+  note: 'ion:DocumentTextOutline',
+  link: 'ion:LinkOutline',
+  totp: 'ion:KeyOutline',
+  password: 'ion:LockClosedOutline',
 }
 const colorMap: Record<string, string> = {
   text: '#666', longtext: '#888', number: '#4f6ef7', currency: '#18a058', percent: '#f0a020',
   email: '#00adb5', url: '#4f6ef7', date: '#8a2be2', datetime: '#d03050',
-  checkbox: '#18a058', select: '#f0a020',
+  checkbox: '#18a058', select: '#f0a020', image: '#e91e8c', note: '#6b7280',
+  link: '#4f6ef7', totp: '#d03050', password: '#8a6d3b',
 }
 
 const ft = computed(() => props.params.field?.field_type as FieldType | undefined)
-const typeIcon = computed(() => ft.value ? (iconMap[ft.value] ?? 'T') : 'T')
+const typeIcon = computed(() => ft.value ? (iconMap[ft.value] ?? 'ion:TextOutline') : 'ion:TextOutline')
 const typeColor = computed(() => ft.value ? (colorMap[ft.value] ?? '#666') : '#666')
 </script>
 
@@ -157,6 +179,7 @@ const typeColor = computed(() => ft.value ? (colorMap[ft.value] ?? '#666') : '#6
   cursor: pointer;
   user-select: none;
   overflow: hidden;
+  white-space: nowrap;
 }
 .fh-icon {
   font-size: 11px;

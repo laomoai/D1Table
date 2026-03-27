@@ -1,6 +1,6 @@
 /**
  * Note field value encoding/decoding.
- * Stored as JSON string in table cells: {"id":"n_xxx","title":"标题","icon":"📁"}
+ * Stored as JSON string in table cells: {"id":"n_xxx","title":"标题","icon":"ion:FolderOutline"}
  * Backward compatible: also parses legacy "id|title|icon" format.
  */
 

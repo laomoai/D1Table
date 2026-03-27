@@ -4,7 +4,8 @@ node_modules/
 dist/
 public/
 .wrangler/
-.dev.vars
+.dev.vars*
+.env*
 *.local
 web/node_modules/
 web/dist/

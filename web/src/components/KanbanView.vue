@@ -4,11 +4,18 @@
     <div class="toolbar">
       <span class="table-title">
         <button class="title-icon-btn" @click="showIconPicker = true" title="Change icon">
-          <span v-if="props.tableIcon && !props.tableIcon.startsWith('ion:')" class="title-icon-emoji">{{ props.tableIcon }}</span>
-          <ion-icon v-else-if="props.tableIcon" :name="props.tableIcon.slice(4)" :size="16" style="opacity:0.7;vertical-align:middle;" />
-          <span v-else class="title-icon-placeholder">📊</span>
+          <IonIcon v-if="props.tableIcon && props.tableIcon.startsWith('ion:')" :name="props.tableIcon.slice(4)" :size="16" />
+          <span v-else-if="props.tableIcon" class="title-icon-emoji">{{ props.tableIcon }}</span>
+          <IonIcon v-else name="GridOutline" :size="16" />
         </button>
-        {{ displayTitle }}
+        <span class="table-title-text">{{ displayTitle }}</span>
+        <button class="table-name-copy" type="button" @click.stop="copyTableName">
+          <span class="table-name-text">{{ props.tableName }}</span>
+          <span class="table-name-copy-icon">
+            <IonIcon v-if="copiedTableName" name="CheckmarkOutline" :size="12" />
+            <IonIcon v-else name="CopyOutline" :size="12" />
+          </span>
+        </button>
       </span>
       <span v-if="totalCount !== null" class="row-count">{{ totalCount }} records</span>
       <div style="flex:1" />
@@ -28,7 +35,7 @@
       </n-button>
       <n-button size="small" type="primary" @click="openCreate" :disabled="props.isLocked">+ Add</n-button>
       <n-button size="small" quaternary @click="toggleLock" :title="props.isLocked ? 'Unlock table' : 'Lock table'">
-        {{ props.isLocked ? '🔒' : '🔓' }}
+        <IonIcon :name="props.isLocked ? 'LockClosedOutline' : 'LockOpenOutline'" :size="14" />
       </n-button>
 
       <!-- 视图切换 -->
@@ -178,6 +185,7 @@ import { ref, computed, watch, defineAsyncComponent } from 'vue'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import { useMessage, NButton, NSpin, NSelect } from 'naive-ui'
 import { api, type FieldMeta, type RecordRow, type SelectOption } from '@/api/client'
+import { copyText } from '@/utils/clipboard'
 import CellValue from './CellValue.vue'
 import RecordForm from './RecordForm.vue'
 import RowExpand from './RowExpand.vue'
@@ -209,8 +217,17 @@ const showIconPicker = ref(false)
 const expandRow = ref<RecordRow | null>(null)
 const expandIndex = ref(0)
 const refreshing = ref(false)
+const copiedTableName = ref(false)
 
 const displayTitle = computed(() => props.tableTitle || props.tableName)
+
+function copyTableName() {
+  copyText(props.tableName)
+  copiedTableName.value = true
+  window.setTimeout(() => {
+    copiedTableName.value = false
+  }, 1200)
+}
 
 // ── 分组字段选择 ──────────────────────────────────────────────
 const selectFields = computed(() =>
@@ -422,7 +439,42 @@ async function toggleLock() {
   border-bottom: 1px solid #e8eaf0;
   flex-shrink: 0;
 }
-.table-title { font-size: 15px; font-weight: 600; color: #1a1d2e; display: flex; align-items: center; gap: 5px; }
+.table-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #1a1d2e;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  white-space: nowrap;
+}
+.table-title-text {
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.table-name-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid #e0e2e8;
+  background: #f7f8fa;
+  color: #6b6f76;
+  font-size: 12px;
+  border-radius: 10px;
+  padding: 2px 8px;
+  cursor: pointer;
+  max-width: 240px;
+}
+.table-name-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 200px;
+}
+.table-name-copy-icon { display: inline-flex; align-items: center; }
 .title-icon-btn {
   background: none; border: none; cursor: pointer; padding: 2px 4px; border-radius: 4px;
   font-size: 16px; line-height: 1; display: flex; align-items: center; transition: background 0.1s;

@@ -1,5 +1,12 @@
 # 复制此文件为 .dev.vars 并填入本地开发用的值
-# .dev.vars 已加入 .gitignore，不会提交到仓库
+# 如需模拟 preview 环境，可复制为 .dev.vars.preview
+# .dev.vars* 已加入 .gitignore，不会提交到仓库
 
 # 本地开发用的管理员 Key（任意字符串即可，生产环境通过 wrangler secret put ADMIN_KEY 设置）
 ADMIN_KEY=your_local_admin_key_here
+
+# 本地 / preview 开发常用 secrets
+GOOGLE_CLIENT_ID=your_google_client_id
+GOOGLE_CLIENT_SECRET=your_google_client_secret
+SESSION_SECRET=your_session_secret_at_least_32_chars
+ALLOWED_EMAILS=

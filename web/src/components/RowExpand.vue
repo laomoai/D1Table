@@ -32,7 +32,8 @@
         <div v-for="field in visibleFields" :key="field.column_name" class="expand-field-row">
           <div class="expand-field-label">
             <span class="field-icon-sm" :style="{ color: typeColor(field.field_type) }">
-              {{ typeIcon(field.field_type) }}
+              <IonIcon v-if="typeIcon(field.field_type).startsWith('ion:')" :name="typeIcon(field.field_type).slice(4)" :size="14" />
+              <span v-else>{{ typeIcon(field.field_type) }}</span>
             </span>
             <span class="expand-field-title">{{ field.title }}</span>
           </div>
@@ -149,7 +150,19 @@
                   class="note-field-link"
                   :href="`/notes/${decodeNoteValue(currentRow[field.column_name])!.id}`"
                   @click.prevent="$router.push(`/notes/${decodeNoteValue(currentRow[field.column_name])!.id}`)"
-                >{{ decodeNoteValue(currentRow[field.column_name])!.icon || '📄' }} {{ decodeNoteValue(currentRow[field.column_name])!.title }}</a>
+                >
+                  <IonIcon
+                    v-if="decodeNoteValue(currentRow[field.column_name])!.icon?.startsWith('ion:')"
+                    :name="decodeNoteValue(currentRow[field.column_name])!.icon.slice(4)"
+                    :size="14"
+                  />
+                  <IonIcon
+                    v-else
+                    name="DocumentOutline"
+                    :size="14"
+                  />
+                  {{ decodeNoteValue(currentRow[field.column_name])!.title }}
+                </a>
                 <div class="note-field-actions">
                   <button class="note-field-btn" @click="openNotePicker(field.column_name)" title="Select note">
                     {{ currentRow[field.column_name] ? 'Change' : 'Select note' }}
@@ -318,7 +331,10 @@
               @click.stop="toggleLinkNoteExpand(item.note.id)"
             >›</span>
             <span v-else class="np-arrow-ph" />
-            <span class="np-icon">{{ item.note.icon || (item.hasChildren ? '📁' : '📄') }}</span>
+            <span class="np-icon">
+              <IonIcon v-if="item.note.icon?.startsWith('ion:')" :name="item.note.icon.slice(4)" :size="14" />
+              <IonIcon v-else :name="item.hasChildren ? 'FolderOutline' : 'DocumentOutline'" :size="14" />
+            </span>
             <span class="np-name">{{ item.note.title || 'Untitled' }}</span>
           </div>
         </template>
@@ -368,7 +384,10 @@
             @click.stop="togglePickerExpand(item.note.id)"
           >›</span>
           <span v-else class="np-arrow-ph" />
-          <span class="np-icon">{{ item.note.icon || (item.hasChildren ? '📁' : '📄') }}</span>
+          <span class="np-icon">
+            <IonIcon v-if="item.note.icon?.startsWith('ion:')" :name="item.note.icon.slice(4)" :size="14" />
+            <IonIcon v-else :name="item.hasChildren ? 'FolderOutline' : 'DocumentOutline'" :size="14" />
+          </span>
           <span class="np-name">{{ item.note.title || 'Untitled' }}</span>
         </div>
       </div>
@@ -384,6 +403,7 @@ import { useQueryClient } from '@tanstack/vue-query'
 import CellValue from './CellValue.vue'
 import ImageUpload from './ImageUpload.vue'
 import PasswordInput from './PasswordInput.vue'
+import IonIcon from './IonIcon.vue'
 import { decodeNoteValue, encodeNoteValue } from '@/utils/noteValue'
 import router from '@/router'
 import { navigateToLinkedRecord } from '@/utils/recordNavigation'
@@ -794,7 +814,7 @@ function pickNote(noteId: string) {
 function typeIcon(type: FieldType): string {
   const map: Record<string, string> = {
     text: 'T', longtext: '¶', number: '#', currency: '¥', percent: '%',
-    email: '@', url: '🔗', date: '📅', datetime: '🕐', checkbox: '☑', select: '◉', image: '🖼', note: '📄', link: '🔗', totp: '🔐', password: '🔑',
+    email: '@', url: 'ion:LinkOutline', date: 'ion:CalendarOutline', datetime: 'ion:TimeOutline', checkbox: 'ion:CheckboxOutline', select: 'ion:OptionsOutline', image: 'ion:ImageOutline', note: 'ion:DocumentTextOutline', link: 'ion:LinkOutline', totp: 'ion:KeyOutline', password: 'ion:LockClosedOutline',
   }
   return map[type] ?? 'T'
 }

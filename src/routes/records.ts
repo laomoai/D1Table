@@ -3,6 +3,7 @@ import type { AuthVariables, Env } from '../types'
 import { getUserTables, getTableColumns, isValidIdentifier } from '../utils/schema-cache'
 import { buildSelectSQL, parseFilters } from '../utils/query-builder'
 import { requireWriteMiddleware } from '../middleware/auth'
+import { getAccessibleNoteIds } from '../utils/note-access'
 import { getFieldMeta } from './fields'
 
 const records = new Hono<{ Bindings: Env; Variables: AuthVariables }>()
@@ -128,6 +129,7 @@ records.get('/:tableName/records', async (c) => {
     cursor: hasPageParam ? undefined : cursor,
     pageSize,
     offset,
+    searchableFields: allColumns.filter((name) => name !== 'id'),
   })
 
   const result = await c.env.DB.prepare(sql).bind(...params).all()
@@ -150,7 +152,8 @@ records.get('/:tableName/records', async (c) => {
 
   // 解析 link 字段值（ID → {id, title}）
   const linkFields = getLinkFields(fieldMeta)
-  await resolveLinkValues(c.env.DB, formattedRows, linkFields)
+  const allowedNoteIds = await getAccessibleNoteIds(c.env.DB, c.get('teamId'), c.get('allowedNoteRootIds'))
+  await resolveLinkValues(c.env.DB, formattedRows, linkFields, allowedNoteIds)
 
   return c.json({
     data: formattedRows,
@@ -177,6 +180,7 @@ records.get('/:tableName/records/search', async (c) => {
   // 特殊处理 _notes：直接搜索 _notes 表
   if (tableName === '_notes') {
     const teamId = c.get('teamId')
+    const allowedNoteIds = await getAccessibleNoteIds(c.env.DB, teamId, c.get('allowedNoteRootIds'))
     const teamClause = teamId !== undefined ? 'team_id = ?' : '1=1'
     const baseParams: unknown[] = teamId !== undefined ? [teamId] : []
     let sql: string
@@ -189,8 +193,11 @@ records.get('/:tableName/records/search', async (c) => {
       params = [...baseParams, limit]
     }
     const result = await c.env.DB.prepare(sql).bind(...params).all<{ id: string; title: string | null }>()
+    const rows = allowedNoteIds === null
+      ? result.results
+      : result.results.filter((row) => allowedNoteIds.has(row.id))
     return c.json({
-      data: result.results.map(r => ({ id: r.id, title: r.title || 'Untitled' }))
+      data: rows.map(r => ({ id: r.id, title: r.title || 'Untitled' }))
     })
   }
 
@@ -238,7 +245,8 @@ records.get('/:tableName/records/search', async (c) => {
     if (cfg.link_table) {
       const ids = rows.map(r => r.title).filter(t => t && !t.startsWith('#'))
       if (ids.length > 0) {
-        const resolved = await resolveNestedLinkIds(c.env.DB, cfg.link_table, ids, cfg.link_display_field)
+        const allowedNoteIds = await getAccessibleNoteIds(c.env.DB, c.get('teamId'), c.get('allowedNoteRootIds'))
+        const resolved = await resolveNestedLinkIds(c.env.DB, cfg.link_table, ids, cfg.link_display_field, allowedNoteIds)
         rows = rows.map(r => ({ ...r, title: resolved.get(r.title) ?? r.title }))
       }
     }
@@ -279,7 +287,8 @@ records.get('/:tableName/records/:id', async (c) => {
 
   // 解析 link 字段值
   const linkFields = getLinkFields(fieldMeta)
-  await resolveLinkValues(c.env.DB, [formattedRow], linkFields)
+  const allowedNoteIds = await getAccessibleNoteIds(c.env.DB, c.get('teamId'), c.get('allowedNoteRootIds'))
+  await resolveLinkValues(c.env.DB, [formattedRow], linkFields, allowedNoteIds)
 
   return c.json({ data: formattedRow, fields })
 })
@@ -325,7 +334,7 @@ records.post('/:tableName/records', requireWriteMiddleware, async (c) => {
   const requiredCols = writableCols.filter((c) => c.notnull === 1 && c.dflt_value === null)
   const missing = requiredCols.filter((c) => {
     const val = body[c.name]
-    return val === null || val === undefined || val === ''
+    return val === null || val === undefined
   })
   if (missing.length > 0) {
     return c.json({
@@ -482,20 +491,36 @@ records.post('/:tableName/records/batch', requireWriteMiddleware, async (c) => {
 
   const rows = body.records.slice(0, 500) // 单次最多 500 条
 
-  // 从第一条记录推断字段列表
-  const firstRow = rows[0]
-  const fields = Object.keys(firstRow).filter((k) => allowedNames.includes(k))
-  if (fields.length === 0) {
-    return c.json({ error: { code: 'INVALID_BODY', message: 'No valid fields provided' } }, 400)
+  const requiredCols = writableCols.filter((c) => c.notnull === 1 && c.dflt_value === null)
+  const stmts: D1PreparedStatement[] = []
+
+  for (let idx = 0; idx < rows.length; idx++) {
+    const row = rows[idx]
+    const fields = Object.keys(row).filter((k) => allowedNames.includes(k))
+    if (fields.length === 0) {
+      return c.json({ error: { code: 'INVALID_BODY', message: `Record ${idx + 1} has no valid fields` } }, 400)
+    }
+
+    const missing = requiredCols.filter((c) => {
+      const val = row[c.name]
+      return val === null || val === undefined
+    })
+    if (missing.length > 0) {
+      return c.json({
+        error: {
+          code: 'REQUIRED_FIELDS_MISSING',
+          message: `Record ${idx + 1} is missing required fields: ${missing.map((c) => c.name).join(', ')}`,
+        },
+      }, 400)
+    }
+
+    const placeholders = fields.map(() => '?').join(', ')
+    const columnList = fields.map((f) => `"${f}"`).join(', ')
+    const insertSQL = `INSERT INTO "${tableName}" (${columnList}) VALUES (${placeholders})`
+    stmts.push(
+      c.env.DB.prepare(insertSQL).bind(...fields.map((f) => row[f]))
+    )
   }
-
-  const placeholders = fields.map(() => '?').join(', ')
-  const columnList = fields.map((f) => `"${f}"`).join(', ')
-  const insertSQL = `INSERT INTO "${tableName}" (${columnList}) VALUES (${placeholders})`
-
-  const stmts = rows.map((row) =>
-    c.env.DB.prepare(insertSQL).bind(...fields.map((f) => row[f]))
-  )
 
   // 追加计数更新
   stmts.push(
@@ -520,7 +545,7 @@ records.post('/:tableName/records/batch', requireWriteMiddleware, async (c) => {
  *   format=csv   → UTF-8 BOM CSV（默认，Excel 兼容）
  *   format=json  → JSON 数组
  *   filter/sort  → 同 records 接口
- *   最多导出 10000 行
+ *   最多导出 10000 行；超过时返回 413，避免静默截断
  */
 records.get('/:tableName/export', async (c) => {
   const { tableName } = c.req.param()
@@ -547,22 +572,34 @@ records.get('/:tableName/export', async (c) => {
     }
   }
 
+  const EXPORT_ROW_LIMIT = 10000
+
   const { sql, params } = buildSelectSQL({
     tableName,
     selectFields: [],
     filters,
     sort,
-    pageSize: 10000,
+    pageSize: EXPORT_ROW_LIMIT + 1,
     skipPageSizeLimit: true,
+    searchableFields: allColumns.filter((name) => name !== 'id'),
   })
 
   const result = await c.env.DB.prepare(sql).bind(...params).all()
   const rows = result.results as Record<string, unknown>[]
+  if (rows.length > EXPORT_ROW_LIMIT) {
+    return c.json({
+      error: {
+        code: 'EXPORT_LIMIT_EXCEEDED',
+        message: `Export exceeds the ${EXPORT_ROW_LIMIT} row limit. Please narrow your filters before exporting.`,
+      },
+    }, 413)
+  }
   const formattedRows = formatDatetimeFields(rows, fieldMeta)
 
   // 解析 link 字段值
   const linkFields = getLinkFields(fieldMeta)
-  await resolveLinkValues(c.env.DB, formattedRows, linkFields)
+  const allowedNoteIds = await getAccessibleNoteIds(c.env.DB, c.get('teamId'), c.get('allowedNoteRootIds'))
+  await resolveLinkValues(c.env.DB, formattedRows, linkFields, allowedNoteIds)
 
   // getFieldMeta 已按 order_index ASC 返回（含 id / created_at 等系统列）
   // 兜底：如果 _field_meta 为空（表未初始化），用 allColumns 作为 fallback
@@ -632,7 +669,8 @@ async function resolveNestedLinkIds(
   db: D1Database,
   targetTable: string,
   ids: string[],
-  displayField?: string
+  displayField?: string,
+  allowedNoteIds?: Set<string> | null,
 ): Promise<Map<string, string>> {
   const result = new Map<string, string>()
   const uniqueIds = [...new Set(ids.filter(Boolean))]
@@ -643,7 +681,10 @@ async function resolveNestedLinkIds(
     const rows = await db.prepare(
       `SELECT id, title FROM _notes WHERE id IN (${ph}) AND deleted_at IS NULL`
     ).bind(...uniqueIds).all<{ id: string; title: string | null }>()
-    for (const r of rows.results) result.set(r.id, r.title || 'Untitled')
+    for (const r of rows.results) {
+      if (allowedNoteIds !== undefined && allowedNoteIds !== null && !allowedNoteIds.has(r.id)) continue
+      result.set(r.id, r.title || 'Untitled')
+    }
     return result
   }
 
@@ -691,7 +732,8 @@ async function getTablePrimaryField(db: D1Database, tableName: string): Promise<
 async function resolveLinkValues(
   db: D1Database,
   rows: Record<string, unknown>[],
-  linkFields: Array<{ column_name: string; link_table: string; link_display_field?: string }>
+  linkFields: Array<{ column_name: string; link_table: string; link_display_field?: string }>,
+  allowedNoteIds?: Set<string> | null,
 ): Promise<void> {
   if (linkFields.length === 0 || rows.length === 0) return
 
@@ -727,6 +769,7 @@ async function resolveLinkValues(
       ).bind(...idArr).all<{ id: string; title: string | null }>()
       const map = new Map<string, { id: string; title: string }>()
       for (const r of result.results) {
+        if (allowedNoteIds !== undefined && allowedNoteIds !== null && !allowedNoteIds.has(r.id)) continue
         map.set(r.id, { id: r.id, title: r.title || 'Untitled' })
       }
       resolved.set(key, map)
@@ -764,7 +807,7 @@ async function resolveLinkValues(
       if (cfg.link_table) {
         const nestedIds = [...map.values()].map(v => v.title).filter(t => !t.startsWith('#'))
         if (nestedIds.length > 0) {
-          const nested = await resolveNestedLinkIds(db, cfg.link_table, nestedIds, cfg.link_display_field)
+          const nested = await resolveNestedLinkIds(db, cfg.link_table, nestedIds, cfg.link_display_field, allowedNoteIds)
           for (const [id, entry] of map) {
             const resolved_title = nested.get(entry.title)
             if (resolved_title) entry.title = resolved_title

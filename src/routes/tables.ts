@@ -19,6 +19,30 @@ function inferFieldType(colName: string, sqliteType: string): string {
   return 'text'
 }
 
+type TableColumnSnapshot = {
+  name: string
+  type: string
+  notnull: number
+  dflt_value: string | null
+  pk: number
+}
+
+function buildCreateTableSql(tableName: string, columns: TableColumnSnapshot[]): string {
+  const defs = columns.map((col) => {
+    if (col.name === 'id' && col.pk > 0 && col.type.toUpperCase() === 'INTEGER') {
+      return `"id" INTEGER PRIMARY KEY AUTOINCREMENT`
+    }
+
+    let def = `"${col.name}" ${col.type || 'TEXT'}`
+    if (col.pk > 0) def += ' PRIMARY KEY'
+    if (col.notnull) def += ' NOT NULL'
+    if (col.dflt_value !== null) def += ` DEFAULT ${col.dflt_value}`
+    return def
+  })
+
+  return `CREATE TABLE "${tableName}" (${defs.join(', ')})`
+}
+
 const tables = new Hono<{ Bindings: Env; Variables: AuthVariables }>()
 
 
@@ -353,7 +377,78 @@ tables.delete('/:tableName', requireWriteMiddleware, async (c) => {
     return c.json({ error: { code: 'TABLE_NOT_FOUND', message: `Table "${tableName}" not found` } }, 404)
   }
 
+  const [columns, rowsResult, metaRow, fieldMetaRows, linkMetaRows, inboundLinkMetaRows, groupRows, dashboardRow] = await Promise.all([
+    c.env.DB.prepare(`PRAGMA table_info("${tableName}")`)
+      .all<TableColumnSnapshot>(),
+    c.env.DB.prepare(`SELECT * FROM "${tableName}"`).all<Record<string, unknown>>(),
+    c.env.DB.prepare(
+      `SELECT title, row_count, icon, is_locked, owner_id, team_id FROM _meta WHERE table_name = ?`
+    ).bind(tableName).first<{
+      title: string | null
+      row_count: number
+      icon: string | null
+      is_locked: number
+      owner_id: number | null
+      team_id: number | null
+    }>(),
+    c.env.DB.prepare(
+      `SELECT column_name, title, field_type, select_options, order_index, width, is_hidden
+       FROM _field_meta WHERE table_name = ? ORDER BY order_index ASC`
+    ).bind(tableName).all<{
+      column_name: string
+      title: string
+      field_type: string
+      select_options: string | null
+      order_index: number
+      width: number
+      is_hidden: number
+    }>(),
+    c.env.DB.prepare(
+      `SELECT source_field, target_table FROM _link_meta WHERE source_table = ?`
+    ).bind(tableName).all<{ source_field: string; target_table: string }>(),
+    c.env.DB.prepare(
+      `SELECT source_table, source_field, target_table
+       FROM _link_meta
+       WHERE target_table = ? AND source_table != ?`
+    ).bind(tableName, tableName).all<{ source_table: string; source_field: string; target_table: string }>(),
+    c.env.DB.prepare(
+      `SELECT group_id FROM _group_tables WHERE table_name = ?`
+    ).bind(tableName).all<{ group_id: number }>(),
+    c.env.DB.prepare(
+      `SELECT config FROM _dashboards WHERE table_name = ?`
+    ).bind(tableName).first<{ config: string }>(),
+  ])
+
+  const snapshot = {
+    __kind: 'table',
+    table_name: tableName,
+    meta: {
+      title: metaRow?.title ?? null,
+      row_count: metaRow?.row_count ?? rowsResult.results.length,
+      icon: metaRow?.icon ?? null,
+      is_locked: metaRow?.is_locked ?? 0,
+      owner_id: metaRow?.owner_id ?? c.get('userId') ?? null,
+      team_id: metaRow?.team_id ?? c.get('teamId') ?? null,
+    },
+    columns: columns.results,
+    field_meta: fieldMetaRows.results,
+    link_meta: linkMetaRows.results,
+    inbound_link_meta: inboundLinkMetaRows.results,
+    group_ids: groupRows.results.map((row) => row.group_id),
+    dashboard_config: dashboardRow?.config ?? null,
+    rows: rowsResult.results,
+  }
+
   await c.env.DB.batch([
+    c.env.DB.prepare(
+      `INSERT INTO _trash (table_name, record_id, record_data, owner_id, team_id) VALUES (?, ?, ?, ?, ?)`
+    ).bind(
+      tableName,
+      0,
+      JSON.stringify(snapshot),
+      snapshot.meta.owner_id,
+      snapshot.meta.team_id,
+    ),
     c.env.DB.prepare(`DROP TABLE "${tableName}"`),
     c.env.DB.prepare(`DELETE FROM _meta WHERE table_name = ?`).bind(tableName),
     c.env.DB.prepare(`DELETE FROM _field_meta WHERE table_name = ?`).bind(tableName),

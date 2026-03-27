@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import type { AuthVariables, Env } from '../types'
 import { requireWriteMiddleware, teamFilter } from '../middleware/auth'
+import { canAccessNote, getAccessibleNoteIds } from '../utils/note-access'
 
 const notes = new Hono<{ Bindings: Env; Variables: AuthVariables }>()
 
@@ -14,8 +15,35 @@ function generateId(): string {
  */
 notes.get('/', async (c) => {
   const { clause, params } = teamFilter(c.get('teamId'))
-
   const parentId = c.req.query('parent_id')
+  const allowedNoteIds = await getAccessibleNoteIds(c.env.DB, c.get('teamId'), c.get('allowedNoteRootIds'))
+
+  if (parentId && parentId !== 'root' && !canAccessNote(allowedNoteIds, parentId)) {
+    return c.json({ error: { code: 'FORBIDDEN', message: 'Access to this note is not allowed' } }, 403)
+  }
+
+  if (allowedNoteIds !== null) {
+    const rows = await c.env.DB.prepare(
+      `SELECT id, title, icon, parent_id, sort_order, created_by, created_at, updated_at
+       FROM _notes WHERE ${clause} AND deleted_at IS NULL
+       ORDER BY sort_order ASC, created_at DESC
+       LIMIT 500`
+    ).bind(...params)
+      .all<{ id: string; title: string; icon: string | null; parent_id: string | null; sort_order: number; created_by: number | null; created_at: number; updated_at: number }>()
+
+    const visible = rows.results
+      .filter((row) => allowedNoteIds.has(row.id))
+      .map((row) => ({
+        ...row,
+        parent_id: row.parent_id && allowedNoteIds.has(row.parent_id) ? row.parent_id : null,
+      }))
+
+    const filtered = parentId && parentId !== 'root'
+      ? visible.filter((row) => row.parent_id === parentId)
+      : visible.filter((row) => row.parent_id === null)
+
+    return c.json({ data: filtered.slice(0, 200) })
+  }
 
   let sql = `SELECT id, title, icon, parent_id, sort_order, created_by, created_at, updated_at FROM _notes WHERE ${clause} AND deleted_at IS NULL`
 
@@ -40,6 +68,7 @@ notes.get('/', async (c) => {
  */
 notes.get('/tree', async (c) => {
   const { clause, params } = teamFilter(c.get('teamId'))
+  const allowedNoteIds = await getAccessibleNoteIds(c.env.DB, c.get('teamId'), c.get('allowedNoteRootIds'))
 
   const rows = await c.env.DB.prepare(
     `SELECT id, title, icon, parent_id, sort_order, is_locked, created_at, updated_at
@@ -49,7 +78,16 @@ notes.get('/tree', async (c) => {
   ).bind(...params)
     .all<{ id: string; title: string; icon: string | null; parent_id: string | null; sort_order: number; is_locked: number; created_at: number; updated_at: number }>()
 
-  return c.json({ data: rows.results })
+  const data = allowedNoteIds === null
+    ? rows.results
+    : rows.results
+        .filter((row) => allowedNoteIds.has(row.id))
+        .map((row) => ({
+          ...row,
+          parent_id: row.parent_id && allowedNoteIds.has(row.parent_id) ? row.parent_id : null,
+        }))
+
+  return c.json({ data })
 })
 
 /**
@@ -58,24 +96,28 @@ notes.get('/tree', async (c) => {
  */
 notes.get('/trash', async (c) => {
   const { clause, params } = teamFilter(c.get('teamId'))
+  const allowedNoteIds = await getAccessibleNoteIds(c.env.DB, c.get('teamId'), c.get('allowedNoteRootIds'))
 
   const page = Math.max(1, parseInt(c.req.query('page') ?? '1', 10) || 1)
   const pageSize = Math.min(100, Math.max(1, parseInt(c.req.query('page_size') ?? '20', 10) || 20))
 
-  // Show the topmost note of each deletion: deleted notes whose parent is either null or still alive (not deleted)
-  const trashFilter = `${clause} AND deleted_at IS NOT NULL AND (parent_id IS NULL OR parent_id IN (SELECT id FROM _notes WHERE deleted_at IS NULL))`
+  const rows = await c.env.DB.prepare(
+    `SELECT id, title, icon, parent_id, deleted_at FROM _notes
+     WHERE ${clause} AND deleted_at IS NOT NULL
+     ORDER BY deleted_at DESC`
+  ).bind(...params)
+    .all<{ id: string; title: string; icon: string | null; parent_id: string | null; deleted_at: number }>()
 
-  const [countRow, rows] = await Promise.all([
-    c.env.DB.prepare(`SELECT COUNT(*) as total FROM _notes WHERE ${trashFilter}`)
-      .bind(...params).first<{ total: number }>(),
-    c.env.DB.prepare(
-      `SELECT id, title, icon, deleted_at FROM _notes WHERE ${trashFilter}
-       ORDER BY deleted_at DESC LIMIT ? OFFSET ?`
-    ).bind(...params, pageSize, (page - 1) * pageSize)
-      .all<{ id: string; title: string; icon: string | null; deleted_at: number }>(),
-  ])
+  const deletedMap = new Map(rows.results.map((row) => [row.id, row]))
+  const visible = rows.results.filter((row) => {
+    if (allowedNoteIds !== null && !allowedNoteIds.has(row.id)) return false
+    if (!row.parent_id) return true
+    if (allowedNoteIds !== null && !allowedNoteIds.has(row.parent_id)) return true
+    return !deletedMap.has(row.parent_id)
+  })
 
-  return c.json({ data: rows.results, meta: { total: countRow?.total ?? 0, page, page_size: pageSize } })
+  const paged = visible.slice((page - 1) * pageSize, page * pageSize)
+  return c.json({ data: paged, meta: { total: visible.length, page, page_size: pageSize } })
 })
 
 /**
@@ -85,6 +127,11 @@ notes.get('/trash', async (c) => {
 notes.get('/:id', async (c) => {
   const { id } = c.req.param()
   const { clause, params } = teamFilter(c.get('teamId'))
+  const allowedNoteIds = await getAccessibleNoteIds(c.env.DB, c.get('teamId'), c.get('allowedNoteRootIds'))
+
+  if (!canAccessNote(allowedNoteIds, id)) {
+    return c.json({ error: { code: 'FORBIDDEN', message: 'Access to this note is not allowed' } }, 403)
+  }
 
   const row = await c.env.DB.prepare(
     `SELECT id, title, content, icon, parent_id, sort_order, is_locked, created_by, owner_id, created_at, updated_at
@@ -114,10 +161,14 @@ notes.post('/', requireWriteMiddleware, async (c) => {
   if (body.content && body.content.length > MAX_CONTENT) {
     return c.json({ error: { code: 'CONTENT_TOO_LARGE', message: 'Note content exceeds 1MB limit' } }, 413)
   }
+  const allowedNoteIds = await getAccessibleNoteIds(c.env.DB, c.get('teamId'), c.get('allowedNoteRootIds'))
 
   // Validate parent_id exists, not deleted, and belongs to same team
   const teamId = c.get('teamId')
   if (body.parent_id) {
+    if (!canAccessNote(allowedNoteIds, body.parent_id)) {
+      return c.json({ error: { code: 'FORBIDDEN', message: 'Cannot create under this note' } }, 403)
+    }
     let parentSql = `SELECT id FROM _notes WHERE id = ? AND deleted_at IS NULL`
     const parentParams: unknown[] = [body.parent_id]
     if (teamId !== undefined) {
@@ -128,6 +179,8 @@ notes.post('/', requireWriteMiddleware, async (c) => {
     if (!parent) {
       return c.json({ error: { code: 'INVALID_PARENT', message: 'Parent note not found' } }, 400)
     }
+  } else if (allowedNoteIds !== null) {
+    return c.json({ error: { code: 'FORBIDDEN', message: 'Scoped note access can only create notes inside allowed directories' } }, 403)
   }
 
   const id = generateId()
@@ -164,6 +217,11 @@ notes.patch('/:id', requireWriteMiddleware, async (c) => {
     is_locked?: boolean
   }>()
   const teamId = c.get('teamId')
+  const allowedNoteIds = await getAccessibleNoteIds(c.env.DB, c.get('teamId'), c.get('allowedNoteRootIds'))
+
+  if (!canAccessNote(allowedNoteIds, id)) {
+    return c.json({ error: { code: 'FORBIDDEN', message: 'Access to this note is not allowed' } }, 403)
+  }
 
   const sets: string[] = ['updated_at = unixepoch()']
   const params: unknown[] = []
@@ -190,6 +248,9 @@ notes.patch('/:id', requireWriteMiddleware, async (c) => {
       return c.json({ error: { code: 'INVALID_PARENT', message: 'Cannot set note as its own parent' } }, 400)
     }
     if (body.parent_id) {
+      if (!canAccessNote(allowedNoteIds, body.parent_id)) {
+        return c.json({ error: { code: 'FORBIDDEN', message: 'Cannot move note outside allowed directories' } }, 403)
+      }
       // Validate parent exists and belongs to same team
       let parentCheckSql = 'SELECT id FROM _notes WHERE id = ? AND deleted_at IS NULL'
       const parentCheckParams: unknown[] = [body.parent_id]
@@ -259,6 +320,11 @@ notes.patch('/:id', requireWriteMiddleware, async (c) => {
 notes.delete('/:id', requireWriteMiddleware, async (c) => {
   const { id } = c.req.param()
   const teamId = c.get('teamId')
+  const allowedNoteIds = await getAccessibleNoteIds(c.env.DB, c.get('teamId'), c.get('allowedNoteRootIds'))
+
+  if (!canAccessNote(allowedNoteIds, id)) {
+    return c.json({ error: { code: 'FORBIDDEN', message: 'Access to this note is not allowed' } }, 403)
+  }
 
   // Verify the target note belongs to current team
   let verifySql = `SELECT id FROM _notes WHERE id = ? AND deleted_at IS NULL`
@@ -312,6 +378,11 @@ notes.delete('/:id', requireWriteMiddleware, async (c) => {
 notes.delete('/:id/permanent', requireWriteMiddleware, async (c) => {
   const { id } = c.req.param()
   const teamId = c.get('teamId')
+  const allowedNoteIds = await getAccessibleNoteIds(c.env.DB, c.get('teamId'), c.get('allowedNoteRootIds'))
+
+  if (!canAccessNote(allowedNoteIds, id)) {
+    return c.json({ error: { code: 'FORBIDDEN', message: 'Access to this note is not allowed' } }, 403)
+  }
 
   let sql = `DELETE FROM _notes WHERE id = ? AND deleted_at IS NOT NULL`
   const params: unknown[] = [id]
@@ -335,6 +406,11 @@ notes.delete('/:id/permanent', requireWriteMiddleware, async (c) => {
 notes.post('/:id/restore', requireWriteMiddleware, async (c) => {
   const { id } = c.req.param()
   const teamId = c.get('teamId')
+  const allowedNoteIds = await getAccessibleNoteIds(c.env.DB, c.get('teamId'), c.get('allowedNoteRootIds'))
+
+  if (!canAccessNote(allowedNoteIds, id)) {
+    return c.json({ error: { code: 'FORBIDDEN', message: 'Access to this note is not allowed' } }, 403)
+  }
 
   // Restore note and all descendants deleted at the same timestamp
   let noteSql = `SELECT deleted_at FROM _notes WHERE id = ?`

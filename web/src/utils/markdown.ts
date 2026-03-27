@@ -33,7 +33,7 @@ const embedExtension = {
   },
   renderer(token: any) {
     return `<div class="md-embed">
-      <div class="md-embed-header">📊 ${token.tableTitle || token.tableName} <span class="md-embed-badge">Live Data</span></div>
+      <div class="md-embed-header"><span class="table-ref-icon md-embed-icon" aria-hidden="true"></span>${token.tableTitle || token.tableName} <span class="md-embed-badge">Live Data</span></div>
       <div class="md-embed-hint">Table: ${token.tableName} (limit ${token.limit})</div>
     </div>`
   },
@@ -80,7 +80,7 @@ const tableRefExtension = {
   },
   renderer(token: any) {
     const title = token.title || token.tableName
-    return `<a class="table-ref" href="/tables/${token.tableName}" data-table="${token.tableName}">📊 ${title}</a>`
+    return `<a class="table-ref" href="/tables/${token.tableName}" data-table="${token.tableName}"><span class="table-ref-icon" aria-hidden="true"></span>${title}</a>`
   },
 }
 

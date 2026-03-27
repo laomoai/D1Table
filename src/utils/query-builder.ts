@@ -3,7 +3,7 @@ import { sanitizeName } from './schema-cache'
 export type FilterOp = 'eq' | 'ne' | 'gt' | 'gte' | 'lt' | 'lte' | 'like' | 'nlike'
 
 export interface FilterItem {
-  field: string   // 已通过白名单校验
+  field: string   // 已通过白名单校验；"*" 表示跨字段搜索
   op: FilterOp
   value: string
 }
@@ -28,6 +28,11 @@ export interface SelectOptions {
   pageSize: number        // 最大 100（除非 skipPageSizeLimit = true）
   offset?: number         // offset 分页（page > 1 时使用）
   skipPageSizeLimit?: boolean  // 导出等场景允许超过 100 行
+  searchableFields?: string[]  // 用于全字段搜索
+}
+
+function escapeLike(value: string): string {
+  return value.replace(/[\\%_]/g, '\\$&')
 }
 
 /**
@@ -46,7 +51,7 @@ export function buildSelectSQL(opts: SelectOptions): {
   sql: string
   params: (string | number)[]
 } {
-  const { tableName, selectFields, filters, sort, cursor, pageSize, offset } = opts
+  const { tableName, selectFields, filters, sort, cursor, pageSize, offset, searchableFields = [] } = opts
 
   // cursor 和 offset 互斥：cursor 用于 keyset 分页，offset 用于页码分页
   if (cursor !== undefined && offset !== undefined && offset > 0) {
@@ -70,11 +75,23 @@ export function buildSelectSQL(opts: SelectOptions): {
 
   // 用户筛选条件
   for (const f of filters) {
+    if (f.field === '*') {
+      const searchCols = searchableFields.filter(Boolean).map((name) => `"${sanitizeName(name)}"`)
+      if (searchCols.length === 0) continue
+      const escaped = `%${escapeLike(f.value)}%`
+      const orClause = searchCols
+        .map((col) => `CAST(${col} AS TEXT) ${f.op === 'nlike' ? 'NOT LIKE' : 'LIKE'} ? ESCAPE '\\'`)
+        .join(f.op === 'nlike' ? ' AND ' : ' OR ')
+      conditions.push(`(${orClause})`)
+      for (let i = 0; i < searchCols.length; i++) params.push(escaped)
+      continue
+    }
+
     const col = `"${sanitizeName(f.field)}"`
     const opSql = OP_SQL[f.op]
     if (f.op === 'like' || f.op === 'nlike') {
-      conditions.push(`${col} ${opSql} ?`)
-      params.push(`%${f.value}%`)
+      conditions.push(`${col} ${opSql} ? ESCAPE '\\'`)
+      params.push(`%${escapeLike(f.value)}%`)
     } else {
       conditions.push(`${col} ${opSql} ?`)
       params.push(f.value)
@@ -139,6 +156,12 @@ export function parseFilters(
     } else {
       field = raw
       op = 'eq'
+    }
+
+    if (field === '__all') {
+      if (value === undefined || value === '') continue
+      items.push({ field: '*', op: op === 'nlike' ? 'nlike' : 'like', value })
+      continue
     }
 
     if (!allowed.has(field)) continue // 非允许列忽略，防止注入

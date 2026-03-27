@@ -1,5 +1,5 @@
 <template>
-  <div style="display: flex; gap: 6px; width: 100%;">
+  <div ref="wrapRef" style="display: flex; gap: 6px; width: 100%;" @focusout="onFocusOut">
     <n-input
       ref="inputRef"
       :value="modelValue"
@@ -8,13 +8,12 @@
       type="password"
       show-password-on="click"
       style="flex: 1;"
-      @blur="$emit('blur')"
       @keyup.enter="$emit('enter')"
       @keyup.escape="$emit('escape')"
     />
     <n-tooltip trigger="hover">
       <template #trigger>
-        <n-button quaternary size="small" @click="$emit('update:modelValue', generatePassword(true))">
+        <n-button quaternary size="small" @click="generate(true)">
           <span style="font-size: 13px;">A1#</span>
         </n-button>
       </template>
@@ -22,7 +21,7 @@
     </n-tooltip>
     <n-tooltip trigger="hover">
       <template #trigger>
-        <n-button quaternary size="small" @click="$emit('update:modelValue', generatePassword(false))">
+        <n-button quaternary size="small" @click="generate(false)">
           <span style="font-size: 13px;">A1a</span>
         </n-button>
       </template>
@@ -32,11 +31,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, nextTick } from 'vue'
 import { NInput, NButton, NTooltip } from 'naive-ui'
 
 defineProps<{ modelValue: string | null }>()
-defineEmits<{
+const emit = defineEmits<{
   'update:modelValue': [value: string]
   blur: []
   enter: []
@@ -44,12 +43,26 @@ defineEmits<{
 }>()
 
 const inputRef = ref<{ focus?: () => void } | null>(null)
+const wrapRef = ref<HTMLElement | null>(null)
 
 function focus() {
   inputRef.value?.focus?.()
 }
 
+function onFocusOut(e: FocusEvent) {
+  // 焦点移到组件内部的按钮时不触发 blur（如点击生成密码按钮）
+  if (wrapRef.value && e.relatedTarget instanceof Node && wrapRef.value.contains(e.relatedTarget)) {
+    return
+  }
+  emit('blur')
+}
+
 defineExpose({ focus })
+
+function generate(withSymbols: boolean) {
+  emit('update:modelValue', generatePassword(withSymbols))
+  nextTick(() => inputRef.value?.focus?.())
+}
 
 function generatePassword(withSymbols: boolean): string {
   const length = 16

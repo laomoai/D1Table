@@ -1,138 +1,184 @@
 <template>
-  <n-layout style="height: 100vh" has-sider>
-    <!-- Left sidebar -->
-    <n-layout-sider
-      bordered
-      :width="220"
-      :collapsed-width="0"
-      collapse-mode="width"
-      show-trigger="arrow-circle"
-      :native-scrollbar="false"
-      style="background: #f7f7f5;"
-    >
+  <div class="app-layout" :class="{ resizing: isResizing }">
+    <!-- Sidebar -->
+    <aside class="sidebar" :style="{ width: sidebarWidth + 'px' }">
       <div class="sidebar-header" @click="router.push('/')" style="cursor:pointer;">
         <img src="/logo.png" class="logo-img" alt="D1Table" />
         <span class="logo">D1Table</span>
       </div>
 
-      <!-- Notes entry -->
-      <div
-        class="nav-item"
-        :class="{ active: route.path.startsWith('/notes') }"
-        @click="router.push('/notes')"
-      >
-        <n-icon :component="NotesIcon" size="16" style="opacity: 0.7" />
-        <span>Notes</span>
+      <!-- Tab bar -->
+      <div class="sidebar-tabs">
+        <button
+          class="sidebar-tab"
+          :class="{ active: sidebarTab === 'tables' }"
+          @click="sidebarTab = 'tables'"
+        >
+          <n-icon :component="TableIcon" size="14" />
+          <span>Tables</span>
+        </button>
+        <button
+          class="sidebar-tab"
+          :class="{ active: sidebarTab === 'notes' }"
+          @click="sidebarTab = 'notes'"
+        >
+          <n-icon :component="NotesIcon" size="14" />
+          <span>Notes</span>
+        </button>
       </div>
 
-      <!-- Groups + table list -->
-      <div class="table-list">
-        <!-- Grouped tables -->
-        <template v-for="group in groupedTables" :key="group.id">
-          <div
-            class="group-header"
-            draggable="true"
-            @click="toggleGroup(group.id)"
-            @dragstart.stop="onGroupDragStart($event, group.id)"
-            @dragover.prevent="onGroupDragOver"
-            @drop.stop="onGroupDrop($event, group.id)"
-            @dragend="onGroupDragEnd"
-            :class="{ 'drag-target': draggedGroupId !== null && draggedGroupId !== group.id }"
-          >
-            <span class="group-arrow" :class="{ expanded: expandedGroups.has(group.id) }">›</span>
-            <span class="group-name">{{ group.name }}</span>
-            <span class="group-count">{{ group.tables.length }}</span>
-          </div>
-          <template v-if="expandedGroups.has(group.id)">
+      <!-- Scrollable content area -->
+      <div class="sidebar-scroll">
+        <!-- ════ Tables panel ════ -->
+        <div v-show="sidebarTab === 'tables'" class="table-list">
+          <!-- Grouped tables -->
+          <template v-for="group in groupedTables" :key="group.id">
             <div
-              v-for="table in sortedTables(group.tables)"
-              :key="table.name"
-              class="table-item grouped"
-              :style="tableItemStyle"
-              :class="{ active: activeTable === table.name }"
+              class="group-header"
               draggable="true"
-              @click="navigateToTable(table.name)"
-              @dragstart="onDragStart($event, table.name)"
-              @dragover="onDragOver"
-              @drop="onDrop($event, table.name)"
-              @dragend="onDragEnd"
+              @click="toggleGroup(group.id)"
+              @dragstart.stop="onGroupDragStart($event, group.id)"
+              @dragover.prevent="onGroupDragOver"
+              @drop.stop="onGroupDrop($event, group.id)"
+              @dragend="onGroupDragEnd"
+              :class="{ 'drag-target': draggedGroupId !== null && draggedGroupId !== group.id }"
             >
-              <span class="table-icon-cell">
-                <span v-if="table.icon && !table.icon.startsWith('ion:')" class="table-emoji-icon">{{ table.icon }}</span>
-                <ion-icon v-else-if="table.icon" :name="table.icon.slice(4)" :size="14" />
-                <span v-else class="table-emoji-icon" style="opacity:0.4">📊</span>
-              </span>
-              <template v-if="editingTable === table.name">
-                <input
-                  v-model="editTableTitle"
-                  class="table-name-input"
-                  @keyup.enter="saveTableTitle(table)"
-                  @keyup.escape="cancelTableEdit"
-                  @blur="saveTableTitle(table)"
-                  @click.stop
-                  ref="tableEditInputRef"
-                />
-              </template>
-              <template v-else>
-                <span class="table-name" @dblclick.stop="startTableEdit(table)">
-                  {{ table.title || table.name }}
-                </span>
-              </template>
+              <span class="group-arrow" :class="{ expanded: expandedGroups.has(group.id) }">›</span>
+              <HoverTooltipText
+                :text="group.name"
+                class-name="group-name"
+              />
+              <span class="group-count">{{ group.tables.length }}</span>
             </div>
+            <template v-if="expandedGroups.has(group.id)">
+              <div
+                v-for="table in sortedTables(group.tables)"
+                :key="table.name"
+                class="table-item grouped"
+                :style="tableItemStyle"
+                :class="{ active: activeTable === table.name }"
+                draggable="true"
+                @click="navigateToTable(table.name)"
+                @dragstart="onDragStart($event, table.name)"
+                @dragover="onDragOver"
+                @drop="onDrop($event, table.name)"
+                @dragend="onDragEnd"
+              >
+                <span class="table-icon-cell">
+                  <IonIcon v-if="table.icon && table.icon.startsWith('ion:')" :name="table.icon.slice(4)" :size="14" />
+                  <span v-else-if="table.icon" class="table-emoji-icon">{{ table.icon }}</span>
+                  <IonIcon v-else name="GridOutline" :size="14" />
+                </span>
+                <template v-if="editingTable === table.name">
+                  <input
+                    v-model="editTableTitle"
+                    class="table-name-input"
+                    @keyup.enter="saveTableTitle(table)"
+                    @keyup.escape="cancelTableEdit"
+                    @blur="saveTableTitle(table)"
+                    @click.stop
+                    ref="tableEditInputRef"
+                  />
+                </template>
+                <template v-else>
+                  <HoverTooltipText
+                    :text="table.title || table.name"
+                    class-name="table-name"
+                    @dblclick.stop="startTableEdit(table)"
+                  />
+                </template>
+              </div>
+            </template>
           </template>
-        </template>
 
-        <!-- Ungrouped tables -->
-        <template v-if="ungroupedTables.length > 0">
-          <div
-            v-if="groupedTables.length > 0"
-            class="group-header"
-            @click="toggleGroup(-1)"
-          >
-            <span class="group-arrow" :class="{ expanded: expandedGroups.has(-1) }">›</span>
-            <span class="group-name">Ungrouped</span>
-            <span class="group-count">{{ ungroupedTables.length }}</span>
-          </div>
-          <template v-if="groupedTables.length === 0 || expandedGroups.has(-1)">
+          <!-- Ungrouped tables -->
+          <template v-if="ungroupedTables.length > 0">
             <div
-              v-for="table in sortedTables(ungroupedTables)"
-              :key="table.name"
-              class="table-item"
-              :style="tableItemStyle"
-              :class="{ active: activeTable === table.name, grouped: groupedTables.length > 0 }"
-              draggable="true"
-              @click="navigateToTable(table.name)"
-              @dragstart="onDragStart($event, table.name)"
-              @dragover="onDragOver"
-              @drop="onDrop($event, table.name)"
-              @dragend="onDragEnd"
+              v-if="groupedTables.length > 0"
+              class="group-header"
+              @click="toggleGroup(-1)"
             >
-              <span class="table-icon-cell">
-                <span v-if="table.icon && !table.icon.startsWith('ion:')" class="table-emoji-icon">{{ table.icon }}</span>
-                <ion-icon v-else-if="table.icon" :name="table.icon.slice(4)" :size="14" />
-                <span v-else class="table-emoji-icon" style="opacity:0.4">📊</span>
-              </span>
-              <template v-if="editingTable === table.name">
-                <input
-                  v-model="editTableTitle"
-                  class="table-name-input"
-                  @keyup.enter="saveTableTitle(table)"
-                  @keyup.escape="cancelTableEdit"
-                  @blur="saveTableTitle(table)"
-                  @click.stop
-                  ref="tableEditInputRef"
-                />
-              </template>
-              <template v-else>
-                <span class="table-name" @dblclick.stop="startTableEdit(table)">
-                  {{ table.title || table.name }}
-                </span>
-              </template>
+              <span class="group-arrow" :class="{ expanded: expandedGroups.has(-1) }">›</span>
+              <span class="group-name">Ungrouped</span>
+              <span class="group-count">{{ ungroupedTables.length }}</span>
             </div>
+            <template v-if="groupedTables.length === 0 || expandedGroups.has(-1)">
+              <div
+                v-for="table in sortedTables(ungroupedTables)"
+                :key="table.name"
+                class="table-item"
+                :style="tableItemStyle"
+                :class="{ active: activeTable === table.name, grouped: groupedTables.length > 0 }"
+                draggable="true"
+                @click="navigateToTable(table.name)"
+                @dragstart="onDragStart($event, table.name)"
+                @dragover="onDragOver"
+                @drop="onDrop($event, table.name)"
+                @dragend="onDragEnd"
+              >
+                <span class="table-icon-cell">
+                  <IonIcon v-if="table.icon && table.icon.startsWith('ion:')" :name="table.icon.slice(4)" :size="14" />
+                  <span v-else-if="table.icon" class="table-emoji-icon">{{ table.icon }}</span>
+                  <IonIcon v-else name="GridOutline" :size="14" />
+                </span>
+                <template v-if="editingTable === table.name">
+                  <input
+                    v-model="editTableTitle"
+                    class="table-name-input"
+                    @keyup.enter="saveTableTitle(table)"
+                    @keyup.escape="cancelTableEdit"
+                    @blur="saveTableTitle(table)"
+                    @click.stop
+                    ref="tableEditInputRef"
+                  />
+                </template>
+                <template v-else>
+                  <HoverTooltipText
+                    :text="table.title || table.name"
+                    class-name="table-name"
+                    @dblclick.stop="startTableEdit(table)"
+                  />
+                </template>
+              </div>
+            </template>
           </template>
-        </template>
+        </div>
+
+        <!-- ════ Notes panel ════ -->
+        <div v-show="sidebarTab === 'notes'" class="notes-panel">
+          <div class="panel-header">
+            <input v-model="noteSearch" class="panel-search-input" :style="noteSearchStyle" placeholder="Search..." />
+            <button class="panel-add-btn" @click="createNewNote" title="New Note">+</button>
+          </div>
+          <div class="panel-list">
+            <n-spin v-if="notesTreeLoading" size="small" style="padding: 20px; display: flex; justify-content: center;" />
+            <div v-else-if="sidebarVisibleRootNotes.length === 0" class="panel-empty">
+              {{ noteSearch ? 'No matching notes' : 'No notes yet' }}
+            </div>
+            <template v-else>
+              <NoteTreeItem
+                v-for="note in sidebarVisibleRootNotes"
+                :key="note.id"
+                :note="note"
+                :children="sidebarVisibleChildrenMap.get(note.id) ?? []"
+                :children-map="sidebarVisibleChildrenMap"
+                :active-id="activeNoteId"
+                :expanded-ids="sidebarExpandedNoteIds"
+                :item-style="noteItemStyle"
+                :drop-target-id="noteDropState.id"
+                :drop-position="noteDropState.position"
+                @select="selectNote"
+                @toggle="toggleNoteFolder"
+                @create-child="createChildNote"
+                @reorder="handleNoteReorder"
+                @update:drop-state="noteDropState = $event"
+              />
+            </template>
+          </div>
+        </div>
       </div>
 
+      <!-- Footer -->
       <div class="sidebar-footer">
         <transition name="menu-slide">
           <div v-if="showUserMenu" class="user-menu">
@@ -161,33 +207,86 @@
           <span class="user-chevron">⋯</span>
         </div>
       </div>
-    </n-layout-sider>
+    </aside>
+
+    <!-- Resize handle -->
+    <div
+      class="resize-handle"
+      :class="{ active: isResizing }"
+      @mousedown.prevent="startResize"
+    />
 
     <!-- Main content area -->
-    <n-layout-content>
+    <main class="main-content">
       <router-view />
-    </n-layout-content>
-  </n-layout>
+    </main>
+  </div>
 </template>
 
 <script setup lang="ts">
-import { computed, ref, nextTick, reactive, onMounted, onUnmounted } from 'vue'
+import { computed, ref, nextTick, reactive, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
-import { NLayout, NLayoutSider, NLayoutContent, NButton, NIcon } from 'naive-ui'
-import { GridOutline as TableIcon, SettingsOutline as SettingsIcon, LogOutOutline as LogoutIcon, DocumentTextOutline as NotesIcon } from '@vicons/ionicons5'
-import { api, http, type TableMeta } from '@/api/client'
-import { useMessage } from 'naive-ui'
+import { NIcon, NSpin, useMessage } from 'naive-ui'
+import {
+  GridOutline as TableIcon,
+  SettingsOutline as SettingsIcon,
+  LogOutOutline as LogoutIcon,
+  DocumentTextOutline as NotesIcon,
+} from '@vicons/ionicons5'
+import { api, notesApi, http, type TableMeta, type NoteListItem } from '@/api/client'
 import { getCachedUser, resetAuthState } from '@/router'
 import { registerClipboardToast } from '@/utils/clipboard'
+import HoverTooltipText from './HoverTooltipText.vue'
 import IonIcon from './IonIcon.vue'
+import NoteTreeItem from './NoteTreeItem.vue'
 
 const message = useMessage()
 registerClipboardToast((content, opts) => message.success(content, opts))
 const router = useRouter()
 const route = useRoute()
 const queryClient = useQueryClient()
+const RECENT_KEY = 'd1table_recent_access'
 
+// ── Sidebar resize ──────────────────────────────────────────────
+const SIDEBAR_WIDTH_KEY = 'd1table_sidebar_width'
+const sidebarWidth = ref(parseInt(localStorage.getItem(SIDEBAR_WIDTH_KEY) ?? '220'))
+const isResizing = ref(false)
+
+function startResize(e: MouseEvent) {
+  isResizing.value = true
+  const startX = e.clientX
+  const startWidth = sidebarWidth.value
+
+  const onMouseMove = (ev: MouseEvent) => {
+    sidebarWidth.value = Math.max(180, Math.min(480, startWidth + ev.clientX - startX))
+  }
+  const onMouseUp = () => {
+    isResizing.value = false
+    localStorage.setItem(SIDEBAR_WIDTH_KEY, String(sidebarWidth.value))
+    document.removeEventListener('mousemove', onMouseMove)
+    document.removeEventListener('mouseup', onMouseUp)
+  }
+  document.addEventListener('mousemove', onMouseMove)
+  document.addEventListener('mouseup', onMouseUp)
+}
+
+// ── Sidebar tab ─────────────────────────────────────────────────
+const SIDEBAR_TAB_KEY = 'd1table_sidebar_tab'
+const sidebarTab = ref<'tables' | 'notes'>(
+  route.path.startsWith('/notes') ? 'notes'
+    : route.path.startsWith('/tables') ? 'tables'
+    : (localStorage.getItem(SIDEBAR_TAB_KEY) as 'tables' | 'notes') ?? 'tables'
+)
+
+watch(sidebarTab, (tab) => localStorage.setItem(SIDEBAR_TAB_KEY, tab))
+
+watch(() => route.path, (path) => {
+  if (path.startsWith('/notes')) sidebarTab.value = 'notes'
+  else if (path.startsWith('/tables')) sidebarTab.value = 'tables'
+})
+
+// ── Tables ──────────────────────────────────────────────────────
 const { data: tables } = useQuery({
   queryKey: ['tables'],
   queryFn: api.getTables,
@@ -216,7 +315,6 @@ function loadExpandedGroups(): Set<number> {
 }
 
 const expandedGroups = reactive(loadExpandedGroups())
-
 
 function savePreferencesToServer() {
   api.savePreferences({
@@ -272,7 +370,6 @@ function onGroupDrop(e: DragEvent, targetId: number) {
   e.preventDefault()
   if (!draggedGroupId.value || draggedGroupId.value === targetId) return
 
-  // 用当前显示顺序为基础
   const currentOrder = groupedTables.value.map(g => g.id)
   const from = currentOrder.indexOf(draggedGroupId.value)
   const to = currentOrder.indexOf(targetId)
@@ -307,7 +404,6 @@ const groupedTables = computed(() => {
   const result = groups.value
     .filter(g => g.tables.length > 0)
     .map(g => {
-      // 首次出现时（localStorage 里没有记录）默认展开
       if (!expandedGroups.has(g.id) && !localStorage.getItem(EXPANDED_GROUPS_KEY)) {
         expandedGroups.add(g.id)
         localStorage.setItem(EXPANDED_GROUPS_KEY, JSON.stringify([...expandedGroups]))
@@ -331,6 +427,13 @@ const ungroupedTables = computed(() => {
 })
 
 function navigateToTable(name: string) {
+  try {
+    const recent = JSON.parse(localStorage.getItem(RECENT_KEY) || '{}') as Record<string, number>
+    recent[name] = Date.now()
+    localStorage.setItem(RECENT_KEY, JSON.stringify(recent))
+  } catch {
+    localStorage.setItem(RECENT_KEY, JSON.stringify({ [name]: Date.now() }))
+  }
   router.push(`/tables/${name}`)
 }
 
@@ -395,12 +498,10 @@ function onDrop(e: DragEvent, targetName: string) {
   e.preventDefault()
   if (!draggedTable.value || draggedTable.value === targetName) return
 
-  // 以当前渲染顺序为基础重排
   const allTableNames = [
     ...groupedTables.value.flatMap(g => g.tables.map(t => t.name)),
     ...ungroupedTables.value.map(t => t.name),
   ]
-  // 去重，保持顺序（用 tableOrder 补全未排序的表）
   const order = tableOrder.value.length
     ? [...new Set([...tableOrder.value, ...allTableNames])]
     : [...allTableNames]
@@ -447,8 +548,184 @@ const tableItemStyle = computed(() => ({
   color: sidebarPrefs.value.textColor ?? '#37352f',
 }))
 
-const currentUser = computed(() => getCachedUser())
+const noteItemStyle = computed(() => ({
+  fontSize: `${sidebarPrefs.value.fontSize ?? 14}px`,
+  color: sidebarPrefs.value.textColor ?? '#37352f',
+}))
 
+const noteSearchStyle = computed(() => ({
+  fontSize: `${Math.max(12, (sidebarPrefs.value.fontSize ?? 14) - 1)}px`,
+  color: sidebarPrefs.value.textColor ?? '#37352f',
+}))
+
+// ── Notes tree ──────────────────────────────────────────────────
+const { data: notesTree, isLoading: notesTreeLoading } = useQuery({
+  queryKey: ['notes', 'tree'],
+  queryFn: notesApi.getTree,
+})
+
+const noteRootNotes = computed(() =>
+  (notesTree.value ?? []).filter(n => !n.parent_id)
+)
+
+const noteChildrenMap = computed(() => {
+  const map = new Map<string, NoteListItem[]>()
+  for (const n of notesTree.value ?? []) {
+    if (n.parent_id) {
+      const arr = map.get(n.parent_id) ?? []
+      arr.push(n)
+      map.set(n.parent_id, arr)
+    }
+  }
+  return map
+})
+
+// Notes expanded folders persistence
+const NOTE_EXPANDED_KEY = 'd1table_note_expanded'
+function loadNoteExpanded(): Set<string> {
+  try {
+    const raw = localStorage.getItem(NOTE_EXPANDED_KEY)
+    return raw ? new Set(JSON.parse(raw) as string[]) : new Set()
+  } catch { return new Set() }
+}
+const noteExpandedFolders = ref(loadNoteExpanded())
+
+function saveNoteExpanded() {
+  localStorage.setItem(NOTE_EXPANDED_KEY, JSON.stringify([...noteExpandedFolders.value]))
+}
+
+function toggleNoteFolder(id: string) {
+  if (noteExpandedFolders.value.has(id)) noteExpandedFolders.value.delete(id)
+  else noteExpandedFolders.value.add(id)
+  saveNoteExpanded()
+}
+
+// Notes search
+const noteSearch = ref('')
+
+const sidebarVisibleNoteIds = computed(() => {
+  const query = noteSearch.value.trim().toLowerCase()
+  if (!query) return null
+
+  const notes = notesTree.value ?? []
+  const byId = new Map(notes.map((note) => [note.id, note]))
+  const visible = new Set<string>()
+
+  for (const note of notes) {
+    if (!note.title.toLowerCase().includes(query)) continue
+    let current: NoteListItem | undefined = note
+    while (current) {
+      visible.add(current.id)
+      current = current.parent_id ? byId.get(current.parent_id) : undefined
+    }
+  }
+
+  return visible
+})
+
+const sidebarVisibleChildrenMap = computed(() => {
+  const visibleIds = sidebarVisibleNoteIds.value
+  if (!visibleIds) return noteChildrenMap.value
+
+  const map = new Map<string, NoteListItem[]>()
+  for (const [parentId, children] of noteChildrenMap.value.entries()) {
+    const filteredChildren = children.filter((child) => visibleIds.has(child.id))
+    if (filteredChildren.length > 0) {
+      map.set(parentId, filteredChildren)
+    }
+  }
+  return map
+})
+
+const sidebarVisibleRootNotes = computed(() => {
+  const visibleIds = sidebarVisibleNoteIds.value
+  if (!visibleIds) return noteRootNotes.value
+  return noteRootNotes.value.filter((note) => visibleIds.has(note.id))
+})
+
+const sidebarExpandedNoteIds = computed(() => {
+  if (!sidebarVisibleNoteIds.value) return noteExpandedFolders.value
+  return new Set([...noteExpandedFolders.value, ...sidebarVisibleNoteIds.value])
+})
+
+// Active note from route
+const activeNoteId = computed(() => {
+  const id = route.params.noteId
+  return typeof id === 'string' ? id : null
+})
+
+function selectNote(id: string) {
+  router.push(`/notes/${id}`)
+}
+
+// Notes CRUD
+async function createNewNote() {
+  try {
+    const result = await notesApi.createNote({ title: 'Untitled' })
+    queryClient.invalidateQueries({ queryKey: ['notes', 'tree'] })
+    router.push(`/notes/${result.id}`)
+  } catch (err) {
+    message.error((err as Error).message)
+  }
+}
+
+async function createChildNote(parentId: string) {
+  try {
+    const result = await notesApi.createNote({ title: 'Untitled', parent_id: parentId })
+    queryClient.invalidateQueries({ queryKey: ['notes', 'tree'] })
+    noteExpandedFolders.value.add(parentId)
+    saveNoteExpanded()
+    router.push(`/notes/${result.id}`)
+  } catch (err) {
+    message.error((err as Error).message)
+  }
+}
+
+// Notes drag reorder
+const noteDropState = ref<{ id: string | null; position: 'above' | 'child' | null }>({
+  id: null, position: null,
+})
+
+async function handleNoteReorder({ dragId, dropId, mode }: { dragId: string; dropId: string; mode: 'above' | 'child' }) {
+  const allNotes = notesTree.value ?? []
+  const dropNote = allNotes.find(n => n.id === dropId)
+  if (!dropNote) return
+
+  try {
+    if (mode === 'child') {
+      await notesApi.updateNote(dragId, { parent_id: dropId, sort_order: 0 })
+      noteExpandedFolders.value.add(dropId)
+      saveNoteExpanded()
+    } else {
+      const siblings = allNotes
+        .filter(n => n.parent_id === dropNote.parent_id)
+        .sort((a, b) => a.sort_order - b.sort_order)
+      const dropIndex = siblings.findIndex(n => n.id === dropId)
+      const prevOrder = dropIndex > 0 ? siblings[dropIndex - 1].sort_order : dropNote.sort_order - 1000
+      const gap = dropNote.sort_order - prevOrder
+
+      if (gap <= 1) {
+        for (let i = 0; i < siblings.length; i++) {
+          if (siblings[i].id !== dragId) {
+            await notesApi.updateNote(siblings[i].id, { sort_order: (i + 1) * 1000 })
+          }
+        }
+        const newDropIndex = siblings.findIndex(n => n.id === dropId)
+        const newOrder = newDropIndex > 0 ? newDropIndex * 1000 - 500 : 500
+        await notesApi.updateNote(dragId, { sort_order: newOrder, parent_id: dropNote.parent_id ?? null })
+      } else {
+        const newOrder = Math.floor((prevOrder + dropNote.sort_order) / 2)
+        await notesApi.updateNote(dragId, { sort_order: newOrder, parent_id: dropNote.parent_id ?? null })
+      }
+    }
+    queryClient.invalidateQueries({ queryKey: ['notes', 'tree'] })
+  } catch (err) {
+    message.error((err as Error).message)
+  }
+}
+
+// ── User menu ───────────────────────────────────────────────────
+const currentUser = computed(() => getCachedUser())
 const showUserMenu = ref(false)
 
 function handleMenuItem(key: string) {
@@ -475,12 +752,65 @@ async function logout() {
 </script>
 
 <style scoped>
+/* ── Layout ────────────────────────────────────────────────── */
+.app-layout {
+  display: flex;
+  height: 100vh;
+  overflow: hidden;
+}
+.app-layout.resizing {
+  cursor: col-resize;
+  user-select: none;
+}
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  background: #f7f7f5;
+  border-right: 1px solid #e9e9e7;
+  flex-shrink: 0;
+  min-width: 180px;
+  max-width: 480px;
+}
+.sidebar-scroll {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  min-height: 0;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0,0,0,0.12) transparent;
+}
+.sidebar-scroll::-webkit-scrollbar { width: 6px; }
+.sidebar-scroll::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.12); border-radius: 3px; }
+.sidebar-scroll::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.2); }
+.resize-handle {
+  width: 4px;
+  cursor: col-resize;
+  background: transparent;
+  flex-shrink: 0;
+  transition: background 0.15s;
+  position: relative;
+  z-index: 10;
+  margin-left: -2px;
+  margin-right: -2px;
+}
+.resize-handle:hover,
+.resize-handle.active {
+  background: rgba(55, 53, 47, 0.15);
+}
+.main-content {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* ── Header ────────────────────────────────────────────────── */
 .sidebar-header {
   padding: 20px 16px 12px;
   border-bottom: 1px solid #e9e9e7;
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-shrink: 0;
 }
 .logo-img {
   width: 26px;
@@ -495,27 +825,41 @@ async function logout() {
   color: #37352f;
   letter-spacing: 0;
 }
-.nav-item {
+
+/* ── Tabs ──────────────────────────────────────────────────── */
+.sidebar-tabs {
+  display: flex;
+  padding: 6px 8px;
+  gap: 2px;
+  flex-shrink: 0;
+  border-bottom: 1px solid #e9e9e7;
+}
+.sidebar-tab {
+  flex: 1;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 7px 16px;
-  margin: 4px 6px 0;
-  border-radius: 3px;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 0;
+  border: none;
+  background: none;
+  border-radius: 4px;
   cursor: pointer;
   font-size: 13px;
   font-weight: 500;
   color: #787774;
   transition: background 0.12s, color 0.12s;
 }
-.nav-item:hover {
-  background: rgba(55, 53, 47, 0.08);
+.sidebar-tab:hover {
+  background: rgba(55, 53, 47, 0.06);
   color: #37352f;
 }
-.nav-item.active {
+.sidebar-tab.active {
   background: rgba(55, 53, 47, 0.1);
   color: #37352f;
 }
+
+/* ── Tables panel ──────────────────────────────────────────── */
 .table-list {
   padding: 8px 0;
 }
@@ -532,9 +876,7 @@ async function logout() {
   letter-spacing: 0.5px;
   user-select: none;
 }
-.group-header:hover {
-  color: #37352f;
-}
+.group-header:hover { color: #37352f; }
 .group-header[draggable="true"] { cursor: grab; }
 .group-header[draggable="true"]:active { cursor: grabbing; }
 .group-header.drag-target {
@@ -547,9 +889,7 @@ async function logout() {
   display: inline-block;
   width: 10px;
 }
-.group-arrow.expanded {
-  transform: rotate(90deg);
-}
+.group-arrow.expanded { transform: rotate(90deg); }
 .group-name {
   flex: 1;
   overflow: hidden;
@@ -573,12 +913,8 @@ async function logout() {
   margin: 0 6px;
   transition: background 0.12s;
 }
-.table-item.grouped {
-  padding-left: 28px;
-}
-.table-item:hover {
-  background: rgba(55, 53, 47, 0.08);
-}
+.table-item.grouped { padding-left: 28px; }
+.table-item:hover { background: rgba(55, 53, 47, 0.08); }
 .table-item.active {
   background: rgba(55, 53, 47, 0.1);
   font-weight: 500;
@@ -614,11 +950,63 @@ async function logout() {
 }
 .table-item[draggable="true"] { cursor: grab; }
 .table-item[draggable="true"]:active { cursor: grabbing; }
+
+/* ── Notes panel ───────────────────────────────────────────── */
+.notes-panel {
+  padding: 0;
+}
+.panel-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+}
+.panel-search-input {
+  flex: 1;
+  padding: 5px 8px;
+  border: 1px solid #e9e9e7;
+  border-radius: 4px;
+  font-size: 12px;
+  color: #37352f;
+  background: #fff;
+  outline: none;
+  transition: border-color 0.15s;
+  min-width: 0;
+}
+.panel-search-input:focus { border-color: #b3b0ab; }
+.panel-search-input::placeholder { color: #b3b0ab; }
+.panel-add-btn {
+  background: none;
+  border: 1px solid #e9e9e7;
+  border-radius: 3px;
+  width: 26px;
+  height: 26px;
+  font-size: 16px;
+  color: #787774;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: all 0.1s;
+}
+.panel-add-btn:hover {
+  background: rgba(55, 53, 47, 0.08);
+  color: #37352f;
+}
+.panel-list {
+  padding: 0 4px;
+}
+.panel-empty {
+  padding: 20px 16px;
+  text-align: center;
+  font-size: 13px;
+  color: #a3a19d;
+}
+
+/* ── Footer ────────────────────────────────────────────────── */
 .sidebar-footer {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
+  flex-shrink: 0;
   border-top: 1px solid #e9e9e7;
 }
 .user-trigger {
@@ -628,21 +1016,15 @@ async function logout() {
   padding: 10px 14px;
   cursor: pointer;
   transition: background 0.12s;
-  border-radius: 0;
 }
-.user-trigger:hover {
-  background: rgba(55, 53, 47, 0.06);
-}
+.user-trigger:hover { background: rgba(55, 53, 47, 0.06); }
 .user-avatar {
   width: 30px;
   height: 30px;
   border-radius: 50%;
   flex-shrink: 0;
 }
-.user-details {
-  min-width: 0;
-  flex: 1;
-}
+.user-details { min-width: 0; flex: 1; }
 .user-name {
   font-size: 13px;
   color: #37352f;
@@ -664,7 +1046,6 @@ async function logout() {
   flex-shrink: 0;
   letter-spacing: -2px;
 }
-/* User menu */
 .user-menu {
   background: #fff;
   border: 1px solid #e9e9e7;

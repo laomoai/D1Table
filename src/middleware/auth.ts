@@ -33,6 +33,7 @@ export const authMiddleware: MiddlewareHandler<{
       c.set('keyScope', 'all')
       c.set('allowedTables', null)
       c.set('allowedGroupIds', null)
+      c.set('allowedNoteRootIds', null)
       c.set('user', user)
       c.set('userId', userRow.id)
       c.set('userRole', userRow.role)
@@ -54,16 +55,17 @@ export const authMiddleware: MiddlewareHandler<{
     c.set('keyScope', 'all')
     c.set('allowedTables', null)
     c.set('allowedGroupIds', null)
+    c.set('allowedNoteRootIds', null)
     return next()
   }
 
   // 2b. 数据库 API Key
   const hash = await sha256(apiKey)
   const row = await c.env.DB.prepare(
-    `SELECT id, type, scope, user_id, team_id FROM _api_keys WHERE key_hash = ? AND is_active = 1 LIMIT 1`
+    `SELECT id, type, scope, notes_scope, user_id, team_id FROM _api_keys WHERE key_hash = ? AND is_active = 1 LIMIT 1`
   )
     .bind(hash)
-    .first<{ id: number; type: 'readonly' | 'readwrite'; scope: 'all' | 'groups'; user_id: number | null; team_id: number | null }>()
+    .first<{ id: number; type: 'readonly' | 'readwrite'; scope: 'all' | 'groups'; notes_scope: 'all' | 'none' | 'roots'; user_id: number | null; team_id: number | null }>()
 
   if (!row) {
     return c.json({ error: { code: 'UNAUTHORIZED', message: 'Invalid or disabled API Key' } }, 401)
@@ -88,7 +90,7 @@ export const authMiddleware: MiddlewareHandler<{
 
   // scope=groups → 查询允许访问的表列表和组 ID
   if (row.scope === 'groups') {
-    const [allowed, groupIds] = await Promise.all([
+    const [allowed, groupIds, noteRoots] = await Promise.all([
       c.env.DB.prepare(
         `SELECT DISTINCT gt.table_name
          FROM _api_key_groups akg
@@ -98,13 +100,34 @@ export const authMiddleware: MiddlewareHandler<{
       c.env.DB.prepare(
         `SELECT group_id FROM _api_key_groups WHERE key_id = ?`
       ).bind(row.id).all<{ group_id: number }>(),
+      row.notes_scope === 'roots'
+        ? c.env.DB.prepare(
+            `SELECT note_id FROM _api_key_note_roots WHERE key_id = ?`
+          ).bind(String(row.id)).all<{ note_id: string }>()
+        : Promise.resolve({ results: [] as Array<{ note_id: string }> }),
     ])
 
     c.set('allowedTables', allowed.results.map(r => r.table_name))
     c.set('allowedGroupIds', groupIds.results.map(r => r.group_id))
+    c.set(
+      'allowedNoteRootIds',
+      row.notes_scope === 'all'
+        ? null
+        : row.notes_scope === 'roots'
+          ? noteRoots.results.map((r) => r.note_id)
+          : [],
+    )
   } else {
     c.set('allowedTables', null)
     c.set('allowedGroupIds', null)
+    if (row.notes_scope === 'roots') {
+      const noteRoots = await c.env.DB.prepare(
+        `SELECT note_id FROM _api_key_note_roots WHERE key_id = ?`
+      ).bind(String(row.id)).all<{ note_id: string }>()
+      c.set('allowedNoteRootIds', noteRoots.results.map((r) => r.note_id))
+    } else {
+      c.set('allowedNoteRootIds', row.notes_scope === 'none' ? [] : null)
+    }
   }
 
   return next()
@@ -137,6 +160,11 @@ export const tableAccessMiddleware: MiddlewareHandler<{
 }> = async (c, next) => {
   const tableName = c.req.param('tableName')
   if (!tableName) return next()
+
+  // _notes uses dedicated note-scope checks inside the search helper.
+  if (tableName === '_notes' && c.req.path.endsWith('/records/search')) {
+    return next()
+  }
 
   // scope=groups 限制
   const allowedTables = c.get('allowedTables')
