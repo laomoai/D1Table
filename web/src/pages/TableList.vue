@@ -15,23 +15,20 @@
 
       <!-- Search + Tabs -->
       <div class="search-tabs-area">
+        <!-- Search -->
         <div class="search-wrap">
           <span class="search-icon">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
           </span>
           <input
-            ref="searchInputRef"
             v-model="searchQuery"
             type="text"
             class="search-input"
             placeholder="Search tables..."
           />
-          <div class="search-shortcuts" aria-hidden="true">
-            <span class="search-shortcut-key search-shortcut-symbol">{{ shortcutModifierLabel }}</span>
-            <span class="search-shortcut-key">K</span>
-          </div>
         </div>
 
+        <!-- Tabs -->
         <div class="tabs-bar">
           <button
             v-for="tab in tabs"
@@ -46,7 +43,7 @@
             {{ tab }}
             <span v-if="activeTab === tab" class="tab-indicator" />
           </button>
-          <span class="tab-separator" aria-hidden="true" />
+          <span class="tab-separator" />
           <button class="tab-add-btn" @click="showNewGroup = true" title="New Group">+</button>
         </div>
       </div>
@@ -60,42 +57,25 @@
           <div v-for="(items, groupName) in groupedData" :key="groupName" class="group-section">
             <div class="group-section-header">
               <div class="group-header-left">
-                <HoverTooltipText
-                  :text="groupName"
-                  class-name="group-section-name"
-                  as="h2"
-                />
+                <h2 class="group-section-name">{{ groupName }}</h2>
                 <span class="group-section-count">{{ items.length }} tables</span>
               </div>
-              <button
-                v-if="activeTab === 'All' && getGroupByName(groupName)"
-                class="group-settings-btn"
-                @click="openEditGroup(getGroupByName(groupName)!)"
-              >
-                <span class="group-settings-icon" aria-hidden="true">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-                </span>
-                Settings
-              </button>
             </div>
             <div class="table-cards">
-            <div
-              v-for="t in items"
-              :key="t.name"
-              class="table-card"
-              @click="onCardClick(t)"
+              <div
+                v-for="t in items"
+                :key="t.name"
+                class="table-card"
+                @click="onCardClick(t)"
               >
                 <div class="card-left">
                   <div class="card-icon" @click.stop="openIconPicker(t)" title="Click to change icon">
-                    <IonIcon v-if="t.icon && t.icon.startsWith('ion:')" :name="t.icon.slice(4)" :size="20" />
-                    <span v-else-if="t.icon" class="card-icon-emoji">{{ t.icon }}</span>
-                    <IonIcon v-else name="GridOutline" :size="20" />
+                    <span v-if="t.icon && !t.icon.startsWith('ion:')" class="card-icon-emoji">{{ t.icon }}</span>
+                    <IonIcon v-else-if="t.icon" :name="t.icon.slice(4)" :size="20" />
+                    <span v-else class="card-icon-emoji" style="opacity: 0.4;">📊</span>
                   </div>
                   <div class="card-info">
-                    <HoverTooltipText
-                      :text="t.title || t.name"
-                      class-name="card-title"
-                    />
+                    <span class="card-title">{{ t.title || t.name }}</span>
                     <div class="card-meta">
                       <span class="card-id" @click.stop="copyTableId(t.name)">
                         ID: {{ t.name }}
@@ -107,23 +87,31 @@
                         </span>
                       </span>
                       <span class="card-count">{{ t.row_count ?? 0 }} records</span>
-                      <span v-if="activeTab === 'Recent' && recentAccess[t.name]" class="card-dot">•</span>
                       <span v-if="activeTab === 'Recent' && recentAccess[t.name]" class="card-last-access">
-                        {{ formatDate(recentAccess[t.name]) }}
+                        · {{ formatDate(recentAccess[t.name]) }}
                       </span>
                     </div>
                   </div>
                 </div>
                 <div class="card-right">
-                  <button
-                    class="card-delete-btn"
-                    type="button"
-                    @click.stop="confirmDeleteTable(t)"
-                    :aria-label="`Delete table ${t.title || t.name}`"
-                    title="Delete table"
+                  <n-dropdown
+                    trigger="click"
+                    :options="cardMenuOptions"
+                    @select="(key) => handleCardMenuSelect(key as string, t)"
                   >
-                    <IonIcon name="TrashOutline" :size="14" />
-                  </button>
+                    <button
+                      class="card-menu-btn"
+                      @click.stop
+                      title="Table actions"
+                      aria-label="Table actions"
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                        <circle cx="5" cy="12" r="1.75" />
+                        <circle cx="12" cy="12" r="1.75" />
+                        <circle cx="19" cy="12" r="1.75" />
+                      </svg>
+                    </button>
+                  </n-dropdown>
                   <span class="card-arrow">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
                   </span>
@@ -135,9 +123,7 @@
 
         <!-- Empty state -->
         <div v-if="Object.keys(groupedData).length === 0 && !isLoading" class="empty-state">
-          <div class="empty-icon-big">
-            <IonIcon name="SearchOutline" :size="40" />
-          </div>
+          <div class="empty-icon-big">🔍</div>
           <p class="empty-text">No tables found matching your criteria.</p>
         </div>
       </template>
@@ -150,13 +136,30 @@
         />
       </AppModal>
 
+      <AppModal v-model:show="showRenameTable" title="Rename Table" width="420px" height="auto">
+        <div class="rename-form">
+          <label class="ng-label">Display Name</label>
+          <input
+            v-model="renameTitle"
+            class="ng-input"
+            placeholder="Enter a display name"
+            @keyup.enter="saveRename"
+          />
+          <div class="rename-meta">Table ID: {{ renameTarget?.name }}</div>
+          <div class="ng-footer">
+            <button class="ng-btn" @click="showRenameTable = false">Cancel</button>
+            <button class="ng-btn primary" :disabled="!renameTitle.trim()" @click="saveRename">Save</button>
+          </div>
+        </div>
+      </AppModal>
+
       <CreateTableModal
         v-model:show="showCreateTable"
         @created="(name: string) => { queryClient.invalidateQueries({ queryKey: ['tables'] }); router.push(`/tables/${name}`) }"
       />
 
       <!-- New Group modal -->
-      <AppModal v-model:show="showNewGroup" title="New Group" width="520px" height="min(620px, 70vh)">
+      <AppModal v-model:show="showNewGroup" title="New Group" width="440px" height="auto">
         <div class="ng-form">
           <label class="ng-label">Group Name</label>
           <input v-model="newGroupName" class="ng-input" placeholder="e.g. Marketing, Engineering..." />
@@ -174,15 +177,9 @@
                 @change="toggleNewGroupTable(t.name)"
                 class="ng-checkbox"
               />
-              <span class="ng-table-icon">
-                <IonIcon v-if="t.icon && t.icon.startsWith('ion:')" :name="t.icon.slice(4)" :size="16" />
-                <span v-else-if="t.icon">{{ t.icon }}</span>
-                <IonIcon v-else name="GridOutline" :size="16" />
-              </span>
-              <HoverTooltipText
-                :text="t.title || t.name"
-                class-name="ng-table-name"
-              />
+              <span class="ng-table-icon">{{ t.icon && !t.icon.startsWith('ion:') ? t.icon : '📊' }}</span>
+              <span class="ng-table-name">{{ t.title || t.name }}</span>
+              <span v-if="getTableGroup(t.name)" class="ng-table-badge">in {{ getTableGroup(t.name) }}</span>
             </label>
           </div>
           <div class="ng-footer">
@@ -191,63 +188,18 @@
           </div>
         </div>
       </AppModal>
-
-      <AppModal v-model:show="showEditGroup" title="Edit Group" width="520px" height="min(660px, 70vh)">
-        <div class="ng-form">
-          <label class="ng-label">Group Name</label>
-          <input v-model="editingGroupName" class="ng-input" placeholder="Enter group name" />
-          <label class="ng-label" style="margin-top:16px;">Included Tables</label>
-          <div class="ng-hint">{{ selectedGroupTables.size }} selected</div>
-          <div class="ng-table-list edit-group-table-list">
-            <div
-              v-for="t in tables ?? []"
-              :key="t.name"
-              class="ng-table-item"
-            >
-              <label class="ng-table-main">
-                <input
-                  type="checkbox"
-                  :checked="selectedGroupTables.has(t.name)"
-                  @change="toggleSelectedGroupTable(t.name)"
-                  class="ng-checkbox"
-                />
-                <span class="ng-table-icon">
-                  <IonIcon v-if="t.icon && t.icon.startsWith('ion:')" :name="t.icon.slice(4)" :size="16" />
-                  <span v-else-if="t.icon">{{ t.icon }}</span>
-                  <IonIcon v-else name="GridOutline" :size="16" />
-                </span>
-                <HoverTooltipText
-                  :text="t.title || t.name"
-                  class-name="ng-table-name"
-                />
-              </label>
-            </div>
-          </div>
-          <div class="ng-footer">
-            <button class="ng-btn danger" :disabled="savingEditGroup || !editingGroupData" @click="handleDeleteGroup">
-              Delete
-            </button>
-            <div class="ng-footer-spacer" />
-            <button class="ng-btn" @click="showEditGroup = false">Cancel</button>
-            <button class="ng-btn primary" :disabled="savingEditGroup || !editingGroupName.trim()" @click="saveEditedGroup">
-              Save
-            </button>
-          </div>
-        </div>
-      </AppModal>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, defineAsyncComponent, onMounted, onBeforeUnmount } from 'vue'
+import { ref, reactive, computed, watch, defineAsyncComponent } from 'vue'
 import { useRouter } from 'vue-router'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
-import { NSpin, useDialog, useMessage } from 'naive-ui'
-import { api, type TableMeta, type Group } from '@/api/client'
+import { NDropdown, NSpin, useDialog, useMessage } from 'naive-ui'
+import { api, type TableMeta } from '@/api/client'
 import CreateTableModal from '@/components/CreateTableModal.vue'
 import AppModal from '@/components/AppModal.vue'
-import HoverTooltipText from '@/components/HoverTooltipText.vue'
 import IonIcon from '@/components/IonIcon.vue'
 
 const IconPicker = defineAsyncComponent(() => import('@/components/IconPicker.vue'))
@@ -256,7 +208,6 @@ const router = useRouter()
 const queryClient = useQueryClient()
 const message = useMessage()
 const dialog = useDialog()
-const searchInputRef = ref<HTMLInputElement | null>(null)
 
 // ── Data fetching ──
 const { data: tables, isLoading } = useQuery({
@@ -275,13 +226,13 @@ const searchQuery = ref('')
 const activeTab = ref('Recent')
 const showCreateTable = ref(false)
 const copiedId = ref<string | null>(null)
-const showEditGroup = ref(false)
-const editingGroupData = ref<Group | null>(null)
-const editingGroupName = ref('')
-const selectedGroupTables = ref(new Set<string>())
-const savingEditGroup = ref(false)
-const isMacLike = typeof navigator !== 'undefined' && /(Mac|iPhone|iPad|iPod)/i.test(navigator.platform)
-const shortcutModifierLabel = isMacLike ? '⌘' : 'Ctrl'
+const showRenameTable = ref(false)
+const renameTarget = ref<TableMeta | null>(null)
+const renameTitle = ref('')
+const cardMenuOptions = [
+  { label: 'Rename', key: 'rename' },
+  { label: 'Delete', key: 'delete' },
+]
 
 // ── Recent access tracking via localStorage ──
 const RECENT_KEY = 'd1table_recent_access'
@@ -295,12 +246,6 @@ function loadRecentAccess(): Record<string, number> {
 }
 
 const recentAccess = ref<Record<string, number>>(loadRecentAccess())
-const recentTableNames = computed(() =>
-  Object.entries(recentAccess.value)
-    .sort(([, aTime], [, bTime]) => bTime - aTime)
-    .slice(0, 20)
-    .map(([name]) => name)
-)
 
 function trackAccess(tableName: string) {
   recentAccess.value[tableName] = Date.now()
@@ -308,11 +253,7 @@ function trackAccess(tableName: string) {
 }
 
 function formatDate(ts: number): string {
-  const date = new Date(ts)
-  const year = date.getFullYear()
-  const month = date.getMonth() + 1
-  const day = date.getDate()
-  return `${year}/${month}/${day}`
+  return new Date(ts).toLocaleDateString()
 }
 
 // ── Sorting helpers (consistent with sidebar) ──
@@ -351,10 +292,6 @@ const tabs = computed(() => {
   return ['Recent', ...dynamicGroupNames.value, 'All']
 })
 
-function getGroupByName(name: string): Group | null {
-  return groups.value?.find(group => group.name === name) ?? null
-}
-
 // ── Filtering ──
 const filteredData = computed(() => {
   if (!tables.value) return []
@@ -370,8 +307,7 @@ const filteredData = computed(() => {
 
   // Tab filter
   if (activeTab.value === 'Recent') {
-    const visibleRecentNames = new Set(recentTableNames.value)
-    filtered = filtered.filter(t => visibleRecentNames.has(t.name))
+    // Sort by last accessed (most recent first), tables never accessed go to bottom
     filtered = [...filtered].sort((a, b) => {
       const aTime = recentAccess.value[a.name] || 0
       const bTime = recentAccess.value[b.name] || 0
@@ -414,8 +350,10 @@ const groupedData = computed<Record<string, TableMeta[]>>(() => {
   for (const g of sortedGroupsList(groups.value)) {
     const groupTableNames = new Set(g.tables)
     const groupTables = sortedTables(data.filter(t => groupTableNames.has(t.name)))
-    result[g.name] = groupTables
-    groupTables.forEach(t => groupedNames.add(t.name))
+    if (groupTables.length > 0) {
+      result[g.name] = groupTables
+      groupTables.forEach(t => groupedNames.add(t.name))
+    }
   }
 
   const ungrouped = sortedTables(data.filter(t => !groupedNames.has(t.name)))
@@ -438,24 +376,47 @@ function copyTableId(name: string) {
   setTimeout(() => { copiedId.value = null }, 1500)
 }
 
-function focusSearchInput() {
-  searchInputRef.value?.focus()
-  searchInputRef.value?.select()
+function handleCardMenuSelect(key: string, table: TableMeta) {
+  if (key === 'rename') {
+    renameTarget.value = table
+    renameTitle.value = table.title || table.name
+    showRenameTable.value = true
+    return
+  }
+
+  if (key === 'delete') {
+    dialog.warning({
+      title: 'Delete table',
+      content: `Delete "${table.title || table.name}"? This will remove the table and all of its records.`,
+      positiveText: 'Delete',
+      negativeText: 'Cancel',
+      onPositiveClick: async () => {
+        try {
+          await api.deleteTable(table.name)
+          message.success('Table deleted')
+          queryClient.invalidateQueries({ queryKey: ['tables'] })
+          queryClient.invalidateQueries({ queryKey: ['groups'] })
+        } catch (err) {
+          message.error((err as Error).message)
+        }
+      },
+    })
+  }
 }
 
-function isEditableTarget(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) return false
-  if (target.isContentEditable) return true
-  const tagName = target.tagName
-  return tagName === 'INPUT' || tagName === 'TEXTAREA' || tagName === 'SELECT'
-}
+async function saveRename() {
+  if (!renameTarget.value || !renameTitle.value.trim()) return
 
-function handleSearchShortcut(event: KeyboardEvent) {
-  if (event.key.toLowerCase() !== 'k') return
-  if (!(event.metaKey || event.ctrlKey)) return
-  if (isEditableTarget(event.target)) return
-  event.preventDefault()
-  focusSearchInput()
+  try {
+    await api.updateTableTitle(renameTarget.value.name, renameTitle.value.trim())
+    message.success('Table name updated')
+    queryClient.invalidateQueries({ queryKey: ['tables'] })
+    showRenameTable.value = false
+    renameTarget.value = null
+    renameTitle.value = ''
+  } catch (err) {
+    message.error((err as Error).message)
+  }
 }
 
 // ── Icon picker ──
@@ -515,108 +476,15 @@ async function createGroup() {
   }
 }
 
-function openEditGroup(group: Group) {
-  editingGroupData.value = group
-  editingGroupName.value = group.name
-  selectedGroupTables.value = new Set(group.tables)
-  showEditGroup.value = true
-}
-
-function toggleSelectedGroupTable(name: string) {
-  const next = new Set(selectedGroupTables.value)
-  if (next.has(name)) next.delete(name)
-  else next.add(name)
-  selectedGroupTables.value = next
-}
-
-async function saveEditedGroup() {
-  if (!editingGroupData.value || !editingGroupName.value.trim()) return
-  savingEditGroup.value = true
-  try {
-    const nextName = editingGroupName.value.trim()
-    if (nextName !== editingGroupData.value.name) {
-      await api.updateGroup(editingGroupData.value.id, { name: nextName })
-    }
-    await api.setGroupTables(editingGroupData.value.id, [...selectedGroupTables.value])
-    queryClient.invalidateQueries({ queryKey: ['groups'] })
-    queryClient.invalidateQueries({ queryKey: ['tables'] })
-    if (activeTab.value === editingGroupData.value.name && nextName !== editingGroupData.value.name) {
-      activeTab.value = nextName
-    }
-    message.success('Group updated')
-    showEditGroup.value = false
-  } catch (err) {
-    message.error((err as Error).message)
-  } finally {
-    savingEditGroup.value = false
-  }
-}
-
-async function confirmDeleteTable(t: TableMeta) {
-  dialog.warning({
-    title: 'Delete Table',
-    content: `Delete table ${t.title || t.name}? It will be moved to Trash.`,
-    positiveText: 'Delete',
-    negativeText: 'Cancel',
-    onPositiveClick: async () => {
-      try {
-        await api.deleteTable(t.name)
-        queryClient.invalidateQueries({ queryKey: ['tables'] })
-        queryClient.invalidateQueries({ queryKey: ['groups'] })
-        message.success('Table moved to Trash')
-      } catch (err) {
-        message.error((err as Error).message)
-      }
-    },
-  })
-}
-
-async function handleDeleteGroup() {
-  if (!editingGroupData.value) return
-  dialog.warning({
-    title: 'Delete Group',
-    content: 'Delete this group? Tables inside will not be deleted.',
-    positiveText: 'Delete',
-    negativeText: 'Cancel',
-    onPositiveClick: async () => {
-      savingEditGroup.value = true
-      try {
-        const deletedName = editingGroupData.value!.name
-        await api.deleteGroup(editingGroupData.value!.id)
-        queryClient.invalidateQueries({ queryKey: ['groups'] })
-        queryClient.invalidateQueries({ queryKey: ['tables'] })
-        if (activeTab.value === deletedName) {
-          activeTab.value = 'All'
-        }
-        message.success('Group deleted')
-        showEditGroup.value = false
-      } catch (err) {
-        message.error((err as Error).message)
-      } finally {
-        savingEditGroup.value = false
-      }
-    },
-  })
-}
-
 watch(showNewGroup, (v) => {
   if (v) { newGroupName.value = ''; newGroupTables.value = new Set() }
 })
 
-watch(showEditGroup, (v) => {
+watch(showRenameTable, (v) => {
   if (!v) {
-    editingGroupData.value = null
-    editingGroupName.value = ''
-    selectedGroupTables.value = new Set()
+    renameTarget.value = null
+    renameTitle.value = ''
   }
-})
-
-onMounted(() => {
-  document.addEventListener('keydown', handleSearchShortcut)
-})
-
-onBeforeUnmount(() => {
-  document.removeEventListener('keydown', handleSearchShortcut)
 })
 </script>
 
@@ -629,9 +497,9 @@ onBeforeUnmount(() => {
 }
 
 .dashboard-inner {
-  max-width: 920px;
+  max-width: 860px;
   margin: 0 auto;
-  padding: 40px 24px 80px;
+  padding: 48px 24px 80px;
 }
 
 /* ── Header ── */
@@ -719,54 +587,26 @@ onBeforeUnmount(() => {
 .search-input {
   width: 100%;
   box-sizing: border-box;
-  padding: 11px 84px 11px 36px;
-  background: #fbfbfa;
-  border: 1px solid #e7e5e4;
-  border-radius: 8px;
+  padding: 8px 16px 8px 36px;
+  background: #f7f7f5;
+  border: 1px solid transparent;
+  border-radius: 6px;
   font-size: 14px;
   color: #37352f;
   outline: none;
   transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
+  box-shadow: inset 0 0 0 1px rgba(15, 15, 15, 0.05);
 }
 .search-input::placeholder {
   color: #9b9a97;
 }
 .search-input:hover {
-  background: #fff;
+  background: #efefed;
 }
 .search-input:focus {
   background: #fff;
-  border-color: #ddd9d5;
-  box-shadow: 0 0 0 3px rgba(55, 53, 47, 0.06);
-}
-
-.search-shortcuts {
-  position: absolute;
-  right: 10px;
-  top: 50%;
-  transform: translateY(-50%);
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  color: #9b9a97;
-}
-
-.search-shortcut-key {
-  min-width: 20px;
-  height: 20px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0 4px;
-  border-radius: 5px;
-  border: 1px solid #e7e5e4;
-  background: #f7f7f5;
-  font-size: 11px;
-  line-height: 1;
-}
-
-.search-shortcut-symbol {
-  min-width: 18px;
+  border-color: #e9e9e7;
+  box-shadow: inset 0 0 0 1px rgba(35, 131, 226, 0.5), 0 0 0 2px rgba(35, 131, 226, 0.2);
 }
 
 /* ── Tabs ── */
@@ -789,9 +629,9 @@ onBeforeUnmount(() => {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 8px 12px 10px;
+  padding: 6px 12px;
   font-size: 14px;
-  font-weight: 450;
+  font-weight: 500;
   color: #787774;
   background: none;
   border: none;
@@ -805,7 +645,6 @@ onBeforeUnmount(() => {
 }
 .tab-btn.active {
   color: #37352f;
-  font-weight: 500;
 }
 .tab-btn.active:hover {
   background: transparent;
@@ -813,7 +652,7 @@ onBeforeUnmount(() => {
 
 .tab-separator {
   width: 1px;
-  height: 18px;
+  height: 20px;
   background: #e9e9e7;
   margin: 0 4px;
   flex-shrink: 0;
@@ -864,8 +703,7 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 18px;
-  gap: 12px;
+  margin-bottom: 16px;
 }
 
 .group-header-left {
@@ -875,54 +713,25 @@ onBeforeUnmount(() => {
 }
 
 .group-section-name {
-  font-size: 16px;
+  font-size: 18px;
   font-weight: 600;
   color: #37352f;
   margin: 0;
 }
 
 .group-section-count {
-  font-size: 12px;
+  font-size: 13px;
   color: #787774;
   background: #f1f1ef;
-  padding: 3px 10px;
+  padding: 2px 10px;
   border-radius: 12px;
-  white-space: nowrap;
-  display: inline-flex;
-  align-items: center;
-}
-
-.group-settings-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 12px;
-  border: 1px solid #e8e6e3;
-  border-radius: 10px;
-  background: #f7f7f5;
-  color: #4b4944;
-  font-size: 14px;
-  cursor: pointer;
-  transition: background 0.15s, border-color 0.15s, color 0.15s;
-}
-
-.group-settings-btn:hover {
-  background: #f1f1ef;
-  border-color: #ddd8d2;
-  color: #37352f;
-}
-
-.group-settings-icon {
-  display: inline-flex;
-  align-items: center;
-  color: #787774;
 }
 
 /* ── Card grid ── */
 .table-cards {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 14px 12px;
+  gap: 12px;
 }
 @media (min-width: 640px) {
   .table-cards {
@@ -936,18 +745,14 @@ onBeforeUnmount(() => {
   justify-content: space-between;
   padding: 14px 16px;
   background: #fff;
-  border: 1px solid #e8e6e3;
-  border-radius: 10px;
+  border: 1px solid #e9e9e7;
+  border-radius: 8px;
   cursor: pointer;
-  transition: transform 0.15s, background 0.15s, box-shadow 0.15s, border-color 0.15s;
-  box-shadow: 0 1px 2px rgba(15, 15, 15, 0.04);
-  min-height: 88px;
+  transition: background 0.15s, box-shadow 0.15s;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
 }
 .table-card:hover {
-  background: #fff;
-  border-color: #ddd8d2;
-  box-shadow: 0 8px 20px rgba(15, 15, 15, 0.06);
-  transform: translateY(-1px);
+  background: #f9f9f8;
 }
 
 .card-left {
@@ -959,14 +764,14 @@ onBeforeUnmount(() => {
 }
 
 .card-icon {
-  width: 42px;
-  height: 42px;
+  width: 40px;
+  height: 40px;
   flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
   background: #f7f7f5;
-  border-radius: 8px;
+  border-radius: 6px;
   cursor: pointer;
   transition: background 0.15s;
 }
@@ -979,7 +784,6 @@ onBeforeUnmount(() => {
   line-height: 1;
 }
 
-
 .card-info {
   display: flex;
   flex-direction: column;
@@ -988,7 +792,7 @@ onBeforeUnmount(() => {
 }
 
 .card-title {
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 600;
   color: #37352f;
   overflow: hidden;
@@ -1000,7 +804,7 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-top: 6px;
+  margin-top: 4px;
   flex-wrap: wrap;
 }
 
@@ -1009,9 +813,9 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 4px;
   background: #f1f1ef;
-  padding: 3px 8px;
+  padding: 2px 8px;
   border-radius: 4px;
-  font-size: 12px;
+  font-size: 11px;
   font-family: 'SF Mono', 'Menlo', 'Monaco', 'Consolas', monospace;
   color: #787774;
   cursor: pointer;
@@ -1036,13 +840,8 @@ onBeforeUnmount(() => {
   color: #787774;
 }
 
-.card-dot {
-  font-size: 12px;
-  color: #9b9a97;
-}
-
 .card-last-access {
-  font-size: 12px;
+  font-size: 11px;
   color: #9b9a97;
 }
 
@@ -1054,40 +853,41 @@ onBeforeUnmount(() => {
   flex-shrink: 0;
 }
 
-.card-delete-btn {
-  width: 28px;
-  height: 28px;
-  border: 1px solid #f0d4d1;
-  border-radius: 7px;
-  background: #fff;
-  color: #d9485f;
+.card-menu-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 0;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #9b9a97;
   cursor: pointer;
   opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+  transition: opacity 0.15s, background 0.15s, color 0.15s;
 }
-.table-card:hover .card-delete-btn,
-.card-delete-btn:focus-visible {
+
+.table-card:hover .card-menu-btn,
+.card-menu-btn:focus-visible {
   opacity: 1;
-  pointer-events: auto;
 }
-.card-delete-btn:hover {
-  background: #fff5f5;
-  border-color: #d9485f;
+
+.card-menu-btn:hover,
+.card-menu-btn:focus-visible {
+  background: #efefed;
+  color: #37352f;
+  outline: none;
 }
 
 .card-arrow {
-  opacity: 0.45;
+  opacity: 0.4;
   transition: opacity 0.15s;
   display: flex;
   align-items: center;
 }
 .table-card:hover .card-arrow {
-  opacity: 0.85;
+  opacity: 0.8;
 }
 
 /* ── Empty state ── */
@@ -1110,8 +910,10 @@ onBeforeUnmount(() => {
 .ng-form {
   display: flex;
   flex-direction: column;
-  height: 100%;
-  min-height: 0;
+}
+.rename-form {
+  display: flex;
+  flex-direction: column;
 }
 .ng-label {
   font-size: 14px;
@@ -1138,36 +940,22 @@ onBeforeUnmount(() => {
 }
 .ng-input:focus { border-color: #2383e2; box-shadow: 0 0 0 2px rgba(35, 131, 226, 0.2); }
 .ng-table-list {
-  flex: 1;
-  min-height: 280px;
-  max-height: min(360px, 100%);
+  max-height: 300px;
   overflow-y: auto;
   border: 1px solid #e9e9e7;
   border-radius: 6px;
 }
-
-.edit-group-table-list {
-  min-height: 320px;
-}
 .ng-table-item {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  gap: 10px;
   padding: 8px 12px;
+  cursor: pointer;
   transition: background 0.1s;
   font-size: 14px;
   color: #37352f;
 }
 .ng-table-item:hover { background: #f7f7f5; }
-.ng-table-main {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex: 1;
-  min-width: 0;
-  cursor: pointer;
-}
 .ng-checkbox {
   width: 16px;
   height: 16px;
@@ -1177,17 +965,26 @@ onBeforeUnmount(() => {
 }
 .ng-table-icon { font-size: 16px; flex-shrink: 0; }
 .ng-table-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ng-table-badge {
+  font-size: 11px;
+  color: #9b9a97;
+  background: #f1f1ef;
+  padding: 1px 6px;
+  border-radius: 3px;
+  white-space: nowrap;
+}
 .ng-footer {
   display: flex;
-  align-items: center;
+  justify-content: flex-end;
   gap: 8px;
   margin-top: 16px;
 }
-
-.ng-footer-spacer {
-  flex: 1;
+.rename-meta {
+  margin-top: 10px;
+  font-size: 12px;
+  color: #787774;
+  font-family: 'SF Mono', 'Menlo', 'Monaco', 'Consolas', monospace;
 }
-
 .ng-btn {
   padding: 8px 20px;
   border: 1px solid #e9e9e7;
@@ -1202,7 +999,4 @@ onBeforeUnmount(() => {
 .ng-btn.primary { background: #2383e2; color: #fff; border-color: #2383e2; }
 .ng-btn.primary:hover { background: #1b6ec2; }
 .ng-btn.primary:disabled { opacity: 0.5; cursor: not-allowed; }
-.ng-btn.danger { color: #c4554d; border-color: #f0d4d1; background: #fff; }
-.ng-btn.danger:hover { background: #fdf4f3; }
-.ng-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 </style>
