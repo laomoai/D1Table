@@ -24,9 +24,6 @@
             <button class="note-lock-btn" @click="toggleNoteLock" :title="activeNote.is_locked ? 'Unlock note' : 'Lock note'">
               <IonIcon :name="activeNote.is_locked ? 'LockClosedOutline' : 'LockOpenOutline'" :size="14" />
             </button>
-            <button class="note-action-btn" @click="showImportExport = true" title="Import / Export">
-              <IonIcon name="SwapVerticalOutline" :size="14" />
-            </button>
             <span v-if="activeNote.updated_at" class="note-time">
               Updated {{ formatTime(activeNote.updated_at) }}
             </span>
@@ -125,29 +122,6 @@
       </div>
     </AppModal>
 
-    <!-- Import / Export modal -->
-    <AppModal v-model:show="showImportExport" title="Import / Export" width="480px" height="auto">
-      <div class="ie-section">
-        <h4 class="ie-title">Export</h4>
-        <p class="ie-desc">Download notes as Markdown (.md) files</p>
-        <div class="ie-actions">
-          <button v-if="activeNoteId" class="ie-btn" @click="exportCurrentNote">Export current note</button>
-          <button class="ie-btn primary" @click="exportAllNotes">Export all notes (.zip)</button>
-        </div>
-      </div>
-      <div class="ie-section">
-        <h4 class="ie-title">Import as new notes</h4>
-        <p class="ie-desc">Each file becomes a new note</p>
-        <div class="ie-actions">
-          <button class="ie-btn" @click="triggerImport('new-single')">Single file</button>
-          <button class="ie-btn primary" @click="triggerImport('new-batch')">Multiple files</button>
-        </div>
-      </div>
-      <input ref="fileInputRef" type="file" accept=".md,.markdown,.txt" style="display:none" @change="handleImport" />
-      <div v-if="importProgress" class="ie-progress">
-        {{ importProgress }}
-      </div>
-    </AppModal>
   </div>
 </template>
 
@@ -170,7 +144,6 @@ const dialog = useDialog()
 const message = useMessage()
 const queryClient = useQueryClient()
 const showIconPicker = ref(false)
-const showImportExport = ref(false)
 const showTablePicker = ref(false)
 const tablePickerSearch = ref('')
 const fileInputRef = ref<HTMLInputElement | null>(null)
@@ -524,33 +497,6 @@ async function exportCurrentNote() {
   message.success(`Exported: ${filename}`)
 }
 
-async function exportAllNotes() {
-  const notes = treeData.value
-  if (!notes?.length) { message.warning('No notes to export'); return }
-
-  importProgress.value = 'Fetching notes...'
-  const fullNotes: { title: string; content: string }[] = []
-  for (const n of notes) {
-    try {
-      const full = await notesApi.getNote(n.id)
-      fullNotes.push({ title: full.title, content: full.content })
-    } catch { /* skip failed */ }
-  }
-
-  if (fullNotes.length === 1) {
-    const n = fullNotes[0]
-    downloadFile(`${n.title.replace(/[/\\?%*:|"<>]/g, '_')}.md`, n.content)
-  } else {
-    for (const n of fullNotes) {
-      downloadFile(`${n.title.replace(/[/\\?%*:|"<>]/g, '_')}.md`, n.content)
-    }
-  }
-
-  importProgress.value = ''
-  showImportExport.value = false
-  message.success(`Exported ${fullNotes.length} note(s)`)
-}
-
 function triggerImport(mode: 'new-single' | 'new-batch' | 'append') {
   importMode.value = mode
   nextTick(() => {
@@ -574,7 +520,6 @@ async function handleImport(event: Event) {
       noteEditorRef.value.insertAtEnd(content)
       await saveContent()
     }
-    showImportExport.value = false
     message.success(`Appended content from ${file.name}`)
     return
   }
@@ -598,7 +543,6 @@ async function handleImport(event: Event) {
 
   queryClient.invalidateQueries({ queryKey: ['notes', 'tree'] })
   importProgress.value = ''
-  showImportExport.value = false
   message.success(`Imported ${imported} note(s)`)
 }
 </script>

@@ -625,6 +625,17 @@ function openApiSpec(serverUrl: string) {
           responses: { '200': { description: 'Revoked successfully' } },
         },
       },
+      '/api/admin/keys/{id}/permanent': {
+        delete: {
+          summary: 'Permanently delete a revoked API Key',
+          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }],
+          responses: {
+            '200': { description: 'Deleted successfully' },
+            '400': { description: 'Only revoked keys can be permanently deleted' },
+            '404': { description: 'Key not found' },
+          },
+        },
+      },
       '/api/groups': {
         get: {
           summary: 'List all groups (with associated tables)',

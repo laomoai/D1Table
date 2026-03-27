@@ -45,6 +45,15 @@
                 >
                   Revoke
                 </n-button>
+                <n-button
+                  v-else
+                  size="tiny"
+                  type="error"
+                  quaternary
+                  @click="handleDeleteKey(k.id, k.name)"
+                >
+                  Delete
+                </n-button>
               </div>
             </div>
             <div v-else class="empty-hint">No API Keys yet</div>
@@ -53,15 +62,6 @@
               Create New Key
             </n-button>
           </template>
-
-          <!-- Export Schema -->
-          <div class="section" style="margin-top: 32px; padding-top: 24px; border-top: 1px solid #f0f0f0;">
-            <div class="section-label">Schema Export</div>
-            <div style="margin-top: 8px;">
-              <n-button size="small" @click="showExportSchema = true">Export Schema CSV</n-button>
-            </div>
-            <div class="hint" style="margin-top: 8px;">Download table and field name mappings as a CSV file</div>
-          </div>
 
           <!-- API Docs link -->
           <div class="section" style="margin-top: 32px; padding-top: 24px; border-top: 1px solid #f0f0f0;">
@@ -192,6 +192,45 @@
               <div v-else class="empty-hint">Trash is empty</div>
             </template>
           </template>
+        </div>
+      </n-tab-pane>
+
+      <!-- ─── Tab: Import / Export ─────────────────────────── -->
+      <n-tab-pane name="import-export" tab="Import / Export">
+        <div class="tab-content">
+          <div class="hint" style="margin-bottom: 16px;">
+            System-level exports live here. Import for tables and notes will be added next.
+          </div>
+
+          <div class="export-section">
+            <div class="export-card">
+              <div class="export-card-main">
+                <div class="export-card-title">Notes Bundle</div>
+                <div class="export-card-desc">Export all notes, hierarchy, icons, and content into one JSON file.</div>
+              </div>
+              <n-button size="small" type="primary" :loading="exportingNotesBundle" @click="handleExportNotesBundle">
+                Export Notes
+              </n-button>
+            </div>
+
+            <div class="export-card">
+              <div class="export-card-main">
+                <div class="export-card-title">Tables Bundle</div>
+                <div class="export-card-desc">Export all tables, field definitions, icons, and records into one JSON file.</div>
+              </div>
+              <n-button size="small" type="primary" :loading="exportingTablesBundle" @click="handleExportTablesBundle">
+                Export Tables
+              </n-button>
+            </div>
+
+            <div class="export-card">
+              <div class="export-card-main">
+                <div class="export-card-title">Schema CSV</div>
+                <div class="export-card-desc">Export table and field mappings as a CSV file for audit or migration work.</div>
+              </div>
+              <n-button size="small" @click="showExportSchema = true">Export Schema CSV</n-button>
+            </div>
+          </div>
         </div>
       </n-tab-pane>
 
@@ -494,6 +533,8 @@ const showExportSchema = ref(false)
 const showNewKey = ref(false)
 const newKeyValue = ref('')
 const creating = ref(false)
+const exportingNotesBundle = ref(false)
+const exportingTablesBundle = ref(false)
 const newKey = ref({
   name: '',
   type: 'readonly' as 'readonly' | 'readwrite',
@@ -558,9 +599,45 @@ async function handleRevoke(id: number) {
   }
 }
 
+function handleDeleteKey(id: number, name: string) {
+  dialog.warning({
+    title: 'Delete API Key',
+    content: `Permanently delete the revoked key "${name}"? This cannot be undone.`,
+    positiveText: 'Delete',
+    negativeText: 'Cancel',
+    onPositiveClick: async () => {
+      try {
+        await api.deleteKey(id)
+        message.success('Key deleted')
+        queryClient.invalidateQueries({ queryKey: ['admin-keys'] })
+      } catch (err) {
+        message.error((err as Error).message)
+      }
+    },
+  })
+}
+
 function copyKey() {
   navigator.clipboard.writeText(newKeyValue.value)
   message.success('Copied to clipboard')
+}
+
+function downloadJson(filename: string, payload: unknown) {
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+}
+
+function buildExportFilename(prefix: string) {
+  const now = new Date()
+  const stamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+  return `${prefix}_${stamp}.json`
 }
 
 const { data: groupList, isLoading: groupsLoading } = useQuery({
@@ -597,6 +674,92 @@ const noteRootOptions = computed<NoteRootOption[]>(() => {
   for (const root of roots) walk(root, 0)
   return out
 })
+
+async function handleExportNotesBundle() {
+  const notes = noteTree.value ?? []
+  if (notes.length === 0) {
+    message.warning('No notes to export')
+    return
+  }
+
+  exportingNotesBundle.value = true
+  try {
+    const fullNotes = await Promise.all(notes.map(async (note) => {
+      const full = await notesApi.getNote(note.id)
+      return {
+        id: full.id,
+        title: full.title,
+        icon: full.icon,
+        parent_id: full.parent_id,
+        sort_order: full.sort_order,
+        is_locked: full.is_locked,
+        created_at: full.created_at,
+        updated_at: full.updated_at,
+        content: full.content,
+      }
+    }))
+
+    downloadJson(buildExportFilename('notes_bundle'), {
+      kind: 'd1table-notes-export',
+      version: 1,
+      exported_at: new Date().toISOString(),
+      count: fullNotes.length,
+      notes: fullNotes,
+    })
+    message.success(`Exported ${fullNotes.length} notes`)
+  } catch (err) {
+    message.error((err as Error).message)
+  } finally {
+    exportingNotesBundle.value = false
+  }
+}
+
+async function blobToJson<T>(blob: Blob): Promise<T> {
+  return JSON.parse(await blob.text()) as T
+}
+
+async function handleExportTablesBundle() {
+  const tables = allTables.value ?? []
+  if (tables.length === 0) {
+    message.warning('No tables to export')
+    return
+  }
+
+  exportingTablesBundle.value = true
+  try {
+    const tablePayloads = await Promise.all(tables.map(async (table) => {
+      const [schema, fields, rowsBlob] = await Promise.all([
+        api.getTableSchema(table.name),
+        api.getFieldMeta(table.name),
+        api.exportRecords(table.name, { format: 'json' }),
+      ])
+      const rows = await blobToJson<Array<Record<string, unknown>>>(rowsBlob)
+      return {
+        name: table.name,
+        title: table.title,
+        icon: table.icon,
+        row_count: table.row_count,
+        is_locked: table.is_locked,
+        schema: schema.columns,
+        fields,
+        rows,
+      }
+    }))
+
+    downloadJson(buildExportFilename('tables_bundle'), {
+      kind: 'd1table-tables-export',
+      version: 1,
+      exported_at: new Date().toISOString(),
+      count: tablePayloads.length,
+      tables: tablePayloads,
+    })
+    message.success(`Exported ${tablePayloads.length} tables`)
+  } catch (err) {
+    message.error((err as Error).message)
+  } finally {
+    exportingTablesBundle.value = false
+  }
+}
 
 watch(() => newKey.value.scope, (scope) => {
   if (scope === 'groups' && newKey.value.notes_scope === 'all') {
@@ -951,6 +1114,35 @@ async function handleToggleRole(u: UserInfo) {
   font-size: 12px;
   color: #999;
   margin-top: 6px;
+}
+.export-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.export-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 16px;
+  border: 1px solid #e8eaf0;
+  border-radius: 10px;
+  background: #fff;
+}
+.export-card-main {
+  min-width: 0;
+}
+.export-card-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1a1d2e;
+}
+.export-card-desc {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #7b8090;
+  line-height: 1.5;
 }
 .empty-hint {
   font-size: 13px;

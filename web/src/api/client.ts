@@ -187,6 +187,8 @@ export const api = {
     http.patch<{ data: { success: boolean } }>(`/admin/keys/${id}`, data).then((r) => r.data.data),
   revokeKey: (id: number) =>
     http.delete(`/admin/keys/${id}`),
+  deleteKey: (id: number) =>
+    http.delete(`/admin/keys/${id}/permanent`),
 
   /** 图片上传 */
   uploadImage: async (thumb: Blob, display: Blob, name: string): Promise<ImageValue> => {

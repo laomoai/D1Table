@@ -1,63 +1,93 @@
 # D1Table
 
-D1Table 是一个运行在 **Cloudflare Workers + D1 + R2** 上的轻量级在线数据管理系统。
+D1Table is a lightweight data workspace built on **Cloudflare Workers + D1 + R2**.
 
-它把“数据库、表格管理、Notes、图表、回收箱、权限控制、API 文档”整合到一个界面里，既适合团队成员通过可视化界面使用，也适合 AI Agent 或自动化脚本通过 API 读写数据。
+It combines database-style table management, notes, charts, trash recovery, team access control, and API documentation in one UI. It works well for both human operators and AI agents that need a stable REST API.
 
-## 适合用来做什么
+## What It Is Good For
 
-- 管理团队内部的结构化数据
-- 给 AI Agent 提供稳定的 REST API 数据源
-- 搭建轻量的业务后台、资料库、账号库、内容库、任务库
-- 用表格、卡片、图表和 Notes 组织信息
-- 用 API Key 做只读或分组范围的安全访问
+- Internal team data management
+- Lightweight back office tools
+- Structured content, account, task, or research databases
+- Shared notes + tables in one workspace
+- AI agent memory stores and operational dashboards
+- Secure API access via scoped API keys
 
-## 当前能力
+## Core Features
 
-### 数据与视图
-- 动态创建、修改、删除表
-- 表格视图、卡片视图、看板视图、图表视图
-- 行详情抽屉，支持快速查看与编辑
-- 支持文本、长文本、数字、金额、百分比、邮箱、网址、日期、日期时间、复选框、单选、图片、关联记录、关联 Note 等字段类型
-- 支持批量新增记录
-- 支持导出记录
+### Tables and Views
 
-### 组织与协作
-- Tables 首页支持分组、最近访问、搜索
-- 左侧同时支持 Tables 和 Notes 导航
-- Notes 支持树形目录、子页面、导入导出
-- 支持团队成员与权限管理
-- 支持用户偏好同步
+- Create, edit, lock, and delete tables dynamically
+- Grid, gallery, kanban, chart, and dashboard-style views
+- Rich field types including text, long text, number, currency, percent, email, URL, date, datetime, checkbox, select, image, linked record, note link, password, TOTP, and more
+- Row detail drawer for fast inspection and editing
+- Batch record creation
+- Record export
+- Table grouping, recent tables, and search
 
-### 安全与权限
-- Google OAuth 登录
-- 管理员 / 普通用户角色
-- API Key 支持只读、读写
-- API Key 支持全部表或指定分组范围
-- 删除的记录、表、Notes 会进入回收箱，可恢复
+### Notes
 
-### API 与集成
-- 自动生成 API 文档
-- OpenAPI JSON 可供 AI Agent 自动读取
-- 支持用 `X-API-Key` 进行服务端或脚本访问
+- Tree-based notes with nested pages
+- Rich note editing with preview
+- Note icons, locking, trash, and restore flow
+- Current-note import/export tools
+- Notes available alongside tables in the main navigation
 
-## 文档入口
+### Settings and Admin
 
-- 用户使用说明：`docs/使用说明.md`
-- API 文档：部署后访问 `/api/docs`
-- OpenAPI JSON：部署后访问 `/api/openapi.json`
-- Google OAuth 配置说明：`docs/google-auth-spec.md`
+- Google OAuth sign-in
+- Admin and regular user roles
+- Team management
+- User preference sync
+- API key management with revoke support and permanent delete for revoked keys
+- System-level export area in `Settings > Import / Export`
+  - Export Notes bundle
+  - Export Tables bundle
+  - Export Schema CSV
 
-## 快速部署
+### Safety and Permissions
 
-### 环境要求
+- Soft-delete and trash for records, tables, and notes
+- Restore and permanent delete from trash
+- Table locks
+- Scoped API keys:
+  - read-only or read-write
+  - all tables or selected groups
+  - all notes, no notes, or selected note roots
+
+### API and Automation
+
+- Auto-generated API documentation
+- OpenAPI JSON for agent/tool discovery
+- Server and script access via `X-API-Key`
+
+## Documentation
+
+- User guide: `docs/使用说明.md`
+- Google OAuth setup notes: `docs/google-auth-spec.md`
+- API docs: `/api/docs` after deployment
+- OpenAPI JSON: `/api/openapi.json` after deployment
+- Chinese README: `readme_cn.md`
+
+## Tech Stack
+
+- Backend: Hono on Cloudflare Workers
+- Database: Cloudflare D1
+- File storage: Cloudflare R2
+- Frontend: Vue 3 + Vite + Naive UI
+- Charts: ECharts
+
+## Quick Start
+
+### Requirements
 
 - Node.js 18+
+- npm
 - Wrangler CLI
-- Cloudflare 账号
-- Google Cloud OAuth 2.0 凭据
+- Cloudflare account
+- Google Cloud OAuth 2.0 credentials
 
-### 一键部署
+### One-Command Setup
 
 ```bash
 git clone https://github.com/nicepkg/D1Table.git
@@ -65,19 +95,18 @@ cd D1Table
 ./setup.sh
 ```
 
-脚本会自动完成：
+The setup script will help you:
 
-1. 创建 D1 数据库
-2. 创建 R2 Bucket
-3. 生成本地配置
-4. 提示填写 Google OAuth 信息
-5. 安装依赖
-6. 运行数据库迁移
-7. 构建前端并部署
+1. Create D1 and R2 resources
+2. Generate local configuration
+3. Fill in Google OAuth values
+4. Install dependencies
+5. Run migrations
+6. Build and deploy
 
-## 手动部署
+## Manual Setup
 
-### 1. 安装依赖
+### 1. Install Dependencies
 
 ```bash
 git clone https://github.com/nicepkg/D1Table.git
@@ -86,24 +115,24 @@ npm install
 cd web && npm install && cd ..
 ```
 
-### 2. 创建 Cloudflare 资源
+### 2. Create Cloudflare Resources
 
 ```bash
 wrangler d1 create d1table
 wrangler r2 bucket create d1table-files
 ```
 
-创建后记下数据库 ID。
+Save the D1 database ID for the next step.
 
-### 3. 配置 Wrangler
+### 3. Configure Wrangler
 
 ```bash
 cp wrangler.toml.example wrangler.toml
 ```
 
-然后把 `wrangler.toml` 里的数据库和 Bucket 信息改成你自己的资源。
+Then update `wrangler.toml` with your own D1 and R2 resource identifiers.
 
-### 4. 设置生产 secrets
+### 4. Set Production Secrets
 
 ```bash
 wrangler secret put GOOGLE_CLIENT_ID
@@ -113,39 +142,36 @@ wrangler secret put ALLOWED_EMAILS
 wrangler secret put ADMIN_KEY
 ```
 
-说明：
+Notes:
 
-- `SESSION_SECRET` 建议使用随机的长字符串
-- `ALLOWED_EMAILS` 可选，不填则不限制邮箱白名单
-- `ADMIN_KEY` 建议配置，便于运维场景使用
+- `SESSION_SECRET` should be a long random string.
+- `ALLOWED_EMAILS` is optional. If omitted, email allowlisting is disabled.
+- `ADMIN_KEY` is recommended for operational access.
 
-### 5. 运行生产迁移
+### 5. Run Migrations
 
 ```bash
 npm run db:migrate
 ```
 
-说明：
+Use the migration script instead of running individual SQL files manually.
 
-- 请统一使用这个脚本
-- 不要手动逐个执行迁移文件
-
-### 6. 部署生产
+### 6. Deploy
 
 ```bash
 npm run deploy
 ```
 
-## Preview 环境部署
+## Preview Environment
 
-项目支持独立的 preview 环境。
+The project also supports a separate preview environment.
 
-### 推荐资源命名
+Suggested naming:
 
-- Preview D1：`d1table-preview`
-- Preview R2：`d1table-preview-files`
+- D1: `d1table-preview`
+- R2: `d1table-preview-files`
 
-### Preview secrets
+Set preview secrets:
 
 ```bash
 wrangler secret put GOOGLE_CLIENT_ID --env preview
@@ -155,36 +181,36 @@ wrangler secret put ALLOWED_EMAILS --env preview
 wrangler secret put ADMIN_KEY --env preview
 ```
 
-### Preview 迁移与部署
+Run preview migration and deploy:
 
 ```bash
 npm run db:migrate:preview
 npm run deploy:preview
 ```
 
-## 本地开发
+## Local Development
 
-### 1. 本地变量
+### 1. Create Local Env File
 
 ```bash
 cp .dev.vars.example .dev.vars
 ```
 
-填写以下变量：
+Fill in:
 
 - `GOOGLE_CLIENT_ID`
 - `GOOGLE_CLIENT_SECRET`
 - `SESSION_SECRET`
 
-### 2. 本地迁移
+### 2. Run Local Migrations
 
 ```bash
 npm run db:migrate:local
 ```
 
-### 3. 启动开发环境
+### 3. Start the App
 
-分别打开两个终端：
+Run these in two terminals:
 
 ```bash
 npm run dev:worker
@@ -194,119 +220,123 @@ npm run dev:worker
 npm run dev:web
 ```
 
-然后访问：
+Open:
 
-- 前端：`http://localhost:5173`
-- Worker：`http://localhost:8787`
+- Frontend: `http://localhost:5173`
+- Worker: `http://localhost:8787`
 
-## Google OAuth 配置
+## Google OAuth Callback URLs
 
-在 Google Cloud Console 创建 OAuth 2.0 Client ID，并配置回调地址。
+Configure the callback URL in Google Cloud Console.
 
-### 生产环境回调地址
-
-```text
-https://你的生产域名/api/auth/callback
-```
-
-### Preview 回调地址
+Production:
 
 ```text
-https://你的-preview域名/api/auth/callback
+https://your-domain.com/api/auth/callback
 ```
 
-### 本地回调地址
+Preview:
+
+```text
+https://your-preview-domain.com/api/auth/callback
+```
+
+Local:
 
 ```text
 http://localhost:8787/api/auth/callback
 ```
 
-## 登录与权限
+## Authentication
 
-### Web 登录
+### Web Login
 
-- 使用 Google 登录
-- 首个登录用户会成为管理员
-- 管理员可以在 Settings 里管理用户和团队
+- Sign in with Google
+- The first signed-in user becomes the initial admin
+- Admins can manage users and teams in `Settings`
 
-### API 调用方式
+### API Requests
 
-所有 API 请求都使用请求头：
+Use this header:
 
 ```text
 X-API-Key: your_api_key
 ```
 
-不是 Bearer Token。
+This project does not use Bearer tokens for API key access.
 
-## 常用命令
+## Common Commands
 
 ```bash
-# 本地开发
+# local development
 npm run dev:worker
 npm run dev:web
 
-# 前端构建
+# build frontend
 npm run build:web
 
-# 本地迁移
+# local migration
 npm run db:migrate:local
 
-# 生产迁移
+# production migration
 npm run db:migrate
 
-# preview 迁移
+# preview migration
 npm run db:migrate:preview
 
-# 生产部署
+# production deploy
 npm run deploy
 
-# preview 部署
+# preview deploy
 npm run deploy:preview
 ```
 
-## API 概览
+## API Overview
 
-完整接口请以部署后的 `/api/docs` 和 `/api/openapi.json` 为准。
+For the full contract, always use the deployed:
 
-这里列常用能力范围：
+- `/api/docs`
+- `/api/openapi.json`
 
-- 表管理
-- 字段管理
-- 记录查询与增删改
-- 批量新增记录
-- 记录导出
-- 图表配置保存
-- 分组管理
-- 用户偏好保存
-- API Key 管理
-- 用户与团队管理
-- 回收箱恢复与永久删除
-- Notes 管理
-- 图片上传与删除
+Main capabilities include:
 
-### 导出限制
+- table management
+- field management
+- record CRUD and search
+- batch inserts
+- record export
+- dashboard config persistence
+- group management
+- user preferences
+- API key management
+- user and team management
+- trash restore and permanent delete
+- notes management
+- image upload and delete
 
-- 记录导出单次最多 10,000 行
-- 超过上限时接口会直接返回错误，不会静默截断
+### Export Limits
 
-## 项目结构
+- Record export is capped at 10,000 rows per request
+- Requests beyond that limit return an explicit error
 
-- `src`：Worker API 与服务端逻辑
-- `web`：Vue 前端
-- `migrations`：数据库迁移
-- `scripts`：迁移与部署辅助脚本
-- `docs`：设计、说明与参考资料
-- `skills/d1table-client`：Python 客户端
+## Project Structure
 
-## 上线前建议检查
+- `src` - Worker API and backend logic
+- `web` - Vue frontend
+- `migrations` - database migrations
+- `scripts` - migration and deployment helpers
+- `docs` - design notes and docs
+- `tests` - test files
 
-1. 生产 secrets 是否齐全
-2. Google OAuth 回调地址是否配置正确
-3. 生产迁移是否已执行
-4. 是否能正常登录
-5. 是否能正常创建表、写入记录、恢复回收箱
-6. `/api/docs` 和 `/api/openapi.json` 是否可访问
+## Pre-Launch Checklist
+
+1. Production secrets are configured
+2. Google OAuth callback URLs are correct
+3. Production migrations have run
+4. Login works
+5. Creating tables and records works
+6. Trash restore works
+7. `/api/docs` and `/api/openapi.json` are reachable
 
 ## License
 

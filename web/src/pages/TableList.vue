@@ -20,13 +20,14 @@
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
           </span>
           <input
+            ref="searchInputRef"
             v-model="searchQuery"
             type="text"
             class="search-input"
             placeholder="Search tables..."
           />
           <div class="search-shortcuts" aria-hidden="true">
-            <span class="search-shortcut-key search-shortcut-symbol">⌘</span>
+            <span class="search-shortcut-key search-shortcut-symbol">{{ shortcutModifierLabel }}</span>
             <span class="search-shortcut-key">K</span>
           </div>
         </div>
@@ -78,11 +79,11 @@
               </button>
             </div>
             <div class="table-cards">
-              <div
-                v-for="t in items"
-                :key="t.name"
-                class="table-card"
-                @click="onCardClick(t)"
+            <div
+              v-for="t in items"
+              :key="t.name"
+              class="table-card"
+              @click="onCardClick(t)"
               >
                 <div class="card-left">
                   <div class="card-icon" @click.stop="openIconPicker(t)" title="Click to change icon">
@@ -114,6 +115,15 @@
                   </div>
                 </div>
                 <div class="card-right">
+                  <button
+                    class="card-delete-btn"
+                    type="button"
+                    @click.stop="confirmDeleteTable(t)"
+                    :aria-label="`Delete table ${t.title || t.name}`"
+                    title="Delete table"
+                  >
+                    <IonIcon name="TrashOutline" :size="14" />
+                  </button>
                   <span class="card-arrow">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
                   </span>
@@ -211,16 +221,6 @@
                   class-name="ng-table-name"
                 />
               </label>
-              <button
-                class="ng-row-delete"
-                type="button"
-                :disabled="savingEditGroup"
-                @click="removeTableFromEditingGroup(t.name)"
-                aria-label="Remove table from group"
-                title="Remove from group"
-              >
-                <IonIcon name="TrashOutline" :size="14" />
-              </button>
             </div>
           </div>
           <div class="ng-footer">
@@ -240,7 +240,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, defineAsyncComponent } from 'vue'
+import { ref, computed, watch, defineAsyncComponent, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import { NSpin, useDialog, useMessage } from 'naive-ui'
@@ -256,6 +256,7 @@ const router = useRouter()
 const queryClient = useQueryClient()
 const message = useMessage()
 const dialog = useDialog()
+const searchInputRef = ref<HTMLInputElement | null>(null)
 
 // ── Data fetching ──
 const { data: tables, isLoading } = useQuery({
@@ -279,6 +280,8 @@ const editingGroupData = ref<Group | null>(null)
 const editingGroupName = ref('')
 const selectedGroupTables = ref(new Set<string>())
 const savingEditGroup = ref(false)
+const isMacLike = typeof navigator !== 'undefined' && /(Mac|iPhone|iPad|iPod)/i.test(navigator.platform)
+const shortcutModifierLabel = isMacLike ? '⌘' : 'Ctrl'
 
 // ── Recent access tracking via localStorage ──
 const RECENT_KEY = 'd1table_recent_access'
@@ -435,6 +438,26 @@ function copyTableId(name: string) {
   setTimeout(() => { copiedId.value = null }, 1500)
 }
 
+function focusSearchInput() {
+  searchInputRef.value?.focus()
+  searchInputRef.value?.select()
+}
+
+function isEditableTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false
+  if (target.isContentEditable) return true
+  const tagName = target.tagName
+  return tagName === 'INPUT' || tagName === 'TEXTAREA' || tagName === 'SELECT'
+}
+
+function handleSearchShortcut(event: KeyboardEvent) {
+  if (event.key.toLowerCase() !== 'k') return
+  if (!(event.metaKey || event.ctrlKey)) return
+  if (isEditableTarget(event.target)) return
+  event.preventDefault()
+  focusSearchInput()
+}
+
 // ── Icon picker ──
 const showIconPicker = ref(false)
 const iconPickerTarget = ref<TableMeta | null>(null)
@@ -492,12 +515,6 @@ async function createGroup() {
   }
 }
 
-function removeTableFromEditingGroup(name: string) {
-  const next = new Set(selectedGroupTables.value)
-  next.delete(name)
-  selectedGroupTables.value = next
-}
-
 function openEditGroup(group: Group) {
   editingGroupData.value = group
   editingGroupName.value = group.name
@@ -533,6 +550,25 @@ async function saveEditedGroup() {
   } finally {
     savingEditGroup.value = false
   }
+}
+
+async function confirmDeleteTable(t: TableMeta) {
+  dialog.warning({
+    title: 'Delete Table',
+    content: `Delete table ${t.title || t.name}? It will be moved to Trash.`,
+    positiveText: 'Delete',
+    negativeText: 'Cancel',
+    onPositiveClick: async () => {
+      try {
+        await api.deleteTable(t.name)
+        queryClient.invalidateQueries({ queryKey: ['tables'] })
+        queryClient.invalidateQueries({ queryKey: ['groups'] })
+        message.success('Table moved to Trash')
+      } catch (err) {
+        message.error((err as Error).message)
+      }
+    },
+  })
 }
 
 async function handleDeleteGroup() {
@@ -573,6 +609,14 @@ watch(showEditGroup, (v) => {
     editingGroupName.value = ''
     selectedGroupTables.value = new Set()
   }
+})
+
+onMounted(() => {
+  document.addEventListener('keydown', handleSearchShortcut)
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener('keydown', handleSearchShortcut)
 })
 </script>
 
@@ -1010,6 +1054,32 @@ watch(showEditGroup, (v) => {
   flex-shrink: 0;
 }
 
+.card-delete-btn {
+  width: 28px;
+  height: 28px;
+  border: 1px solid #f0d4d1;
+  border-radius: 7px;
+  background: #fff;
+  color: #d9485f;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+}
+.table-card:hover .card-delete-btn,
+.card-delete-btn:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+.card-delete-btn:hover {
+  background: #fff5f5;
+  border-color: #d9485f;
+}
+
 .card-arrow {
   opacity: 0.45;
   transition: opacity 0.15s;
@@ -1107,31 +1177,6 @@ watch(showEditGroup, (v) => {
 }
 .ng-table-icon { font-size: 16px; flex-shrink: 0; }
 .ng-table-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ng-row-delete {
-  border: 1px solid #eb5757;
-  background: #fff;
-  color: #d9485f;
-  border-radius: 6px;
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 0;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.15s ease;
-  margin-left: auto;
-}
-.ng-row-delete:hover:not(:disabled) {
-  background: #fff5f5;
-  border-color: #d9485f;
-}
-.ng-row-delete:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
 .ng-footer {
   display: flex;
   align-items: center;

@@ -375,6 +375,49 @@ admin.delete('/keys/:id', async (c) => {
   return c.json({ data: { success: true } })
 })
 
+/**
+ * DELETE /api/admin/keys/:id/permanent
+ * 永久删除已撤销的 API Key
+ */
+admin.delete('/keys/:id/permanent', async (c) => {
+  const { id } = c.req.param()
+  const teamId = c.get('teamId')
+  const capabilities = await getApiKeySchemaCapabilities(c.env.DB)
+
+  let selectSql = `SELECT id, is_active FROM _api_keys WHERE id = ?`
+  const selectParams: unknown[] = [id]
+  if (teamId !== undefined) {
+    selectSql += ` AND team_id = ?`
+    selectParams.push(teamId)
+  }
+
+  const key = await c.env.DB.prepare(selectSql).bind(...selectParams).first<{ id: number; is_active: number }>()
+  if (!key) {
+    return c.json({ error: { code: 'NOT_FOUND', message: 'Key not found' } }, 404)
+  }
+  if (key.is_active) {
+    return c.json({ error: { code: 'INVALID_STATE', message: 'Only revoked keys can be permanently deleted' } }, 400)
+  }
+
+  const stmts: D1PreparedStatement[] = [
+    c.env.DB.prepare(`DELETE FROM _api_key_groups WHERE key_id = ?`).bind(id),
+  ]
+
+  if (capabilities.hasNoteRootsTable) {
+    stmts.push(
+      c.env.DB.prepare(`DELETE FROM _api_key_note_roots WHERE key_id = ?`).bind(String(id))
+    )
+  }
+
+  stmts.push(
+    c.env.DB.prepare(`DELETE FROM _api_keys WHERE id = ?`).bind(id)
+  )
+
+  await c.env.DB.batch(stmts)
+
+  return c.json({ data: { success: true } })
+})
+
 // ── 用户管理（仅 Admin） ────────────────────────────────────────
 
 /**
