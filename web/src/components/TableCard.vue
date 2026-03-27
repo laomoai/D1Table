@@ -1,9 +1,9 @@
 <template>
   <div class="table-card" @click="$emit('click')">
     <div class="card-icon" @click.stop="$emit('changeIcon', table)" title="Click to change icon">
-      <span v-if="table.icon && !table.icon.startsWith('ion:')" class="card-icon-emoji">{{ table.icon }}</span>
-      <IonIcon v-else-if="table.icon" :name="table.icon.slice(4)" :size="20" />
-      <span v-else style="font-size:20px;opacity:0.4">📊</span>
+      <IonIcon v-if="table.icon && table.icon.startsWith('ion:')" :name="table.icon.slice(4)" :size="20" />
+      <span v-else-if="table.icon" class="card-icon-emoji">{{ table.icon }}</span>
+      <IonIcon v-else name="GridOutline" :size="20" />
     </div>
     <div class="card-body">
       <template v-if="editingTable === table.name">
@@ -39,8 +39,6 @@
 
 <script setup lang="ts">
 import { ref, watch, nextTick } from 'vue'
-import { NIcon } from 'naive-ui'
-import { GridOutline } from '@vicons/ionicons5'
 import type { TableMeta } from '@/api/client'
 import IonIcon from './IonIcon.vue'
 

@@ -4,11 +4,18 @@
     <div class="toolbar">
       <span class="table-title">
         <button class="title-icon-btn" @click="showIconPicker = true" title="Change icon">
-          <span v-if="props.tableIcon && !props.tableIcon.startsWith('ion:')" class="title-icon-emoji">{{ props.tableIcon }}</span>
-          <ion-icon v-else-if="props.tableIcon" :name="props.tableIcon.slice(4)" :size="16" style="opacity:0.7;vertical-align:middle;" />
-          <span v-else class="title-icon-placeholder">📊</span>
+          <IonIcon v-if="props.tableIcon && props.tableIcon.startsWith('ion:')" :name="props.tableIcon.slice(4)" :size="16" />
+          <span v-else-if="props.tableIcon" class="title-icon-emoji">{{ props.tableIcon }}</span>
+          <IonIcon v-else name="GridOutline" :size="16" />
         </button>
-        {{ displayTitle }}
+        <span class="table-title-text">{{ displayTitle }}</span>
+        <button class="table-name-copy" type="button" @click.stop="copyTableName">
+          <span class="table-name-text">{{ props.tableName }}</span>
+          <span class="table-name-copy-icon">
+            <IonIcon v-if="copiedTableName" name="CheckmarkOutline" :size="12" />
+            <IonIcon v-else name="CopyOutline" :size="12" />
+          </span>
+        </button>
       </span>
       <span v-if="totalCount !== null" class="row-count">{{ totalCount }} records</span>
       <div style="flex:1" />
@@ -34,10 +41,10 @@
       </n-dropdown>
       <n-button size="small" type="primary" @click="openCreate" :disabled="props.isLocked">+ Add</n-button>
       <n-button size="small" quaternary @click="toggleLock" :title="props.isLocked ? 'Unlock table' : 'Lock table'">
-        {{ props.isLocked ? '🔒' : '🔓' }}
+        <IonIcon :name="props.isLocked ? 'LockClosedOutline' : 'LockOpenOutline'" :size="14" />
       </n-button>
       <n-button v-if="!selectMode" size="small" quaternary @click="enterSelectMode" :disabled="props.isLocked" title="Batch delete">
-        🗑
+        <IonIcon name="TrashOutline" :size="14" />
       </n-button>
       <n-button v-else size="small" type="error" quaternary @click="exitSelectMode">
         Cancel select
@@ -154,6 +161,7 @@
     :fields="fields"
     :all-rows="rowData as Record<string, unknown>[]"
     :initial-index="expandIndex"
+    :initial-row="expandRow as Record<string, unknown>"
     @refresh="invalidate"
   />
 
@@ -173,6 +181,9 @@ import type { ColDef, GridApi, ColumnResizedEvent, SortChangedEvent, SelectionCh
 import { api, type FieldMeta, type FieldType, type RecordRow, type SelectOption } from '@/api/client'
 import { decodeNoteValue } from '@/utils/noteValue'
 import { copyText } from '@/utils/clipboard'
+import router from '@/router'
+import { buildRecordQueryParams } from '@/utils/recordQuery'
+import { getLinkedRecordPath, navigateToLinkedRecord } from '@/utils/recordNavigation'
 import FilterBar, { type Filter } from './FilterBar.vue'
 import RecordForm from './RecordForm.vue'
 import FieldPanel from './FieldPanel.vue'
@@ -221,7 +232,10 @@ const batchDeleting = ref(false)
 const currentPage = ref(1)
 const pageSize = ref(parseInt(localStorage.getItem('d1table_page_size') ?? '30', 10) || 30)
 const exporting = ref(false)
+const appliedSearchText = ref('')
+const copiedTableName = ref(false)
 let resizeTimer: ReturnType<typeof setTimeout> | null = null
+let searchTimer: ReturnType<typeof setTimeout> | null = null
 
 const exportOptions = [
   { label: 'Export CSV', key: 'csv' },
@@ -250,13 +264,11 @@ async function toggleLock() {
 async function handleExport(format: 'csv' | 'json') {
   exporting.value = true
   try {
-    const exportParams: Record<string, string | number> = {}
-    if (sortField.value) exportParams.sort = `${sortField.value}:${sortDir.value}`
-    for (const f of activeFilters.value) {
-      if (f.field && f.value) {
-        exportParams[`filter[${f.field}${f.op === 'eq' ? '' : `__${f.op}`}]`] = f.value
-      }
-    }
+    const exportParams = buildRecordQueryParams({
+      sort: sortField.value ? `${sortField.value}:${sortDir.value}` : undefined,
+      searchText: appliedSearchText.value,
+      filters: activeFilters.value,
+    })
     const blob = await api.exportRecords(props.tableName, { ...exportParams, format })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -292,9 +304,12 @@ const rowSelection = computed(() => ({
   enableClickSelection: false,
 }))
 
-// ── 搜索：监听 searchText 更新 AG Grid quick filter ──────────
+// ── 搜索：服务端防抖查询 ───────────────────────────────────────
 watch(searchText, (v) => {
-  gridApi.value?.setGridOption('quickFilterText', v)
+  if (searchTimer) clearTimeout(searchTimer)
+  searchTimer = setTimeout(() => {
+    appliedSearchText.value = v.trim()
+  }, 250)
 })
 
 // ── 计算属性 ──────────────────────────────────────────────────
@@ -305,6 +320,14 @@ const visibleFields = computed(() =>
 )
 const hiddenCount = computed(() => props.fields.filter(f => f.is_hidden).length)
 const displayTitle = computed(() => props.tableTitle || props.tableName)
+
+function copyTableName() {
+  copyText(props.tableName)
+  copiedTableName.value = true
+  window.setTimeout(() => {
+    copiedTableName.value = false
+  }, 1200)
+}
 
 
 function getLinkTableFromField(field: FieldMeta): string | undefined {
@@ -364,21 +387,17 @@ const columnDefs = computed<ColDef[]>(() => {
 
 // ── 查询参数 ──────────────────────────────────────────────────
 const queryParams = computed(() => {
-  const params: Record<string, string | number> = {
-    page_size: pageSize.value,
+  return buildRecordQueryParams({
+    pageSize: pageSize.value,
     page: currentPage.value,
-  }
-  if (sortField.value) params.sort = `${sortField.value}:${sortDir.value}`
-  for (const f of activeFilters.value) {
-    if (f.field && f.value) {
-      params[`filter[${f.field}${f.op === 'eq' ? '' : `__${f.op}`}]`] = f.value
-    }
-  }
-  return params
+    sort: sortField.value ? `${sortField.value}:${sortDir.value}` : undefined,
+    searchText: appliedSearchText.value,
+    filters: activeFilters.value,
+  })
 })
 
 // 过滤条件或排序改变时重置到第一页；pageSize 变化时持久化
-watch([activeFilters, sortField, sortDir, pageSize], () => {
+watch([activeFilters, sortField, sortDir, pageSize, appliedSearchText], () => {
   currentPage.value = 1
 })
 watch(pageSize, (v) => {
@@ -478,7 +497,7 @@ watch(() => props.highlightId, async (id) => {
     const record = await api.getRecord(props.tableName, Number(id))
     if (record) {
       expandRow.value = record as Record<string, unknown>
-      expandIndex.value = 0
+      expandIndex.value = rowData.value.findIndex((row) => Number(row.id) === Number(id))
       showExpand.value = true
     }
   } catch {}
@@ -504,6 +523,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   if (resizeTimer) clearTimeout(resizeTimer)
+  if (searchTimer) clearTimeout(searchTimer)
   closeDropdown()
   document.removeEventListener('click', closeDropdown)
   document.removeEventListener('keydown', handleKeydown)
@@ -672,10 +692,7 @@ function typedCellRenderer(params: { value: unknown; fieldType: FieldType; selec
           if (lt) {
             span.onclick = (e) => {
               e.stopPropagation()
-              const target = lt === '_notes'
-                ? `/notes/${linked.id}`
-                : `/tables/${lt}?highlight=${linked.id}`
-              import('@/router').then(m => m.default.push(target))
+              router.push(getLinkedRecordPath(lt, linked.id))
             }
           }
           return span
@@ -689,10 +706,16 @@ function typedCellRenderer(params: { value: unknown; fieldType: FieldType; selec
       if (!info) return '<span class="ag-cell-empty">—</span>'
       const span = document.createElement('span')
       span.className = 'ag-cell-note'
-      span.textContent = `${info.icon || '📄'} ${info.title}`
+      const icon = document.createElement('span')
+      icon.className = 'ag-note-icon'
+      const title = document.createElement('span')
+      title.className = 'ag-note-title'
+      title.textContent = info.title
+      span.appendChild(icon)
+      span.appendChild(title)
       span.onclick = (e) => {
         e.stopPropagation()
-        import('@/router').then(m => m.default.push(`/notes/${info.id}`))
+        navigateToLinkedRecord(router, '_notes', info.id)
       }
       return span
     }
@@ -981,6 +1004,31 @@ async function refreshAll() {
   cursor: pointer; max-width: 100%; overflow: hidden;
   text-overflow: ellipsis; white-space: nowrap;
 }
+.ag-note-icon {
+  width: 12px;
+  height: 12px;
+  border: 1px solid currentColor;
+  border-radius: 2px;
+  position: relative;
+  opacity: 0.6;
+  flex-shrink: 0;
+}
+.ag-note-icon::after {
+  content: '';
+  position: absolute;
+  right: -1px;
+  top: -1px;
+  width: 4px;
+  height: 4px;
+  background: #fff;
+  border-top: 1px solid currentColor;
+  border-right: 1px solid currentColor;
+}
+.ag-note-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .ag-cell-note:hover { background: rgba(55,53,47,0.1); }
 .ag-cell-link-record {
   display: inline-flex; align-items: center;
@@ -1068,14 +1116,51 @@ async function refreshAll() {
   border-bottom: 1px solid #e8eaf0;
   flex-shrink: 0;
 }
-.table-title { font-size: 15px; font-weight: 600; color: #1a1d2e; display: flex; align-items: center; gap: 5px; }
+.table-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #1a1d2e;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  white-space: nowrap;
+}
+.table-title-text {
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.table-name-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid #e0e2e8;
+  background: #f7f8fa;
+  color: #6b6f76;
+  font-size: 12px;
+  border-radius: 10px;
+  padding: 2px 8px;
+  cursor: pointer;
+  max-width: 240px;
+  overflow: hidden;
+}
+.table-name-copy:hover { background: #eef0ff; color: #4f6ef7; border-color: #d7ddff; }
+.table-name-text {
+  font-family: 'SF Mono', 'Menlo', 'Monaco', 'Consolas', monospace;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 180px;
+}
+.table-name-copy-icon { display: inline-flex; align-items: center; }
 .title-icon-btn {
   background: none; border: none; cursor: pointer; padding: 2px 4px; border-radius: 4px;
   font-size: 16px; line-height: 1; display: flex; align-items: center; transition: background 0.1s;
 }
 .title-icon-btn:hover { background: rgba(0,0,0,0.06); }
 .title-icon-emoji { font-size: 16px; line-height: 1; }
-.title-icon-placeholder { opacity: 0.4; font-size: 16px; }
 .row-count { font-size: 12px; color: #999; background: #f0f2f5; padding: 2px 8px; border-radius: 10px; }
 /* 批量操作栏 */
 .selection-bar {

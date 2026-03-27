@@ -36,7 +36,14 @@
               <span
                 class="type-icon"
                 :style="`color: ${TYPE_META[col.fieldType]?.color}`"
-              >{{ TYPE_META[col.fieldType]?.icon }}</span>
+              >
+                <IonIcon
+                  v-if="TYPE_META[col.fieldType]?.icon?.startsWith('ion:')"
+                  :name="TYPE_META[col.fieldType]?.icon.slice(4)"
+                  :size="14"
+                />
+                <span v-else>{{ TYPE_META[col.fieldType]?.icon }}</span>
+              </span>
               <span class="type-label">{{ TYPE_META[col.fieldType]?.label }}</span>
               <span class="type-arrow">▾</span>
             </button>
@@ -57,7 +64,10 @@
               :class="{ active: col.fieldType === typeKey }"
               @click="selectType(col, typeKey as FieldType)"
             >
-              <span class="type-option-icon" :style="`color: ${meta.color}`">{{ meta.icon }}</span>
+              <span class="type-option-icon" :style="`color: ${meta.color}`">
+                <IonIcon v-if="meta.icon.startsWith('ion:')" :name="meta.icon.slice(4)" :size="14" />
+                <span v-else>{{ meta.icon }}</span>
+              </span>
               <span class="type-option-label">{{ meta.label }}</span>
             </button>
           </div>
@@ -115,6 +125,7 @@ import { http, api } from '@/api/client'
 import { useQueryClient } from '@tanstack/vue-query'
 import type { FieldType, SelectOption } from '@/api/client'
 import AppModal from './AppModal.vue'
+import IonIcon from './IonIcon.vue'
 
 const visible = defineModel<boolean>('show', { default: false })
 const emit = defineEmits<{ created: [name: string] }>()
@@ -131,7 +142,7 @@ onMounted(async () => {
   try {
     const tables = await api.getTables()
     availableTables.value = [
-      { label: '📄 Notes', value: '_notes' },
+      { label: 'Notes', value: '_notes' },
       ...tables.map(t => ({ label: t.title || t.name, value: t.name })),
     ]
   } catch {}
@@ -154,15 +165,15 @@ const TYPE_META: Record<string, { label: string; icon: string; color: string }> 
   currency: { label: 'Currency',  icon: '¥',  color: '#18a058' },
   percent:  { label: 'Percent',   icon: '%',  color: '#f0a020' },
   email:    { label: 'Email',     icon: '@',  color: '#00adb5' },
-  url:      { label: 'URL',       icon: '🔗', color: '#4f6ef7' },
-  date:     { label: 'Date',      icon: '📅', color: '#8a2be2' },
-  datetime: { label: 'Datetime',  icon: '🕐', color: '#d03050' },
-  checkbox: { label: 'Checkbox',  icon: '☑',  color: '#18a058' },
-  select:   { label: 'Select',    icon: '◉',  color: '#f0a020' },
-  image:    { label: 'Image',     icon: '🖼', color: '#e91e8c' },
-  link:     { label: 'Link',      icon: '🔗', color: '#4f6ef7' },
-  totp:     { label: '2FA',       icon: '🔐', color: '#d03050' },
-  password: { label: 'Password',  icon: '🔑', color: '#8a6d3b' },
+  url:      { label: 'URL',       icon: 'ion:LinkOutline', color: '#4f6ef7' },
+  date:     { label: 'Date',      icon: 'ion:CalendarOutline', color: '#8a2be2' },
+  datetime: { label: 'Datetime',  icon: 'ion:TimeOutline', color: '#d03050' },
+  checkbox: { label: 'Checkbox',  icon: 'ion:CheckboxOutline',  color: '#18a058' },
+  select:   { label: 'Select',    icon: 'ion:OptionsOutline',  color: '#f0a020' },
+  image:    { label: 'Image',     icon: 'ion:ImageOutline', color: '#e91e8c' },
+  link:     { label: 'Link',      icon: 'ion:LinkOutline', color: '#4f6ef7' },
+  totp:     { label: '2FA',       icon: 'ion:KeyOutline', color: '#d03050' },
+  password: { label: 'Password',  icon: 'ion:LockClosedOutline', color: '#8a6d3b' },
 }
 
 const fieldTypeToSqlite: Record<string, string> = {

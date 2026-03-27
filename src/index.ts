@@ -190,6 +190,18 @@ function openApiSpec(serverUrl: string) {
                             name: { type: 'string', description: 'API table name (e.g. tbl_abc123)' },
                             title: { type: 'string', nullable: true, description: 'Display name (e.g. "Customer List")' },
                             row_count: { type: 'integer', description: 'Total number of records' },
+                            icon: { type: 'string', nullable: true, description: 'Table icon emoji or ion:* identifier' },
+                            is_locked: { type: 'boolean', description: 'Whether the table is locked' },
+                            groups: {
+                              type: 'array',
+                              items: {
+                                type: 'object',
+                                properties: {
+                                  id: { type: 'integer' },
+                                  name: { type: 'string' },
+                                },
+                              },
+                            },
                           },
                         },
                       },
@@ -242,7 +254,7 @@ function openApiSpec(serverUrl: string) {
       '/api/tables/{tableName}': {
         get: {
           summary: 'Get table schema',
-          description: 'Returns the field definitions for a table, including display names and field types.',
+          description: 'Returns the field definitions for a table, including display names, field types, and the table icon.',
           parameters: [{ name: 'tableName', in: 'path', required: true, schema: { type: 'string' } }],
           responses: {
             '200': {
@@ -257,6 +269,7 @@ function openApiSpec(serverUrl: string) {
                         properties: {
                           name: { type: 'string', description: 'API table name' },
                           title: { type: 'string', description: 'Display name' },
+                          icon: { type: 'string', nullable: true, description: 'Table icon emoji or ion:* identifier' },
                           columns: {
                             type: 'array',
                             items: {
@@ -281,9 +294,34 @@ function openApiSpec(serverUrl: string) {
             },
           },
         },
+        patch: {
+          summary: 'Update table metadata',
+          description: 'Updates table title, icon, or lock state.',
+          parameters: [{ name: 'tableName', in: 'path', required: true, schema: { type: 'string' } }],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    title: { type: 'string', description: 'Display name' },
+                    icon: { type: 'string', nullable: true, description: 'Emoji or ion:* icon; null clears the icon' },
+                    is_locked: { type: 'boolean', description: 'Lock or unlock the table' },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            '200': { description: 'Updated successfully' },
+            '400': { description: 'Nothing to update' },
+            '404': { description: 'Table not found' },
+          },
+        },
         delete: {
-          summary: 'Delete table (destructive)',
-          description: 'Deletes the entire table and all its data. This action is irreversible. Requires read-write permission.',
+          summary: 'Delete table (moves to trash)',
+          description: 'Deletes the table from the active list and stores a full table snapshot in trash so it can be restored later.',
           parameters: [{ name: 'tableName', in: 'path', required: true, schema: { type: 'string' } }],
           responses: {
             '200': { description: 'Deleted successfully' },
@@ -417,6 +455,24 @@ function openApiSpec(serverUrl: string) {
           },
         },
       },
+      '/api/tables/{tableName}/export': {
+        get: {
+          summary: 'Export table records',
+          description: 'Exports records as CSV or JSON. Supports the same filter and sort parameters as the list-records endpoint. Exports are capped at 10,000 rows; larger result sets return 413.',
+          parameters: [
+            { name: 'tableName', in: 'path', required: true, schema: { type: 'string' } },
+            { name: 'format', in: 'query', required: true, schema: { type: 'string', enum: ['csv', 'json'] } },
+            { name: 'sort', in: 'query', schema: { type: 'string' }, description: 'Format: field:asc or field:desc' },
+            { name: 'fields', in: 'query', schema: { type: 'string' }, description: 'Comma-separated list of fields to export' },
+            { name: 'filter[field]', in: 'query', schema: { type: 'string' }, description: 'Equality filter; supports suffixes __gt/__gte/__lt/__lte/__like/__ne/__nlike' },
+          ],
+          responses: {
+            '200': { description: 'Exported file stream' },
+            '413': { description: 'Export exceeds the 10,000 row limit' },
+            '404': { description: 'Table not found' },
+          },
+        },
+      },
       '/api/tables/{tableName}/fields': {
         get: {
           summary: 'Get field metadata',
@@ -517,7 +573,7 @@ function openApiSpec(serverUrl: string) {
         },
       },
       '/api/admin/keys': {
-        get: { summary: 'List API Keys (with group info)', responses: { '200': { description: 'Key list' } } },
+        get: { summary: 'List API Keys (with group info and note root access)', responses: { '200': { description: 'Key list' } } },
         post: {
           summary: 'Create API Key',
           requestBody: {
@@ -532,6 +588,8 @@ function openApiSpec(serverUrl: string) {
                     type: { type: 'string', enum: ['readonly', 'readwrite'] },
                     scope: { type: 'string', enum: ['all', 'groups'], description: 'all = access all tables; groups = access only tables in specified groups' },
                     group_ids: { type: 'array', items: { type: 'integer' }, description: 'List of group IDs to associate when scope=groups' },
+                    notes_scope: { type: 'string', enum: ['all', 'none', 'roots'], description: 'all = access all notes; none = no notes; roots = only selected note directories and descendants' },
+                    note_root_ids: { type: 'array', items: { type: 'string' }, description: 'List of note root IDs when notes_scope=roots' },
                   },
                 },
               },
@@ -542,7 +600,7 @@ function openApiSpec(serverUrl: string) {
       },
       '/api/admin/keys/{id}': {
         patch: {
-          summary: "Update Key's scope and associated groups",
+          summary: "Update Key's table scope, note scope, and associated groups/directories",
           parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }],
           requestBody: {
             content: {
@@ -552,6 +610,8 @@ function openApiSpec(serverUrl: string) {
                   properties: {
                     scope: { type: 'string', enum: ['all', 'groups'] },
                     group_ids: { type: 'array', items: { type: 'integer' } },
+                    notes_scope: { type: 'string', enum: ['all', 'none', 'roots'] },
+                    note_root_ids: { type: 'array', items: { type: 'string' } },
                   },
                 },
               },
@@ -633,6 +693,73 @@ function openApiSpec(serverUrl: string) {
             },
           },
           responses: { '200': { description: 'Set successfully' } },
+        },
+      },
+      '/api/groups/{id}/keys': {
+        put: {
+          summary: 'Set keys in group (full replace)',
+          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['key_ids'],
+                  properties: {
+                    key_ids: { type: 'array', items: { type: 'integer' }, description: 'List of API key IDs' },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            '200': { description: 'Set successfully' },
+            '400': { description: 'Invalid request body' },
+            '404': { description: 'Group not found' },
+          },
+        },
+      },
+      '/api/trash': {
+        get: {
+          summary: 'List trash items',
+          description: 'Returns deleted records and deleted table snapshots. Table snapshots have `record_id = 0` and `record_data.__kind = "table"`.',
+          parameters: [
+            { name: 'page', in: 'query', schema: { type: 'integer', default: 1 } },
+            { name: 'page_size', in: 'query', schema: { type: 'integer', default: 20, maximum: 100 } },
+          ],
+          responses: {
+            '200': { description: 'Trash list' },
+          },
+        },
+        delete: {
+          summary: 'Empty trash',
+          description: 'Permanently deletes all trash items visible to the current team/user scope.',
+          responses: {
+            '200': { description: 'Trash emptied' },
+          },
+        },
+      },
+      '/api/trash/{id}': {
+        delete: {
+          summary: 'Delete one trash item permanently',
+          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }],
+          responses: {
+            '200': { description: 'Deleted permanently' },
+            '404': { description: 'Trash item not found' },
+          },
+        },
+      },
+      '/api/trash/{id}/restore': {
+        post: {
+          summary: 'Restore one trash item',
+          description: 'Restores either a deleted record or a deleted table snapshot.',
+          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }],
+          responses: {
+            '200': { description: 'Restored successfully' },
+            '404': { description: 'Trash item not found' },
+            '409': { description: 'Restore blocked because the target table already exists' },
+          },
         },
       },
       '/api/notes': {
@@ -843,6 +970,261 @@ function openApiSpec(serverUrl: string) {
           responses: {
             '200': { description: 'Restored successfully' },
             '404': { description: 'Deleted note not found' },
+          },
+        },
+      },
+      '/api/notes/{id}/permanent': {
+        delete: {
+          summary: 'Delete trashed note permanently',
+          description: 'Permanently removes a note that is already in the notes trash.',
+          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+          responses: {
+            '200': { description: 'Deleted permanently' },
+            '404': { description: 'Trashed note not found' },
+          },
+        },
+      },
+      '/api/tables/{tableName}/dashboard': {
+        get: {
+          summary: 'Get dashboard config',
+          parameters: [{ name: 'tableName', in: 'path', required: true, schema: { type: 'string' } }],
+          responses: {
+            '200': { description: 'Dashboard config' },
+            '404': { description: 'Table not found' },
+          },
+        },
+        put: {
+          summary: 'Save dashboard config',
+          parameters: [{ name: 'tableName', in: 'path', required: true, schema: { type: 'string' } }],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    config: { type: 'array', items: {}, description: 'Dashboard blocks/configuration array' },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            '200': { description: 'Saved successfully' },
+            '400': { description: 'Payload too large' },
+            '404': { description: 'Table not found' },
+          },
+        },
+      },
+      '/api/user/preferences': {
+        get: {
+          summary: 'Get user preferences',
+          responses: {
+            '200': { description: 'Current user preference blob' },
+          },
+        },
+        put: {
+          summary: 'Save user preferences',
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  additionalProperties: true,
+                },
+              },
+            },
+          },
+          responses: {
+            '200': { description: 'Saved successfully' },
+            '400': { description: 'Payload too large' },
+          },
+        },
+      },
+      '/api/admin/users': {
+        get: {
+          summary: 'List users',
+          description: 'Admin only.',
+          responses: {
+            '200': { description: 'User list' },
+            '403': { description: 'Admin access required' },
+          },
+        },
+        post: {
+          summary: 'Create user',
+          description: 'Admin only.',
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['email'],
+                  properties: {
+                    email: { type: 'string' },
+                    name: { type: 'string' },
+                    role: { type: 'string', enum: ['admin', 'user'] },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            '201': { description: 'Created successfully' },
+            '403': { description: 'Admin access required' },
+            '409': { description: 'User already exists' },
+          },
+        },
+      },
+      '/api/admin/users/{id}': {
+        patch: {
+          summary: 'Update user',
+          description: 'Admin only. Updates role or status.',
+          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    role: { type: 'string', enum: ['admin', 'user'] },
+                    status: { type: 'string', enum: ['active', 'disabled'] },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            '200': { description: 'Updated successfully' },
+            '403': { description: 'Admin access required / cannot disable self' },
+            '404': { description: 'User not found' },
+          },
+        },
+        delete: {
+          summary: 'Disable user',
+          description: 'Admin only. Soft-disables the user account.',
+          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }],
+          responses: {
+            '200': { description: 'Disabled successfully' },
+            '403': { description: 'Admin access required / cannot disable self' },
+            '404': { description: 'User not found' },
+          },
+        },
+      },
+      '/api/teams/current': {
+        get: {
+          summary: 'Get current team',
+          responses: {
+            '200': { description: 'Team detail with members' },
+            '400': { description: 'No team associated with current account' },
+            '404': { description: 'Team not found' },
+          },
+        },
+        patch: {
+          summary: 'Rename current team',
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['name'],
+                  properties: {
+                    name: { type: 'string' },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            '200': { description: 'Renamed successfully' },
+            '400': { description: 'No team / invalid body' },
+          },
+        },
+      },
+      '/api/teams/current/members': {
+        post: {
+          summary: 'Add team member',
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['email'],
+                  properties: {
+                    email: { type: 'string' },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            '200': { description: 'Added existing user to team' },
+            '201': { description: 'Created account and added to team' },
+            '400': { description: 'No team / invalid body' },
+            '409': { description: 'Already a member' },
+          },
+        },
+      },
+      '/api/teams/current/members/{userId}': {
+        delete: {
+          summary: 'Remove team member',
+          parameters: [{ name: 'userId', in: 'path', required: true, schema: { type: 'integer' } }],
+          responses: {
+            '200': { description: 'Removed successfully' },
+            '400': { description: 'Cannot remove yourself / no team' },
+            '404': { description: 'User not found in this team' },
+          },
+        },
+      },
+      '/api/auth/me': {
+        get: {
+          summary: 'Get current signed-in user',
+          security: [],
+          responses: {
+            '200': { description: 'Current session user' },
+            '401': { description: 'Not authenticated' },
+          },
+        },
+      },
+      '/api/auth/login': {
+        get: {
+          summary: 'Start Google OAuth login',
+          security: [],
+          responses: {
+            '302': { description: 'Redirects to Google OAuth' },
+          },
+        },
+      },
+      '/api/auth/callback': {
+        get: {
+          summary: 'Handle Google OAuth callback',
+          security: [],
+          responses: {
+            '302': { description: 'Redirects back to the app after login flow' },
+          },
+        },
+      },
+      '/api/auth/logout': {
+        post: {
+          summary: 'Log out current session',
+          security: [],
+          responses: {
+            '200': { description: 'Logged out successfully' },
+          },
+        },
+      },
+      '/api/files/{path}': {
+        get: {
+          summary: 'Proxy an uploaded file from R2',
+          description: 'Authenticated file proxy used for image display.',
+          parameters: [{ name: 'path', in: 'path', required: true, schema: { type: 'string' }, description: 'R2 object key after /api/files/' }],
+          responses: {
+            '200': { description: 'File stream' },
+            '404': { description: 'File not found' },
           },
         },
       },

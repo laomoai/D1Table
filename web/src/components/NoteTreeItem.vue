@@ -2,6 +2,7 @@
   <div class="note-tree-item">
     <div
       class="note-item"
+      :style="itemStyle"
       :class="{
         active: activeId === note.id,
         'drop-above': dropPosition === 'above' && dropTargetId === note.id,
@@ -24,15 +25,18 @@
       >›</span>
       <span v-else class="note-arrow-placeholder" />
       <span class="note-icon">
-        <span v-if="note.icon && !note.icon.startsWith('ion:')">{{ note.icon }}</span>
-        <IonIcon v-else-if="note.icon && note.icon.startsWith('ion:')" :name="note.icon.slice(4)" :size="14" />
-        <span v-else-if="hasChildren">📁</span>
-        <span v-else>📄</span>
+        <IonIcon v-if="note.icon && note.icon.startsWith('ion:')" :name="note.icon.slice(4)" :size="14" />
+        <span v-else-if="note.icon" class="note-emoji-icon">{{ note.icon }}</span>
+        <IonIcon v-else :name="hasChildren ? 'FolderOutline' : 'DocumentOutline'" :size="14" />
       </span>
-      <span class="note-title">{{ note.title || 'Untitled' }}</span>
+      <span class="note-title-wrap">
+        <HoverTooltipText
+          :text="note.title || 'Untitled'"
+          class-name="note-title"
+        />
+      </span>
       <div class="note-actions">
         <button class="note-action-btn" title="Add sub-note" @click.stop="emit('create-child', note.id)">+</button>
-        <button class="note-action-btn delete" title="Delete" @click.stop="emit('delete', note.id)">×</button>
       </div>
     </div>
     <div v-if="hasChildren && expandedIds.has(note.id)" class="note-children">
@@ -44,12 +48,12 @@
         :children-map="childrenMap"
         :active-id="activeId"
         :expanded-ids="expandedIds"
+        :item-style="itemStyle"
         :drop-target-id="dropTargetId"
         :drop-position="dropPosition"
         @select="emit('select', $event)"
         @toggle="emit('toggle', $event)"
         @create-child="emit('create-child', $event)"
-        @delete="emit('delete', $event)"
         @reorder="emit('reorder', $event)"
         @update:drop-state="emit('update:drop-state', $event)"
       />
@@ -60,6 +64,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { NoteListItem } from '@/api/client'
+import HoverTooltipText from './HoverTooltipText.vue'
 import IonIcon from './IonIcon.vue'
 
 const props = defineProps<{
@@ -68,6 +73,7 @@ const props = defineProps<{
   childrenMap: Map<string, NoteListItem[]>
   activeId: string | null
   expandedIds: Set<string>
+  itemStyle?: string | Record<string, string>
   dropTargetId?: string | null
   dropPosition?: 'above' | 'child' | null
 }>()
@@ -76,7 +82,6 @@ const emit = defineEmits<{
   select: [id: string]
   toggle: [id: string]
   'create-child': [id: string]
-  delete: [id: string]
   reorder: [payload: { dragId: string; dropId: string; mode: 'above' | 'child' }]
   'update:drop-state': [state: { id: string | null; position: 'above' | 'child' | null }]
 }>()
@@ -126,6 +131,9 @@ function onDrop(e: DragEvent) {
   display: flex;
   align-items: center;
   gap: 4px;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
   padding: 5px 4px 5px 0;
   border-radius: 4px;
   cursor: pointer;
@@ -176,13 +184,17 @@ function onDrop(e: DragEvent) {
 .note-arrow.expanded { transform: rotate(90deg); }
 .note-arrow-placeholder { width: 14px; flex-shrink: 0; }
 .note-icon { font-size: 13px; flex-shrink: 0; }
-.note-title {
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  min-width: 0;
+.note-emoji-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  line-height: 1;
 }
+.note-title {
+  line-height: 1.4;
+}
+.note-title-wrap { flex: 1; min-width: 0; max-width: 100%; overflow: hidden; }
 .note-actions { display: none; gap: 2px; flex-shrink: 0; }
 .note-item:hover .note-actions { display: flex; }
 .note-action-btn {
@@ -192,6 +204,5 @@ function onDrop(e: DragEvent) {
   border-radius: 2px; line-height: 1;
 }
 .note-action-btn:hover { color: #37352f; background: rgba(55,53,47,0.08); }
-.note-action-btn.delete:hover { color: #e03e3e; }
 .note-children { padding-left: 16px; }
 </style>

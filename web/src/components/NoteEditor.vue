@@ -22,7 +22,7 @@
       </div>
       <div class="bar-actions">
         <button class="bar-btn" title="Insert table reference" @click="emit('insert-table-ref')">
-          <span style="font-size:13px">📊</span>
+          <IonIcon name="GridOutline" :size="14" />
           <span class="bar-btn-label">Table</span>
         </button>
         <button class="bar-btn" title="Import file to this note" @click="triggerAppendImport">
@@ -69,6 +69,7 @@ import { syntaxHighlighting, defaultHighlightStyle, bracketMatching } from '@cod
 import { searchKeymap, highlightSelectionMatches } from '@codemirror/search'
 import DOMPurify from 'dompurify'
 import { renderMarkdown } from '@/utils/markdown'
+import IonIcon from './IonIcon.vue'
 
 const props = withDefaults(defineProps<{
   modelValue?: string
@@ -467,6 +468,22 @@ defineExpose({
   text-decoration: none;
   font-weight: 500;
   transition: background 0.1s;
+}
+.preview-pane :deep(.table-ref-icon) {
+  width: 12px;
+  height: 12px;
+  display: inline-block;
+  border-radius: 3px;
+  background:
+    linear-gradient(currentColor 0 0) left top/4px 4px,
+    linear-gradient(currentColor 0 0) right top/4px 4px,
+    linear-gradient(currentColor 0 0) left bottom/4px 4px,
+    linear-gradient(currentColor 0 0) right bottom/4px 4px;
+  background-repeat: no-repeat;
+  opacity: 0.7;
+}
+.preview-pane :deep(.md-embed-icon) {
+  margin-right: 6px;
 }
 .preview-pane :deep(.table-ref:hover) {
   background: rgba(55, 53, 47, 0.1);

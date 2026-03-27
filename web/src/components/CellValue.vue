@@ -87,7 +87,11 @@
     v-else-if="fieldType === 'note' && noteInfo"
     class="cell-note"
     @click.stop="goToNote(noteInfo!.id)"
-  >{{ noteInfo.icon || '📄' }} {{ noteInfo.title }}</span>
+  >
+    <IonIcon v-if="noteInfo.icon?.startsWith('ion:')" :name="noteInfo.icon.slice(4)" :size="12" />
+    <IonIcon v-else name="DocumentOutline" :size="12" />
+    <span class="cell-note-title">{{ noteInfo.title }}</span>
+  </span>
   <span v-else-if="fieldType === 'note'" class="cell-empty">—</span>
 
   <!-- image -->
@@ -120,8 +124,10 @@ import { computed, ref, onMounted, onBeforeUnmount, watch } from 'vue'
 import type { FieldType, SelectOption, LinkValue } from '@/api/client'
 import router from '@/router'
 import { decodeNoteValue } from '@/utils/noteValue'
+import { navigateToLinkedRecord } from '@/utils/recordNavigation'
 import { generateTOTP, getTOTPRemaining } from '@/utils/totp'
 import { copyText } from '@/utils/clipboard'
+import IonIcon from './IonIcon.vue'
 
 const props = defineProps<{
   value: unknown
@@ -182,11 +188,7 @@ const linkInfo = computed<LinkValue | null>(() => {
 
 function goToLinked() {
   if (!linkInfo.value || !props.linkTable) return
-  if (props.linkTable === '_notes') {
-    router.push(`/notes/${linkInfo.value.id}`)
-  } else {
-    router.push(`/tables/${props.linkTable}?highlight=${linkInfo.value.id}`)
-  }
+  navigateToLinkedRecord(router, props.linkTable, linkInfo.value.id)
 }
 
 const noteInfo = computed(() => {
@@ -241,7 +243,7 @@ function isUrl(v: unknown): boolean {
 }
 
 function goToNote(noteId: string) {
-  router.push(`/notes/${noteId}`)
+  navigateToLinkedRecord(router, '_notes', noteId)
 }
 
 function isEmail(v: unknown): boolean {
@@ -415,6 +417,11 @@ const datetimeVal = computed(() => {
   text-overflow: ellipsis;
   white-space: nowrap;
   cursor: pointer;
+}
+.cell-note-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .cell-note:hover {
   background: rgba(55, 53, 47, 0.1);

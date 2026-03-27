@@ -15,7 +15,6 @@
 
       <!-- Search + Tabs -->
       <div class="search-tabs-area">
-        <!-- Search -->
         <div class="search-wrap">
           <span class="search-icon">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
@@ -26,9 +25,12 @@
             class="search-input"
             placeholder="Search tables..."
           />
+          <div class="search-shortcuts" aria-hidden="true">
+            <span class="search-shortcut-key search-shortcut-symbol">⌘</span>
+            <span class="search-shortcut-key">K</span>
+          </div>
         </div>
 
-        <!-- Tabs -->
         <div class="tabs-bar">
           <button
             v-for="tab in tabs"
@@ -43,7 +45,7 @@
             {{ tab }}
             <span v-if="activeTab === tab" class="tab-indicator" />
           </button>
-          <span class="tab-separator" />
+          <span class="tab-separator" aria-hidden="true" />
           <button class="tab-add-btn" @click="showNewGroup = true" title="New Group">+</button>
         </div>
       </div>
@@ -57,9 +59,23 @@
           <div v-for="(items, groupName) in groupedData" :key="groupName" class="group-section">
             <div class="group-section-header">
               <div class="group-header-left">
-                <h2 class="group-section-name">{{ groupName }}</h2>
+                <HoverTooltipText
+                  :text="groupName"
+                  class-name="group-section-name"
+                  as="h2"
+                />
                 <span class="group-section-count">{{ items.length }} tables</span>
               </div>
+              <button
+                v-if="activeTab === 'All' && getGroupByName(groupName)"
+                class="group-settings-btn"
+                @click="openEditGroup(getGroupByName(groupName)!)"
+              >
+                <span class="group-settings-icon" aria-hidden="true">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                </span>
+                Settings
+              </button>
             </div>
             <div class="table-cards">
               <div
@@ -70,12 +86,15 @@
               >
                 <div class="card-left">
                   <div class="card-icon" @click.stop="openIconPicker(t)" title="Click to change icon">
-                    <span v-if="t.icon && !t.icon.startsWith('ion:')" class="card-icon-emoji">{{ t.icon }}</span>
-                    <IonIcon v-else-if="t.icon" :name="t.icon.slice(4)" :size="20" />
-                    <span v-else class="card-icon-emoji" style="opacity: 0.4;">📊</span>
+                    <IonIcon v-if="t.icon && t.icon.startsWith('ion:')" :name="t.icon.slice(4)" :size="20" />
+                    <span v-else-if="t.icon" class="card-icon-emoji">{{ t.icon }}</span>
+                    <IonIcon v-else name="GridOutline" :size="20" />
                   </div>
                   <div class="card-info">
-                    <span class="card-title">{{ t.title || t.name }}</span>
+                    <HoverTooltipText
+                      :text="t.title || t.name"
+                      class-name="card-title"
+                    />
                     <div class="card-meta">
                       <span class="card-id" @click.stop="copyTableId(t.name)">
                         ID: {{ t.name }}
@@ -87,8 +106,9 @@
                         </span>
                       </span>
                       <span class="card-count">{{ t.row_count ?? 0 }} records</span>
+                      <span v-if="activeTab === 'Recent' && recentAccess[t.name]" class="card-dot">•</span>
                       <span v-if="activeTab === 'Recent' && recentAccess[t.name]" class="card-last-access">
-                        · {{ formatDate(recentAccess[t.name]) }}
+                        {{ formatDate(recentAccess[t.name]) }}
                       </span>
                     </div>
                   </div>
@@ -105,7 +125,9 @@
 
         <!-- Empty state -->
         <div v-if="Object.keys(groupedData).length === 0 && !isLoading" class="empty-state">
-          <div class="empty-icon-big">🔍</div>
+          <div class="empty-icon-big">
+            <IonIcon name="SearchOutline" :size="40" />
+          </div>
           <p class="empty-text">No tables found matching your criteria.</p>
         </div>
       </template>
@@ -124,7 +146,7 @@
       />
 
       <!-- New Group modal -->
-      <AppModal v-model:show="showNewGroup" title="New Group" width="440px" height="auto">
+      <AppModal v-model:show="showNewGroup" title="New Group" width="520px" height="min(620px, 70vh)">
         <div class="ng-form">
           <label class="ng-label">Group Name</label>
           <input v-model="newGroupName" class="ng-input" placeholder="e.g. Marketing, Engineering..." />
@@ -142,9 +164,15 @@
                 @change="toggleNewGroupTable(t.name)"
                 class="ng-checkbox"
               />
-              <span class="ng-table-icon">{{ t.icon && !t.icon.startsWith('ion:') ? t.icon : '📊' }}</span>
-              <span class="ng-table-name">{{ t.title || t.name }}</span>
-              <span v-if="getTableGroup(t.name)" class="ng-table-badge">in {{ getTableGroup(t.name) }}</span>
+              <span class="ng-table-icon">
+                <IonIcon v-if="t.icon && t.icon.startsWith('ion:')" :name="t.icon.slice(4)" :size="16" />
+                <span v-else-if="t.icon">{{ t.icon }}</span>
+                <IonIcon v-else name="GridOutline" :size="16" />
+              </span>
+              <HoverTooltipText
+                :text="t.title || t.name"
+                class-name="ng-table-name"
+              />
             </label>
           </div>
           <div class="ng-footer">
@@ -153,18 +181,73 @@
           </div>
         </div>
       </AppModal>
+
+      <AppModal v-model:show="showEditGroup" title="Edit Group" width="520px" height="min(660px, 70vh)">
+        <div class="ng-form">
+          <label class="ng-label">Group Name</label>
+          <input v-model="editingGroupName" class="ng-input" placeholder="Enter group name" />
+          <label class="ng-label" style="margin-top:16px;">Included Tables</label>
+          <div class="ng-hint">{{ selectedGroupTables.size }} selected</div>
+          <div class="ng-table-list edit-group-table-list">
+            <div
+              v-for="t in tables ?? []"
+              :key="t.name"
+              class="ng-table-item"
+            >
+              <label class="ng-table-main">
+                <input
+                  type="checkbox"
+                  :checked="selectedGroupTables.has(t.name)"
+                  @change="toggleSelectedGroupTable(t.name)"
+                  class="ng-checkbox"
+                />
+                <span class="ng-table-icon">
+                  <IonIcon v-if="t.icon && t.icon.startsWith('ion:')" :name="t.icon.slice(4)" :size="16" />
+                  <span v-else-if="t.icon">{{ t.icon }}</span>
+                  <IonIcon v-else name="GridOutline" :size="16" />
+                </span>
+                <HoverTooltipText
+                  :text="t.title || t.name"
+                  class-name="ng-table-name"
+                />
+              </label>
+              <button
+                class="ng-row-delete"
+                type="button"
+                :disabled="savingEditGroup"
+                @click="removeTableFromEditingGroup(t.name)"
+                aria-label="Remove table from group"
+                title="Remove from group"
+              >
+                <IonIcon name="TrashOutline" :size="14" />
+              </button>
+            </div>
+          </div>
+          <div class="ng-footer">
+            <button class="ng-btn danger" :disabled="savingEditGroup || !editingGroupData" @click="handleDeleteGroup">
+              Delete
+            </button>
+            <div class="ng-footer-spacer" />
+            <button class="ng-btn" @click="showEditGroup = false">Cancel</button>
+            <button class="ng-btn primary" :disabled="savingEditGroup || !editingGroupName.trim()" @click="saveEditedGroup">
+              Save
+            </button>
+          </div>
+        </div>
+      </AppModal>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, watch, defineAsyncComponent } from 'vue'
+import { ref, computed, watch, defineAsyncComponent } from 'vue'
 import { useRouter } from 'vue-router'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
-import { NSpin, useMessage } from 'naive-ui'
-import { api, type TableMeta } from '@/api/client'
+import { NSpin, useDialog, useMessage } from 'naive-ui'
+import { api, type TableMeta, type Group } from '@/api/client'
 import CreateTableModal from '@/components/CreateTableModal.vue'
 import AppModal from '@/components/AppModal.vue'
+import HoverTooltipText from '@/components/HoverTooltipText.vue'
 import IonIcon from '@/components/IonIcon.vue'
 
 const IconPicker = defineAsyncComponent(() => import('@/components/IconPicker.vue'))
@@ -172,6 +255,7 @@ const IconPicker = defineAsyncComponent(() => import('@/components/IconPicker.vu
 const router = useRouter()
 const queryClient = useQueryClient()
 const message = useMessage()
+const dialog = useDialog()
 
 // ── Data fetching ──
 const { data: tables, isLoading } = useQuery({
@@ -190,6 +274,11 @@ const searchQuery = ref('')
 const activeTab = ref('Recent')
 const showCreateTable = ref(false)
 const copiedId = ref<string | null>(null)
+const showEditGroup = ref(false)
+const editingGroupData = ref<Group | null>(null)
+const editingGroupName = ref('')
+const selectedGroupTables = ref(new Set<string>())
+const savingEditGroup = ref(false)
 
 // ── Recent access tracking via localStorage ──
 const RECENT_KEY = 'd1table_recent_access'
@@ -203,6 +292,12 @@ function loadRecentAccess(): Record<string, number> {
 }
 
 const recentAccess = ref<Record<string, number>>(loadRecentAccess())
+const recentTableNames = computed(() =>
+  Object.entries(recentAccess.value)
+    .sort(([, aTime], [, bTime]) => bTime - aTime)
+    .slice(0, 20)
+    .map(([name]) => name)
+)
 
 function trackAccess(tableName: string) {
   recentAccess.value[tableName] = Date.now()
@@ -210,7 +305,11 @@ function trackAccess(tableName: string) {
 }
 
 function formatDate(ts: number): string {
-  return new Date(ts).toLocaleDateString()
+  const date = new Date(ts)
+  const year = date.getFullYear()
+  const month = date.getMonth() + 1
+  const day = date.getDate()
+  return `${year}/${month}/${day}`
 }
 
 // ── Sorting helpers (consistent with sidebar) ──
@@ -249,6 +348,10 @@ const tabs = computed(() => {
   return ['Recent', ...dynamicGroupNames.value, 'All']
 })
 
+function getGroupByName(name: string): Group | null {
+  return groups.value?.find(group => group.name === name) ?? null
+}
+
 // ── Filtering ──
 const filteredData = computed(() => {
   if (!tables.value) return []
@@ -264,7 +367,8 @@ const filteredData = computed(() => {
 
   // Tab filter
   if (activeTab.value === 'Recent') {
-    // Sort by last accessed (most recent first), tables never accessed go to bottom
+    const visibleRecentNames = new Set(recentTableNames.value)
+    filtered = filtered.filter(t => visibleRecentNames.has(t.name))
     filtered = [...filtered].sort((a, b) => {
       const aTime = recentAccess.value[a.name] || 0
       const bTime = recentAccess.value[b.name] || 0
@@ -307,10 +411,8 @@ const groupedData = computed<Record<string, TableMeta[]>>(() => {
   for (const g of sortedGroupsList(groups.value)) {
     const groupTableNames = new Set(g.tables)
     const groupTables = sortedTables(data.filter(t => groupTableNames.has(t.name)))
-    if (groupTables.length > 0) {
-      result[g.name] = groupTables
-      groupTables.forEach(t => groupedNames.add(t.name))
-    }
+    result[g.name] = groupTables
+    groupTables.forEach(t => groupedNames.add(t.name))
   }
 
   const ungrouped = sortedTables(data.filter(t => !groupedNames.has(t.name)))
@@ -390,8 +492,87 @@ async function createGroup() {
   }
 }
 
+function removeTableFromEditingGroup(name: string) {
+  const next = new Set(selectedGroupTables.value)
+  next.delete(name)
+  selectedGroupTables.value = next
+}
+
+function openEditGroup(group: Group) {
+  editingGroupData.value = group
+  editingGroupName.value = group.name
+  selectedGroupTables.value = new Set(group.tables)
+  showEditGroup.value = true
+}
+
+function toggleSelectedGroupTable(name: string) {
+  const next = new Set(selectedGroupTables.value)
+  if (next.has(name)) next.delete(name)
+  else next.add(name)
+  selectedGroupTables.value = next
+}
+
+async function saveEditedGroup() {
+  if (!editingGroupData.value || !editingGroupName.value.trim()) return
+  savingEditGroup.value = true
+  try {
+    const nextName = editingGroupName.value.trim()
+    if (nextName !== editingGroupData.value.name) {
+      await api.updateGroup(editingGroupData.value.id, { name: nextName })
+    }
+    await api.setGroupTables(editingGroupData.value.id, [...selectedGroupTables.value])
+    queryClient.invalidateQueries({ queryKey: ['groups'] })
+    queryClient.invalidateQueries({ queryKey: ['tables'] })
+    if (activeTab.value === editingGroupData.value.name && nextName !== editingGroupData.value.name) {
+      activeTab.value = nextName
+    }
+    message.success('Group updated')
+    showEditGroup.value = false
+  } catch (err) {
+    message.error((err as Error).message)
+  } finally {
+    savingEditGroup.value = false
+  }
+}
+
+async function handleDeleteGroup() {
+  if (!editingGroupData.value) return
+  dialog.warning({
+    title: 'Delete Group',
+    content: 'Delete this group? Tables inside will not be deleted.',
+    positiveText: 'Delete',
+    negativeText: 'Cancel',
+    onPositiveClick: async () => {
+      savingEditGroup.value = true
+      try {
+        const deletedName = editingGroupData.value!.name
+        await api.deleteGroup(editingGroupData.value!.id)
+        queryClient.invalidateQueries({ queryKey: ['groups'] })
+        queryClient.invalidateQueries({ queryKey: ['tables'] })
+        if (activeTab.value === deletedName) {
+          activeTab.value = 'All'
+        }
+        message.success('Group deleted')
+        showEditGroup.value = false
+      } catch (err) {
+        message.error((err as Error).message)
+      } finally {
+        savingEditGroup.value = false
+      }
+    },
+  })
+}
+
 watch(showNewGroup, (v) => {
   if (v) { newGroupName.value = ''; newGroupTables.value = new Set() }
+})
+
+watch(showEditGroup, (v) => {
+  if (!v) {
+    editingGroupData.value = null
+    editingGroupName.value = ''
+    selectedGroupTables.value = new Set()
+  }
 })
 </script>
 
@@ -404,9 +585,9 @@ watch(showNewGroup, (v) => {
 }
 
 .dashboard-inner {
-  max-width: 860px;
+  max-width: 920px;
   margin: 0 auto;
-  padding: 48px 24px 80px;
+  padding: 40px 24px 80px;
 }
 
 /* ── Header ── */
@@ -494,26 +675,54 @@ watch(showNewGroup, (v) => {
 .search-input {
   width: 100%;
   box-sizing: border-box;
-  padding: 8px 16px 8px 36px;
-  background: #f7f7f5;
-  border: 1px solid transparent;
-  border-radius: 6px;
+  padding: 11px 84px 11px 36px;
+  background: #fbfbfa;
+  border: 1px solid #e7e5e4;
+  border-radius: 8px;
   font-size: 14px;
   color: #37352f;
   outline: none;
   transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
-  box-shadow: inset 0 0 0 1px rgba(15, 15, 15, 0.05);
 }
 .search-input::placeholder {
   color: #9b9a97;
 }
 .search-input:hover {
-  background: #efefed;
+  background: #fff;
 }
 .search-input:focus {
   background: #fff;
-  border-color: #e9e9e7;
-  box-shadow: inset 0 0 0 1px rgba(35, 131, 226, 0.5), 0 0 0 2px rgba(35, 131, 226, 0.2);
+  border-color: #ddd9d5;
+  box-shadow: 0 0 0 3px rgba(55, 53, 47, 0.06);
+}
+
+.search-shortcuts {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #9b9a97;
+}
+
+.search-shortcut-key {
+  min-width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+  border-radius: 5px;
+  border: 1px solid #e7e5e4;
+  background: #f7f7f5;
+  font-size: 11px;
+  line-height: 1;
+}
+
+.search-shortcut-symbol {
+  min-width: 18px;
 }
 
 /* ── Tabs ── */
@@ -536,9 +745,9 @@ watch(showNewGroup, (v) => {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 12px;
+  padding: 8px 12px 10px;
   font-size: 14px;
-  font-weight: 500;
+  font-weight: 450;
   color: #787774;
   background: none;
   border: none;
@@ -552,6 +761,7 @@ watch(showNewGroup, (v) => {
 }
 .tab-btn.active {
   color: #37352f;
+  font-weight: 500;
 }
 .tab-btn.active:hover {
   background: transparent;
@@ -559,7 +769,7 @@ watch(showNewGroup, (v) => {
 
 .tab-separator {
   width: 1px;
-  height: 20px;
+  height: 18px;
   background: #e9e9e7;
   margin: 0 4px;
   flex-shrink: 0;
@@ -610,7 +820,8 @@ watch(showNewGroup, (v) => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 16px;
+  margin-bottom: 18px;
+  gap: 12px;
 }
 
 .group-header-left {
@@ -620,25 +831,54 @@ watch(showNewGroup, (v) => {
 }
 
 .group-section-name {
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 600;
   color: #37352f;
   margin: 0;
 }
 
 .group-section-count {
-  font-size: 13px;
+  font-size: 12px;
   color: #787774;
   background: #f1f1ef;
-  padding: 2px 10px;
+  padding: 3px 10px;
   border-radius: 12px;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+}
+
+.group-settings-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border: 1px solid #e8e6e3;
+  border-radius: 10px;
+  background: #f7f7f5;
+  color: #4b4944;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.group-settings-btn:hover {
+  background: #f1f1ef;
+  border-color: #ddd8d2;
+  color: #37352f;
+}
+
+.group-settings-icon {
+  display: inline-flex;
+  align-items: center;
+  color: #787774;
 }
 
 /* ── Card grid ── */
 .table-cards {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 12px;
+  gap: 14px 12px;
 }
 @media (min-width: 640px) {
   .table-cards {
@@ -652,14 +892,18 @@ watch(showNewGroup, (v) => {
   justify-content: space-between;
   padding: 14px 16px;
   background: #fff;
-  border: 1px solid #e9e9e7;
-  border-radius: 8px;
+  border: 1px solid #e8e6e3;
+  border-radius: 10px;
   cursor: pointer;
-  transition: background 0.15s, box-shadow 0.15s;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+  transition: transform 0.15s, background 0.15s, box-shadow 0.15s, border-color 0.15s;
+  box-shadow: 0 1px 2px rgba(15, 15, 15, 0.04);
+  min-height: 88px;
 }
 .table-card:hover {
-  background: #f9f9f8;
+  background: #fff;
+  border-color: #ddd8d2;
+  box-shadow: 0 8px 20px rgba(15, 15, 15, 0.06);
+  transform: translateY(-1px);
 }
 
 .card-left {
@@ -671,14 +915,14 @@ watch(showNewGroup, (v) => {
 }
 
 .card-icon {
-  width: 40px;
-  height: 40px;
+  width: 42px;
+  height: 42px;
   flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
   background: #f7f7f5;
-  border-radius: 6px;
+  border-radius: 8px;
   cursor: pointer;
   transition: background 0.15s;
 }
@@ -691,6 +935,7 @@ watch(showNewGroup, (v) => {
   line-height: 1;
 }
 
+
 .card-info {
   display: flex;
   flex-direction: column;
@@ -699,7 +944,7 @@ watch(showNewGroup, (v) => {
 }
 
 .card-title {
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 600;
   color: #37352f;
   overflow: hidden;
@@ -711,7 +956,7 @@ watch(showNewGroup, (v) => {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-top: 4px;
+  margin-top: 6px;
   flex-wrap: wrap;
 }
 
@@ -720,9 +965,9 @@ watch(showNewGroup, (v) => {
   align-items: center;
   gap: 4px;
   background: #f1f1ef;
-  padding: 2px 8px;
+  padding: 3px 8px;
   border-radius: 4px;
-  font-size: 11px;
+  font-size: 12px;
   font-family: 'SF Mono', 'Menlo', 'Monaco', 'Consolas', monospace;
   color: #787774;
   cursor: pointer;
@@ -747,8 +992,13 @@ watch(showNewGroup, (v) => {
   color: #787774;
 }
 
+.card-dot {
+  font-size: 12px;
+  color: #9b9a97;
+}
+
 .card-last-access {
-  font-size: 11px;
+  font-size: 12px;
   color: #9b9a97;
 }
 
@@ -761,13 +1011,13 @@ watch(showNewGroup, (v) => {
 }
 
 .card-arrow {
-  opacity: 0.4;
+  opacity: 0.45;
   transition: opacity 0.15s;
   display: flex;
   align-items: center;
 }
 .table-card:hover .card-arrow {
-  opacity: 0.8;
+  opacity: 0.85;
 }
 
 /* ── Empty state ── */
@@ -790,6 +1040,8 @@ watch(showNewGroup, (v) => {
 .ng-form {
   display: flex;
   flex-direction: column;
+  height: 100%;
+  min-height: 0;
 }
 .ng-label {
   font-size: 14px;
@@ -816,22 +1068,36 @@ watch(showNewGroup, (v) => {
 }
 .ng-input:focus { border-color: #2383e2; box-shadow: 0 0 0 2px rgba(35, 131, 226, 0.2); }
 .ng-table-list {
-  max-height: 300px;
+  flex: 1;
+  min-height: 280px;
+  max-height: min(360px, 100%);
   overflow-y: auto;
   border: 1px solid #e9e9e7;
   border-radius: 6px;
 }
+
+.edit-group-table-list {
+  min-height: 320px;
+}
 .ng-table-item {
   display: flex;
   align-items: center;
-  gap: 10px;
+  justify-content: space-between;
+  gap: 12px;
   padding: 8px 12px;
-  cursor: pointer;
   transition: background 0.1s;
   font-size: 14px;
   color: #37352f;
 }
 .ng-table-item:hover { background: #f7f7f5; }
+.ng-table-main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+}
 .ng-checkbox {
   width: 16px;
   height: 16px;
@@ -841,20 +1107,42 @@ watch(showNewGroup, (v) => {
 }
 .ng-table-icon { font-size: 16px; flex-shrink: 0; }
 .ng-table-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ng-table-badge {
-  font-size: 11px;
-  color: #9b9a97;
-  background: #f1f1ef;
-  padding: 1px 6px;
-  border-radius: 3px;
-  white-space: nowrap;
+.ng-row-delete {
+  border: 1px solid #eb5757;
+  background: #fff;
+  color: #d9485f;
+  border-radius: 6px;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  margin-left: auto;
+}
+.ng-row-delete:hover:not(:disabled) {
+  background: #fff5f5;
+  border-color: #d9485f;
+}
+.ng-row-delete:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 .ng-footer {
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
   gap: 8px;
   margin-top: 16px;
 }
+
+.ng-footer-spacer {
+  flex: 1;
+}
+
 .ng-btn {
   padding: 8px 20px;
   border: 1px solid #e9e9e7;
@@ -869,4 +1157,7 @@ watch(showNewGroup, (v) => {
 .ng-btn.primary { background: #2383e2; color: #fff; border-color: #2383e2; }
 .ng-btn.primary:hover { background: #1b6ec2; }
 .ng-btn.primary:disabled { opacity: 0.5; cursor: not-allowed; }
+.ng-btn.danger { color: #c4554d; border-color: #f0d4d1; background: #fff; }
+.ng-btn.danger:hover { background: #fdf4f3; }
+.ng-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 </style>

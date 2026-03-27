@@ -1,4 +1,4 @@
-import { Hono } from 'hono'
+import { Hono, type Context } from 'hono'
 import type { AuthVariables, Env } from '../types'
 import { requireWriteMiddleware, teamFilter } from '../middleware/auth'
 
@@ -6,6 +6,21 @@ const groups = new Hono<{ Bindings: Env; Variables: AuthVariables }>()
 
 // 所有分组管理路由都需要读写权限
 groups.use('*', requireWriteMiddleware)
+
+type GroupContext = Context<{ Bindings: Env; Variables: AuthVariables }>
+
+function scopedGroupIds(c: GroupContext): number[] | null {
+  return c.get('allowedGroupIds')
+}
+
+function scopedTables(c: GroupContext): string[] | null {
+  return c.get('allowedTables')
+}
+
+function canAccessGroup(c: GroupContext, groupId: number): boolean {
+  const ids = scopedGroupIds(c)
+  return ids === null || ids.includes(groupId)
+}
 
 /**
  * GET /api/groups
@@ -32,7 +47,9 @@ groups.get('/', async (c) => {
     tablesByGroup.set(r.group_id, arr)
   }
 
-  const data = groupRows.results.map(g => ({
+  const data = groupRows.results
+    .filter(g => canAccessGroup(c, g.id))
+    .map(g => ({
     ...g,
     tables: tablesByGroup.get(g.id) ?? [],
   }))
@@ -45,6 +62,10 @@ groups.get('/', async (c) => {
  * 创建分组
  */
 groups.post('/', async (c) => {
+  if (scopedGroupIds(c) !== null) {
+    return c.json({ error: { code: 'FORBIDDEN', message: 'Scoped API keys cannot create groups' } }, 403)
+  }
+
   const body = await c.req.json<{ name: string; sort_order?: number }>()
 
   if (!body.name?.trim()) {
@@ -73,6 +94,10 @@ groups.post('/', async (c) => {
  */
 groups.patch('/:id', async (c) => {
   const { id } = c.req.param()
+  const groupId = Number(id)
+  if (!Number.isInteger(groupId) || !canAccessGroup(c, groupId)) {
+    return c.json({ error: { code: 'FORBIDDEN', message: 'This group is not accessible' } }, 403)
+  }
   const body = await c.req.json<{ name?: string; sort_order?: number }>()
   const teamId = c.get('teamId')
 
@@ -114,6 +139,10 @@ groups.patch('/:id', async (c) => {
  */
 groups.delete('/:id', async (c) => {
   const { id } = c.req.param()
+  const groupId = Number(id)
+  if (!Number.isInteger(groupId) || !canAccessGroup(c, groupId)) {
+    return c.json({ error: { code: 'FORBIDDEN', message: 'This group is not accessible' } }, 403)
+  }
   const teamId = c.get('teamId')
 
   let sql = `DELETE FROM _groups WHERE id = ?`
@@ -138,6 +167,10 @@ groups.delete('/:id', async (c) => {
  */
 groups.put('/:id/tables', async (c) => {
   const { id } = c.req.param()
+  const groupId = Number(id)
+  if (!Number.isInteger(groupId) || !canAccessGroup(c, groupId)) {
+    return c.json({ error: { code: 'FORBIDDEN', message: 'This group is not accessible' } }, 403)
+  }
   const body = await c.req.json<{ tables: string[] }>()
 
   if (!Array.isArray(body.tables)) {
@@ -156,6 +189,14 @@ groups.put('/:id/tables', async (c) => {
   const group = await c.env.DB.prepare(checkSql).bind(...checkParams).first()
   if (!group) {
     return c.json({ error: { code: 'NOT_FOUND', message: 'Group not found' } }, 404)
+  }
+
+  const allowedTables = scopedTables(c)
+  if (allowedTables !== null) {
+    const invalidScoped = body.tables.filter(t => !allowedTables.includes(t))
+    if (invalidScoped.length > 0) {
+      return c.json({ error: { code: 'FORBIDDEN', message: `Tables not accessible: ${invalidScoped.join(', ')}` } }, 403)
+    }
   }
 
   // 验证所有表名属于当前团队
@@ -192,6 +233,10 @@ groups.put('/:id/tables', async (c) => {
  */
 groups.put('/:id/keys', async (c) => {
   const { id } = c.req.param()
+  const groupId = Number(id)
+  if (!Number.isInteger(groupId) || !canAccessGroup(c, groupId)) {
+    return c.json({ error: { code: 'FORBIDDEN', message: 'This group is not accessible' } }, 403)
+  }
   const body = await c.req.json<{ key_ids: number[] }>()
   const teamId = c.get('teamId')
 

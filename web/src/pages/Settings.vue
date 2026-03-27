@@ -5,83 +5,7 @@
     </div>
 
     <n-tabs type="line" animated>
-      <!-- ─── Tab 1: Groups ──────────────────────────────────── -->
-      <n-tab-pane name="groups" tab="Groups">
-        <div class="tab-content">
-          <div class="hint" style="margin-bottom: 16px;">
-            Groups help organize your tables and can restrict API Keys to only access tables within specific groups
-          </div>
-
-          <n-spin v-if="groupsLoading" />
-          <template v-else>
-            <!-- Group list -->
-            <div v-if="groupList?.length" class="group-list">
-              <div v-for="g in groupList" :key="g.id" class="group-card">
-                <div class="group-card-header">
-                  <template v-if="editingGroup === g.id">
-                    <n-input
-                      v-model:value="editGroupName"
-                      size="small"
-                      style="flex: 1; max-width: 200px;"
-                      @keyup.enter="saveGroupName(g.id)"
-                      @keyup.escape="editingGroup = null"
-                      autofocus
-                    />
-                    <n-button size="tiny" type="primary" @click="saveGroupName(g.id)">Confirm</n-button>
-                    <n-button size="tiny" @click="editingGroup = null">Cancel</n-button>
-                  </template>
-                  <template v-else>
-                    <span class="group-card-name" @click="startEditGroup(g)">{{ g.name }}</span>
-                    <div class="group-card-actions">
-                      <n-button size="tiny" quaternary @click="openGroupTableEditor(g)">Edit Tables</n-button>
-                      <n-button size="tiny" quaternary type="error" @click="handleDeleteGroup(g.id)">Delete</n-button>
-                    </div>
-                  </template>
-                </div>
-                <div class="group-card-tables">
-                  <template v-if="g.tables.length">
-                    <n-tag
-                      v-for="tn in g.tables"
-                      :key="tn"
-                      size="small"
-                      :bordered="false"
-                      style="margin: 2px;"
-                    >
-                      {{ getTableTitle(tn) }}
-                    </n-tag>
-                  </template>
-                  <span v-else class="hint">No tables yet — click "Edit Tables" to add some</span>
-                </div>
-              </div>
-            </div>
-
-            <div v-else class="empty-hint">
-              No groups yet
-            </div>
-
-            <!-- Create group -->
-            <div class="create-group-row">
-              <n-input
-                v-model:value="newGroupName"
-                placeholder="Enter group name"
-                size="small"
-                style="max-width: 200px;"
-                @keyup.enter="handleCreateGroup"
-              />
-              <n-button
-                type="primary"
-                size="small"
-                :disabled="!newGroupName.trim()"
-                @click="handleCreateGroup"
-              >
-                Create Group
-              </n-button>
-            </div>
-          </template>
-        </div>
-      </n-tab-pane>
-
-      <!-- ─── Tab 3: API Keys ──────────────────────────────── -->
+      <!-- ─── Tab: API Keys ──────────────────────────────── -->
       <n-tab-pane name="keys" tab="API Keys">
         <div class="tab-content">
           <n-spin v-if="keysLoading" />
@@ -89,7 +13,11 @@
             <div v-if="keys?.length" class="key-list">
               <div v-for="k in keys" :key="k.id" class="key-card" :class="{ revoked: !k.is_active }">
                 <div class="key-card-main">
-                  <div class="key-card-name">{{ k.name }}</div>
+                  <HoverTooltipText
+                    :text="k.name"
+                    class-name="key-card-name"
+                    as="div"
+                  />
                   <div class="key-card-meta">
                     <code class="key-prefix">{{ k.key_prefix }}...</code>
                     <n-tag :type="k.type === 'readonly' ? 'info' : 'warning'" size="tiny">
@@ -99,6 +27,11 @@
                       {{ k.groups?.map(g => g.name).join(', ') || 'No groups' }}
                     </n-tag>
                     <n-tag v-else size="tiny" :bordered="false">All tables</n-tag>
+                    <n-tag v-if="k.notes_scope === 'roots'" size="tiny" :bordered="false">
+                      {{ k.note_roots?.map(n => n.title).join(', ') || 'Selected note roots' }}
+                    </n-tag>
+                    <n-tag v-else-if="k.notes_scope === 'all'" size="tiny" :bordered="false">All notes</n-tag>
+                    <n-tag v-else size="tiny" :bordered="false">No notes</n-tag>
                     <n-tag v-if="!k.is_active" type="error" size="tiny">Revoked</n-tag>
                     <span class="key-last-used">{{ k.last_used_at ? 'Last used ' + formatRelativeTime(k.last_used_at) : 'Never used' }}</span>
                   </div>
@@ -163,49 +96,54 @@
           <template v-if="trashCategory === 'tables'">
             <n-spin v-if="trashLoading" />
             <template v-else>
-              <div v-if="trashItems?.length" class="trash-list">
-                <div v-for="item in trashItems" :key="item.id" class="trash-card">
-                  <div class="trash-card-main">
-                    <div class="trash-card-header">
-                      <span class="trash-card-table">{{ getTableTitle(item.table_name) }}</span>
-                      <code class="trash-card-id">ID: {{ item.record_id }}</code>
-                    </div>
-                    <div class="trash-card-preview">
-                      {{ formatTrashPreview(item.record_data) }}
-                    </div>
-                    <div class="trash-card-meta">
-                      Deleted at {{ formatTrashTime(item.deleted_at) }}
+              <div v-if="trashItems?.length" class="trash-panel">
+                <div class="trash-list-shell">
+                  <div class="trash-list">
+                    <div v-for="item in trashItems" :key="item.id" class="trash-card">
+                      <div class="trash-card-main">
+                        <div class="trash-card-header">
+                          <HoverTooltipText
+                            :text="getTrashItemTitle(item)"
+                            class-name="trash-card-table"
+                          />
+                          <code class="trash-card-id">{{ getTrashItemBadge(item) }}</code>
+                        </div>
+                        <div class="trash-card-preview">
+                          {{ formatTrashPreview(item.record_data) }}
+                        </div>
+                        <div class="trash-card-meta">
+                          Deleted at {{ formatTrashTime(item.deleted_at) }}
+                        </div>
+                      </div>
+                      <div class="trash-card-actions">
+                        <n-button size="tiny" type="primary" quaternary @click="handleRestore(item.id)">Restore</n-button>
+                        <n-button size="tiny" type="error" quaternary @click="handlePermanentDelete(item.id)">Delete permanently</n-button>
+                      </div>
                     </div>
                   </div>
-                  <div class="trash-card-actions">
-                    <n-button size="tiny" type="primary" quaternary @click="handleRestore(item.id)">Restore</n-button>
-                    <n-button size="tiny" type="error" quaternary @click="handlePermanentDelete(item.id)">Delete permanently</n-button>
+                </div>
+                <div class="trash-panel-footer">
+                  <div v-if="trashTotal > trashPageSize" class="trash-pagination-wrap">
+                    <n-pagination
+                      v-model:page="trashPage"
+                      v-model:page-size="trashPageSize"
+                      :item-count="trashTotal"
+                      :page-sizes="[20, 50, 100]"
+                      show-size-picker
+                      size="small"
+                    />
                   </div>
+                  <n-button
+                    type="error"
+                    size="small"
+                    quaternary
+                    @click="handleEmptyTrash"
+                  >
+                    Empty Trash
+                  </n-button>
                 </div>
               </div>
               <div v-else class="empty-hint">Trash is empty</div>
-
-              <div v-if="trashTotal > trashPageSize" style="margin-top: 16px; display: flex; justify-content: center;">
-                <n-pagination
-                  v-model:page="trashPage"
-                  v-model:page-size="trashPageSize"
-                  :item-count="trashTotal"
-                  :page-sizes="[20, 50, 100]"
-                  show-size-picker
-                  size="small"
-                />
-              </div>
-
-              <n-button
-                v-if="trashItems?.length"
-                type="error"
-                size="small"
-                quaternary
-                style="margin-top: 16px;"
-                @click="handleEmptyTrash"
-              >
-                Empty Trash
-              </n-button>
             </template>
           </template>
 
@@ -213,33 +151,45 @@
           <template v-else>
             <n-spin v-if="notesTrashLoading" />
             <template v-else>
-              <div v-if="notesTrashItems?.length" class="trash-list">
-                <div v-for="item in notesTrashItems" :key="item.id" class="trash-card">
-                  <div class="trash-card-main">
-                    <div class="trash-card-header">
-                      <span class="trash-note-icon">{{ item.icon && !item.icon.startsWith('ion:') ? item.icon : '📄' }}</span>
-                      <span class="trash-card-table">{{ item.title || 'Untitled' }}</span>
+              <div v-if="notesTrashItems?.length" class="trash-panel">
+                <div class="trash-list-shell">
+                  <div class="trash-list">
+                    <div v-for="item in notesTrashItems" :key="item.id" class="trash-card">
+                      <div class="trash-card-main">
+                        <div class="trash-card-header">
+                          <span class="trash-note-icon">
+                            <IonIcon v-if="item.icon && item.icon.startsWith('ion:')" :name="item.icon.slice(4)" :size="14" />
+                            <span v-else-if="item.icon" class="note-emoji-icon">{{ item.icon }}</span>
+                            <IonIcon v-else name="DocumentOutline" :size="14" />
+                          </span>
+                          <HoverTooltipText
+                            :text="item.title || 'Untitled'"
+                            class-name="trash-card-table"
+                          />
+                        </div>
+                        <div class="trash-card-meta">Deleted at {{ formatNoteTrashTime(item.deleted_at) }}</div>
+                      </div>
+                      <div class="trash-card-actions">
+                        <n-button size="tiny" type="primary" quaternary @click="handleNoteRestore(item.id)">Restore</n-button>
+                        <n-button size="tiny" type="error" quaternary @click="handleNotePermDelete(item.id)">Delete permanently</n-button>
+                      </div>
                     </div>
-                    <div class="trash-card-meta">Deleted at {{ formatNoteTrashTime(item.deleted_at) }}</div>
                   </div>
-                  <div class="trash-card-actions">
-                    <n-button size="tiny" type="primary" quaternary @click="handleNoteRestore(item.id)">Restore</n-button>
-                    <n-button size="tiny" type="error" quaternary @click="handleNotePermDelete(item.id)">Delete permanently</n-button>
+                </div>
+                <div v-if="notesTrashTotal > notesTrashPageSize" class="trash-panel-footer">
+                  <div class="trash-pagination-wrap">
+                    <n-pagination
+                      v-model:page="notesTrashPage"
+                      v-model:page-size="notesTrashPageSize"
+                      :item-count="notesTrashTotal"
+                      :page-sizes="[20, 50, 100]"
+                      show-size-picker
+                      size="small"
+                    />
                   </div>
                 </div>
               </div>
               <div v-else class="empty-hint">Trash is empty</div>
-
-              <div v-if="notesTrashTotal > notesTrashPageSize" style="margin-top: 16px; display: flex; justify-content: center;">
-                <n-pagination
-                  v-model:page="notesTrashPage"
-                  v-model:page-size="notesTrashPageSize"
-                  :item-count="notesTrashTotal"
-                  :page-sizes="[20, 50, 100]"
-                  show-size-picker
-                  size="small"
-                />
-              </div>
             </template>
           </template>
         </div>
@@ -378,7 +328,7 @@
             <div class="section-title">Sidebar</div>
 
             <div class="appearance-row">
-              <label class="appearance-label">Table font size</label>
+              <label class="appearance-label">Sidebar font size</label>
               <div class="appearance-control">
                 <n-slider
                   v-model:value="sidebarFontSize"
@@ -394,7 +344,7 @@
             </div>
 
             <div class="appearance-row" style="margin-top: 20px;">
-              <label class="appearance-label">Table text color</label>
+              <label class="appearance-label">Sidebar text color</label>
               <div class="appearance-control">
                 <input
                   type="color"
@@ -446,7 +396,39 @@
             </n-space>
           </n-checkbox-group>
         </template>
-        <span v-else class="hint">No groups yet — please create one in the "Groups" tab first</span>
+        <span v-else class="hint">No groups yet — please create one from the dashboard first</span>
+      </n-form-item>
+      <n-form-item label="Notes Access">
+        <n-radio-group v-model:value="newKey.notes_scope">
+          <n-space>
+            <n-radio value="none">No notes</n-radio>
+            <n-radio value="all">All notes</n-radio>
+            <n-radio value="roots">Selected directories</n-radio>
+          </n-space>
+        </n-radio-group>
+      </n-form-item>
+      <n-form-item v-if="newKey.notes_scope === 'roots'" label="Select Directories">
+        <template v-if="noteTree?.length">
+          <n-checkbox-group v-model:value="newKey.note_root_ids">
+            <div class="note-root-list">
+              <label
+                v-for="note in noteRootOptions"
+                :key="note.id"
+                class="note-root-item"
+                :style="{ paddingLeft: `${note.depth * 18}px` }"
+              >
+                <n-checkbox :value="note.id" />
+                <span class="note-root-icon">
+                  <IonIcon v-if="note.icon && note.icon.startsWith('ion:')" :name="note.icon.slice(4)" :size="14" />
+                  <span v-else-if="note.icon" class="note-emoji-icon">{{ note.icon }}</span>
+                  <IonIcon v-else :name="note.hasChildren ? 'FolderOutline' : 'DocumentOutline'" :size="14" />
+                </span>
+                <span class="note-root-name">{{ note.title || 'Untitled' }}</span>
+              </label>
+            </div>
+          </n-checkbox-group>
+        </template>
+        <span v-else class="hint">No notes yet</span>
       </n-form-item>
     </n-form>
     <template #footer>
@@ -477,49 +459,24 @@
     :tables="allTables ?? []"
     :groups="groupList ?? []"
   />
-
-  <!-- Edit group modal (rename + edit tables) -->
-  <n-modal v-model:show="showGroupTableEditor" preset="card" style="width: 480px;" title="Edit Group">
-    <template v-if="editingGroupData">
-      <n-form label-placement="left" label-width="70" style="margin-bottom: 8px;">
-        <n-form-item label="Group Name">
-          <n-input v-model:value="editingGroupName" placeholder="Group name" />
-        </n-form-item>
-      </n-form>
-      <div style="font-size: 13px; color: #555; margin-bottom: 8px; font-weight: 500;">Included Tables</div>
-      <n-checkbox-group v-model:value="selectedGroupTables">
-        <n-space vertical>
-          <n-checkbox
-            v-for="t in allTables"
-            :key="t.name"
-            :value="t.name"
-            :label="(t.title || t.name)"
-          />
-        </n-space>
-      </n-checkbox-group>
-    </template>
-    <template #footer>
-      <div style="display: flex; justify-content: flex-end; gap: 8px;">
-        <n-button @click="showGroupTableEditor = false">Cancel</n-button>
-        <n-button type="primary" :loading="savingGroupTables" @click="handleSaveGroupTables">Save</n-button>
-      </div>
-    </template>
-  </n-modal>
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import { useRouter } from 'vue-router'
 import {
   NTabs, NTabPane, NForm, NFormItem, NInput, NButton, NText, NTag, NSpace,
   NSpin, NModal, NAlert, NRadioGroup, NRadio, NCheckboxGroup, NCheckbox,
-  NSlider, NPagination, useMessage,
+  NSlider, NPagination, useMessage, useDialog,
 } from 'naive-ui'
-import { api, notesApi, userApi, teamApi, getCurrentUser, type ApiKeyInfo, type Group, type TableMeta, type TrashItem, type UserInfo, type TeamDetail } from '@/api/client'
+import { api, notesApi, userApi, teamApi, getCurrentUser, type ApiKeyInfo, type TableMeta, type TrashItem, type UserInfo, type TeamDetail, type NoteListItem } from '@/api/client'
 import ExportSchemaModal from '@/components/ExportSchemaModal.vue'
+import HoverTooltipText from '@/components/HoverTooltipText.vue'
+import IonIcon from '@/components/IonIcon.vue'
 
 const message = useMessage()
+const dialog = useDialog()
 const queryClient = useQueryClient()
 const router = useRouter()
 
@@ -542,6 +499,8 @@ const newKey = ref({
   type: 'readonly' as 'readonly' | 'readwrite',
   scope: 'all' as 'all' | 'groups',
   group_ids: [] as number[],
+  notes_scope: 'none' as 'all' | 'none' | 'roots',
+  note_root_ids: [] as string[],
 })
 
 // ── API Keys ──────────────────────────────────────────────────
@@ -563,11 +522,13 @@ async function handleCreateKey() {
       type: newKey.value.type,
       scope: newKey.value.scope,
       group_ids: newKey.value.scope === 'groups' ? newKey.value.group_ids : undefined,
+      notes_scope: newKey.value.notes_scope,
+      note_root_ids: newKey.value.notes_scope === 'roots' ? newKey.value.note_root_ids : undefined,
     })
     newKeyValue.value = res.data.key
     showCreate.value = false
     showNewKey.value = true
-    newKey.value = { name: '', type: 'readonly', scope: 'all', group_ids: [] }
+    newKey.value = { name: '', type: 'readonly', scope: 'all', group_ids: [], notes_scope: 'none', note_root_ids: [] }
     queryClient.invalidateQueries({ queryKey: ['admin-keys'] })
   } catch (err) {
     message.error((err as Error).message)
@@ -602,15 +563,45 @@ function copyKey() {
   message.success('Copied to clipboard')
 }
 
-// ── Groups ──────────────────────────────────────────────────
-const newGroupName = ref('')
-const editingGroup = ref<number | null>(null)
-const editGroupName = ref('')
-
 const { data: groupList, isLoading: groupsLoading } = useQuery({
   queryKey: ['groups'],
   queryFn: api.getGroups,
   retry: false,
+})
+
+const { data: noteTree } = useQuery({
+  queryKey: ['notes', 'tree', 'settings'],
+  queryFn: notesApi.getTree,
+  retry: false,
+})
+
+type NoteRootOption = NoteListItem & { depth: number; hasChildren: boolean }
+
+const noteRootOptions = computed<NoteRootOption[]>(() => {
+  const items = noteTree.value ?? []
+  const childrenMap = new Map<string, NoteListItem[]>()
+  for (const note of items) {
+    if (!note.parent_id) continue
+    const arr = childrenMap.get(note.parent_id) ?? []
+    arr.push(note)
+    childrenMap.set(note.parent_id, arr)
+  }
+
+  const roots = items.filter((note) => !note.parent_id)
+  const out: NoteRootOption[] = []
+  const walk = (note: NoteListItem, depth: number) => {
+    const children = childrenMap.get(note.id) ?? []
+    out.push({ ...note, depth, hasChildren: children.length > 0 })
+    for (const child of children) walk(child, depth + 1)
+  }
+  for (const root of roots) walk(root, 0)
+  return out
+})
+
+watch(() => newKey.value.scope, (scope) => {
+  if (scope === 'groups' && newKey.value.notes_scope === 'all') {
+    newKey.value.notes_scope = 'none'
+  }
 })
 
 const { data: allTables } = useQuery({
@@ -623,80 +614,13 @@ function getTableTitle(name: string): string {
   return t?.title || name
 }
 
-async function handleCreateGroup() {
-  if (!newGroupName.value.trim()) return
-  try {
-    await api.createGroup(newGroupName.value.trim())
-    message.success('Group created')
-    newGroupName.value = ''
-    queryClient.invalidateQueries({ queryKey: ['groups'] })
-  } catch (err) {
-    message.error((err as Error).message)
-  }
-}
-
-function startEditGroup(g: Group) {
-  editingGroup.value = g.id
-  editGroupName.value = g.name
-}
-
-async function saveGroupName(id: number) {
-  const name = editGroupName.value.trim()
-  if (!name) { editingGroup.value = null; return }
-  try {
-    await api.updateGroup(id, { name })
-    message.success('Group updated')
-    queryClient.invalidateQueries({ queryKey: ['groups'] })
-  } catch (err) {
-    message.error((err as Error).message)
-  }
-  editingGroup.value = null
-}
-
-async function handleDeleteGroup(id: number) {
-  const confirmed = window.confirm('Delete this group? Tables inside will not be deleted.')
-  if (!confirmed) return
-  try {
-    await api.deleteGroup(id)
-    message.success('Group deleted')
-    queryClient.invalidateQueries({ queryKey: ['groups'] })
-  } catch (err) {
-    message.error((err as Error).message)
-  }
-}
-
-// ── Edit tables in group ──────────────────────────────────────────
-const showGroupTableEditor = ref(false)
-const editingGroupData = ref<Group | null>(null)
-const editingGroupName = ref('')
-const selectedGroupTables = ref<string[]>([])
-const savingGroupTables = ref(false)
-
-function openGroupTableEditor(g: Group) {
-  editingGroupData.value = g
-  editingGroupName.value = g.name
-  selectedGroupTables.value = [...g.tables]
-  showGroupTableEditor.value = true
-}
-
-async function handleSaveGroupTables() {
-  if (!editingGroupData.value) return
-  savingGroupTables.value = true
-  try {
-    const nameChanged = editingGroupName.value.trim() && editingGroupName.value.trim() !== editingGroupData.value.name
-    if (nameChanged) {
-      await api.updateGroup(editingGroupData.value.id, { name: editingGroupName.value.trim() })
-    }
-    await api.setGroupTables(editingGroupData.value.id, selectedGroupTables.value)
-    message.success('Group updated')
-    queryClient.invalidateQueries({ queryKey: ['groups'] })
-    queryClient.invalidateQueries({ queryKey: ['tables'] })
-    showGroupTableEditor.value = false
-  } catch (err) {
-    message.error((err as Error).message)
-  } finally {
-    savingGroupTables.value = false
-  }
+function isDeletedTableSnapshot(data: Record<string, unknown>): data is Record<string, unknown> & {
+  __kind: 'table'
+  meta?: { title?: string | null }
+  field_meta?: unknown[]
+  rows?: unknown[]
+} {
+  return data.__kind === 'table'
 }
 
 // ── Trash ──────────────────────────────────────────────────
@@ -714,8 +638,27 @@ const trashItems = computed(() => trashResult.value?.data)
 const trashTotal = computed(() => trashResult.value?.meta.total ?? 0)
 
 function formatTrashPreview(data: Record<string, unknown>): string {
+  if (isDeletedTableSnapshot(data)) {
+    const fieldCount = Array.isArray(data.field_meta) ? data.field_meta.length : 0
+    const rowCount = Array.isArray(data.rows) ? data.rows.length : 0
+    return `${fieldCount} fields / ${rowCount} records`
+  }
   const entries = Object.entries(data).filter(([k]) => k !== 'id' && k !== 'created_at')
   return entries.slice(0, 3).map(([, v]) => v == null ? '—' : String(v)).join(' / ')
+}
+
+function getTrashItemTitle(item: TrashItem): string {
+  if (isDeletedTableSnapshot(item.record_data)) {
+    return (item.record_data.meta?.title as string | null | undefined) || item.table_name
+  }
+  return getTableTitle(item.table_name)
+}
+
+function getTrashItemBadge(item: TrashItem): string {
+  if (isDeletedTableSnapshot(item.record_data)) {
+    return `Table: ${item.table_name}`
+  }
+  return `ID: ${item.record_id}`
 }
 
 function formatTrashTime(iso: string): string {
@@ -725,26 +668,34 @@ function formatTrashTime(iso: string): string {
 
 async function handleRestore(id: number) {
   try {
+    const item = trashItems.value?.find(entry => entry.id === id)
     await api.restoreTrash(id)
-    message.success('Record restored')
+    message.success(item && isDeletedTableSnapshot(item.record_data) ? 'Table restored' : 'Record restored')
     queryClient.invalidateQueries({ queryKey: ['trash'], exact: false })
     queryClient.invalidateQueries({ queryKey: ['records'] })
     queryClient.invalidateQueries({ queryKey: ['tables'] })
+    queryClient.invalidateQueries({ queryKey: ['groups'] })
   } catch (err) {
     message.error((err as Error).message)
   }
 }
 
 async function handlePermanentDelete(id: number) {
-  const confirmed = window.confirm('Delete permanently? This action cannot be undone.')
-  if (!confirmed) return
-  try {
-    await api.deleteTrash(id)
-    message.success('Permanently deleted')
-    queryClient.invalidateQueries({ queryKey: ['trash'], exact: false })
-  } catch (err) {
-    message.error((err as Error).message)
-  }
+  dialog.warning({
+    title: 'Delete Permanently',
+    content: 'This item will be permanently deleted and cannot be recovered.',
+    positiveText: 'Delete',
+    negativeText: 'Cancel',
+    onPositiveClick: async () => {
+      try {
+        await api.deleteTrash(id)
+        message.success('Permanently deleted')
+        queryClient.invalidateQueries({ queryKey: ['trash'], exact: false })
+      } catch (err) {
+        message.error((err as Error).message)
+      }
+    },
+  })
 }
 
 // ── Notes Trash ──────────────────────────────────────────
@@ -776,27 +727,39 @@ async function handleNoteRestore(id: string) {
 }
 
 async function handleNotePermDelete(id: string) {
-  const confirmed = window.confirm('Delete permanently? This cannot be undone.')
-  if (!confirmed) return
-  try {
-    await notesApi.permanentDeleteNote(id)
-    message.success('Permanently deleted')
-    queryClient.invalidateQueries({ queryKey: ['notes-trash'], exact: false })
-  } catch (err) {
-    message.error((err as Error).message)
-  }
+  dialog.warning({
+    title: 'Delete Permanently',
+    content: 'This note will be permanently deleted and cannot be recovered.',
+    positiveText: 'Delete',
+    negativeText: 'Cancel',
+    onPositiveClick: async () => {
+      try {
+        await notesApi.permanentDeleteNote(id)
+        message.success('Permanently deleted')
+        queryClient.invalidateQueries({ queryKey: ['notes-trash'], exact: false })
+      } catch (err) {
+        message.error((err as Error).message)
+      }
+    },
+  })
 }
 
 async function handleEmptyTrash() {
-  const confirmed = window.confirm('Empty the trash? All records will be permanently deleted and cannot be recovered.')
-  if (!confirmed) return
-  try {
-    await api.emptyTrash()
-    message.success('Trash emptied')
-    queryClient.invalidateQueries({ queryKey: ['trash'], exact: false })
-  } catch (err) {
-    message.error((err as Error).message)
-  }
+  dialog.warning({
+    title: 'Empty Trash',
+    content: 'All items in the trash will be permanently deleted and cannot be recovered.',
+    positiveText: 'Delete All',
+    negativeText: 'Cancel',
+    onPositiveClick: async () => {
+      try {
+        await api.emptyTrash()
+        message.success('Trash emptied')
+        queryClient.invalidateQueries({ queryKey: ['trash'], exact: false })
+      } catch (err) {
+        message.error((err as Error).message)
+      }
+    },
+  })
 }
 
 // ── Sidebar Appearance ────────────────────────────────────
@@ -811,7 +774,7 @@ function loadSidebarPrefs() {
 
 const prefs = loadSidebarPrefs()
 const sidebarFontSize = ref<number>(prefs.fontSize ?? 14)
-const sidebarTextColor = ref<string>(prefs.textColor ?? '#b0bcd4')
+const sidebarTextColor = ref<string>(prefs.textColor ?? '#37352f')
 
 function saveSidebarPrefs() {
   localStorage.setItem(SIDEBAR_PREFS_KEY, JSON.stringify({
@@ -827,7 +790,7 @@ function saveSidebarPrefs() {
 
 function resetSidebarPrefs() {
   sidebarFontSize.value = 14
-  sidebarTextColor.value = '#b0bcd4'
+  sidebarTextColor.value = '#37352f'
   saveSidebarPrefs()
 }
 
@@ -883,18 +846,24 @@ async function handleAddMember() {
 }
 
 async function handleRemoveMember(userId: number, name: string) {
-  const confirmed = window.confirm(`Remove "${name}" from the team?`)
-  if (!confirmed) return
-  removingMember.value = userId
-  try {
-    await teamApi.removeMember(userId)
-    message.success('Member removed')
-    queryClient.invalidateQueries({ queryKey: ['team-current'] })
-  } catch (err) {
-    message.error((err as Error).message)
-  } finally {
-    removingMember.value = null
-  }
+  dialog.warning({
+    title: 'Remove Member',
+    content: `Remove "${name}" from the team?`,
+    positiveText: 'Remove',
+    negativeText: 'Cancel',
+    onPositiveClick: async () => {
+      removingMember.value = userId
+      try {
+        await teamApi.removeMember(userId)
+        message.success('Member removed')
+        queryClient.invalidateQueries({ queryKey: ['team-current'] })
+      } catch (err) {
+        message.error((err as Error).message)
+      } finally {
+        removingMember.value = null
+      }
+    },
+  })
 }
 
 // ── User Management ──────────────────────────────────────────
@@ -1087,11 +1056,40 @@ async function handleToggleRole(u: UserInfo) {
   font-size: 15px;
   flex-shrink: 0;
 }
+.note-emoji-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  line-height: 1;
+}
 
+.trash-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.trash-list-shell {
+  max-height: min(56vh, 720px);
+  overflow: auto;
+  padding-right: 4px;
+  scrollbar-gutter: stable;
+}
 .trash-list {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+.trash-panel-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.trash-pagination-wrap {
+  display: flex;
+  justify-content: center;
 }
 .trash-card {
   display: flex;
@@ -1123,6 +1121,8 @@ async function handleToggleRole(u: UserInfo) {
   background: #f5f6f8;
   padding: 1px 6px;
   border-radius: 3px;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 .trash-card-preview {
   font-size: 12px;
@@ -1188,6 +1188,30 @@ async function handleToggleRole(u: UserInfo) {
 .key-last-used {
   font-size: 11px;
   color: #a3a19d;
+}
+
+.note-root-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 220px;
+  overflow: auto;
+  width: 100%;
+  padding: 6px 0;
+}
+.note-root-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+  font-size: 13px;
+  color: #37352f;
+}
+.note-root-icon {
+  flex-shrink: 0;
+}
+.note-root-name {
+  min-width: 0;
 }
 
 /* ── Appearance ── */

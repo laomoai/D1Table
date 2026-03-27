@@ -1,2 +1,1 @@
--- icon column already added manually; this migration is now a no-op
-SELECT 1;
+ALTER TABLE _meta ADD COLUMN icon TEXT;

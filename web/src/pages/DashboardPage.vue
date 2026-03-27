@@ -112,7 +112,7 @@
 import { ref, nextTick, computed, defineAsyncComponent } from 'vue'
 import { useRouter } from 'vue-router'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
-import { NButton, NIcon, NSpin, useMessage } from 'naive-ui'
+import { NButton, NIcon, NSpin, useDialog, useMessage } from 'naive-ui'
 import { GridOutline } from '@vicons/ionicons5'
 import { api, type TableMeta } from '@/api/client'
 import CreateTableModal from '@/components/CreateTableModal.vue'
@@ -124,6 +124,7 @@ const IconPicker = defineAsyncComponent(() => import('@/components/IconPicker.vu
 const router = useRouter()
 const queryClient = useQueryClient()
 const message = useMessage()
+const dialog = useDialog()
 const showCreateTable = ref(false)
 const copiedId = ref<string | null>(null)
 
@@ -206,15 +207,21 @@ function cancelEdit() {
 }
 
 async function confirmDeleteTable(t: TableMeta) {
-  const confirmed = window.confirm(`Delete table ${t.title || t.name}? This action cannot be undone.`)
-  if (!confirmed) return
-  try {
-    await api.deleteTable(t.name)
-    message.success('Table deleted')
-    queryClient.invalidateQueries({ queryKey: ['tables'] })
-  } catch (err) {
-    message.error((err as Error).message)
-  }
+  dialog.warning({
+    title: 'Delete Table',
+    content: `Delete table ${t.title || t.name}? This action cannot be undone.`,
+    positiveText: 'Delete',
+    negativeText: 'Cancel',
+    onPositiveClick: async () => {
+      try {
+        await api.deleteTable(t.name)
+        message.success('Table deleted')
+        queryClient.invalidateQueries({ queryKey: ['tables'] })
+      } catch (err) {
+        message.error((err as Error).message)
+      }
+    },
+  })
 }
 
 async function saveTitle(t: TableMeta) {
@@ -276,7 +283,13 @@ async function onIconSelect(icon: string | null) {
   border-bottom: 1px solid #e9e9e7;
 }
 .group-section-name { font-size: 13px; font-weight: 600; color: #37352f; }
-.group-section-count { font-size: 12px; color: #a3a19d; }
+.group-section-count {
+  font-size: 12px;
+  color: #a3a19d;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+}
 /* ≤6 张：列表；>6 张：2 列网格 */
 .table-cards { display: flex; flex-direction: column; gap: 8px; }
 .table-cards--grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }

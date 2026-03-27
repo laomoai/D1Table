@@ -4,13 +4,17 @@
   "private": true,
   "scripts": {
     "dev:worker": "wrangler dev --port 8787",
+    "dev:worker:preview": "wrangler dev --env preview --port 8787",
     "dev:web": "cd web && npm run dev",
     "build:web": "cd web && npm run build",
     "deploy": "npm run build:web && wrangler deploy",
-    "db:migrate:local": "wrangler d1 execute d1table --local --file=migrations/0001_init.sql",
-    "db:migrate": "wrangler d1 execute d1table --remote --file=migrations/0001_init.sql",
+    "deploy:preview": "npm run build:web && wrangler deploy --env preview",
+    "db:migrate:local": "bash scripts/run-migrations.sh production local",
+    "db:migrate": "bash scripts/run-migrations.sh production remote",
+    "db:migrate:preview": "bash scripts/run-migrations.sh preview remote",
     "db:seed:local": "wrangler d1 execute d1table --local --file=migrations/0002_seed.sql",
-    "db:seed": "wrangler d1 execute d1table --remote --file=migrations/0002_seed.sql"
+    "db:seed": "wrangler d1 execute d1table --remote --file=migrations/0002_seed.sql",
+    "db:seed:preview": "wrangler d1 execute d1table-preview --env preview --remote --file=migrations/0002_seed.sql"
   },
   "dependencies": {
     "@hono/zod-openapi": "^0.18.3",

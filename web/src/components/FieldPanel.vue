@@ -21,7 +21,8 @@
           >
             <span class="drag-handle" @click.stop title="Drag to reorder">⠿</span>
             <span class="field-icon" :style="{ color: typeColor(field.field_type) }">
-              {{ typeIcon(field.field_type) }}
+              <IonIcon v-if="typeIcon(field.field_type).startsWith('ion:')" :name="typeIcon(field.field_type).slice(4)" :size="14" />
+              <span v-else>{{ typeIcon(field.field_type) }}</span>
             </span>
             <div class="field-title-area">
               <span class="field-name">{{ field.title }}</span>
@@ -33,7 +34,9 @@
                 :class="{ 'eye-hidden': field.is_hidden }"
                 @click="toggleHidden(field)"
                 :title="field.is_hidden ? 'Show field' : 'Hide field'"
-              >{{ field.is_hidden ? '👁️' : '👁' }}</button>
+              >
+                <IonIcon :name="field.is_hidden ? 'EyeOffOutline' : 'EyeOutline'" :size="14" />
+              </button>
             </div>
           </div>
 
@@ -62,7 +65,10 @@
                     @click="selectType(t.value as FieldType)"
                     :title="t.label"
                   >
-                    <span class="type-btn-icon">{{ t.icon }}</span>
+                    <span class="type-btn-icon">
+                      <IonIcon v-if="t.icon.startsWith('ion:')" :name="t.icon.slice(4)" :size="14" />
+                      <span v-else>{{ t.icon }}</span>
+                    </span>
                     <span class="type-btn-label">{{ t.label }}</span>
                   </button>
                 </div>
@@ -146,7 +152,10 @@
                   @click="newField.field_type = t.value as FieldType"
                   :title="t.label"
                 >
-                  <span class="type-btn-icon">{{ t.icon }}</span>
+                  <span class="type-btn-icon">
+                    <IonIcon v-if="t.icon.startsWith('ion:')" :name="t.icon.slice(4)" :size="14" />
+                    <span v-else>{{ t.icon }}</span>
+                  </span>
                   <span class="type-btn-label">{{ t.label }}</span>
                 </button>
               </div>
@@ -212,6 +221,7 @@ import { ref, watch, nextTick, onMounted } from 'vue'
 import { useMessage, NDrawer, NDrawerContent, NInput, NButton, NCollapseTransition, NSelect as NaiveSelect } from 'naive-ui'
 import { api, type FieldMeta, type FieldType, type SelectOption } from '@/api/client'
 import { useQueryClient } from '@tanstack/vue-query'
+import IonIcon from './IonIcon.vue'
 
 const props = defineProps<{
   tableName: string
@@ -235,7 +245,7 @@ onMounted(async () => {
   try {
     const tables = await api.getTables()
     availableTables.value = [
-      { label: '📄 Notes', value: '_notes' },
+      { label: 'Notes', value: '_notes' },
       ...tables.map(t => ({ label: t.title || t.name, value: t.name })),
     ]
   } catch {}
@@ -249,15 +259,15 @@ const fieldTypes = [
   { value: 'currency', label: 'Currency',  icon: '¥',  color: '#18a058' },
   { value: 'percent',  label: 'Percent',   icon: '%',  color: '#f0a020' },
   { value: 'email',    label: 'Email',     icon: '@',  color: '#00adb5' },
-  { value: 'url',      label: 'URL',       icon: '🔗', color: '#4f6ef7' },
-  { value: 'date',     label: 'Date',      icon: '📅', color: '#8a2be2' },
-  { value: 'datetime', label: 'Datetime',  icon: '🕐', color: '#d03050' },
-  { value: 'checkbox', label: 'Checkbox',  icon: '☑',  color: '#18a058' },
-  { value: 'select',   label: 'Select',    icon: '◉',  color: '#f0a020' },
-  { value: 'image',    label: 'Image',     icon: '🖼',  color: '#e91e8c' },
-  { value: 'link',     label: 'Link',      icon: '🔗',  color: '#4f6ef7' },
-  { value: 'totp',     label: '2FA',       icon: '🔐',  color: '#d03050' },
-  { value: 'password', label: 'Password', icon: '🔑',  color: '#8a6d3b' },
+  { value: 'url',      label: 'URL',       icon: 'ion:LinkOutline', color: '#4f6ef7' },
+  { value: 'date',     label: 'Date',      icon: 'ion:CalendarOutline', color: '#8a2be2' },
+  { value: 'datetime', label: 'Datetime',  icon: 'ion:TimeOutline', color: '#d03050' },
+  { value: 'checkbox', label: 'Checkbox',  icon: 'ion:CheckboxOutline',  color: '#18a058' },
+  { value: 'select',   label: 'Select',    icon: 'ion:OptionsOutline',  color: '#f0a020' },
+  { value: 'image',    label: 'Image',     icon: 'ion:ImageOutline',  color: '#e91e8c' },
+  { value: 'link',     label: 'Link',      icon: 'ion:LinkOutline',  color: '#4f6ef7' },
+  { value: 'totp',     label: '2FA',       icon: 'ion:KeyOutline',  color: '#d03050' },
+  { value: 'password', label: 'Password', icon: 'ion:LockClosedOutline',  color: '#8a6d3b' },
 ]
 
 // ── 展开编辑 ──────────────────────────────────────────────────

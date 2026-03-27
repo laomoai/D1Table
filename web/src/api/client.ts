@@ -181,9 +181,9 @@ export const api = {
   /** API Key 管理 */
   getKeys: () =>
     http.get<{ data: ApiKeyInfo[] }>('/admin/keys').then((r) => r.data.data),
-  createKey: (data: { name: string; type: 'readonly' | 'readwrite'; scope?: 'all' | 'groups'; group_ids?: number[] }) =>
-    http.post<{ data: { key: string; key_prefix: string; name: string; type: string; scope: string; group_ids: number[] } }>('/admin/keys', data).then((r) => r.data),
-  updateKey: (id: number, data: { scope?: 'all' | 'groups'; group_ids?: number[] }) =>
+  createKey: (data: { name: string; type: 'readonly' | 'readwrite'; scope?: 'all' | 'groups'; group_ids?: number[]; notes_scope?: 'all' | 'none' | 'roots'; note_root_ids?: string[] }) =>
+    http.post<{ data: { key: string; key_prefix: string; name: string; type: string; scope: string; notes_scope: string; group_ids: number[]; note_root_ids: string[] } }>('/admin/keys', data).then((r) => r.data),
+  updateKey: (id: number, data: { scope?: 'all' | 'groups'; group_ids?: number[]; notes_scope?: 'all' | 'none' | 'roots'; note_root_ids?: string[] }) =>
     http.patch<{ data: { success: boolean } }>(`/admin/keys/${id}`, data).then((r) => r.data.data),
   revokeKey: (id: number) =>
     http.delete(`/admin/keys/${id}`),
@@ -251,10 +251,12 @@ export interface ApiKeyInfo {
   name: string
   type: 'readonly' | 'readwrite'
   scope: 'all' | 'groups'
+  notes_scope: 'all' | 'none' | 'roots'
   created_at: number
   is_active: number
   last_used_at: number | null
   groups: GroupInfo[]
+  note_roots: Array<{ id: string; title: string }>
 }
 
 export interface TeamInfo {

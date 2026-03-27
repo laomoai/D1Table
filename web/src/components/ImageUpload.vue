@@ -33,7 +33,9 @@
         <span>Uploading...</span>
       </div>
       <div v-else class="upload-hint">
-        <span class="upload-icon">🖼</span>
+        <span class="upload-icon">
+          <IonIcon name="ImageOutline" :size="22" />
+        </span>
         <span>Click or drag image here</span>
         <span class="upload-sub">Supports JPG, PNG, GIF, WebP · Paste with Ctrl+V</span>
       </div>
@@ -54,6 +56,7 @@
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { NSpin } from 'naive-ui'
 import { api, type ImageValue } from '@/api/client'
+import IonIcon from './IonIcon.vue'
 
 const props = defineProps<{
   value: string | null  // JSON string of ImageValue

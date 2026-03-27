@@ -3,9 +3,17 @@
     <!-- 工具栏 -->
     <div class="toolbar">
       <span class="table-title">
-        <span v-if="props.tableIcon && !props.tableIcon.startsWith('ion:')" class="title-icon-emoji">{{ props.tableIcon }}</span>
-        <ion-icon v-else-if="props.tableIcon" :name="props.tableIcon.slice(4)" :size="16" style="margin-right:5px;opacity:0.7;vertical-align:middle;" />
-        {{ tableTitle || tableName }}
+        <IonIcon v-if="props.tableIcon && props.tableIcon.startsWith('ion:')" :name="props.tableIcon.slice(4)" :size="16" />
+        <span v-else-if="props.tableIcon" class="title-icon-emoji">{{ props.tableIcon }}</span>
+        <IonIcon v-else name="GridOutline" :size="16" />
+        <span class="table-title-text">{{ tableTitle || tableName }}</span>
+        <button class="table-name-copy" type="button" @click.stop="copyTableName">
+          <span class="table-name-text">{{ tableName }}</span>
+          <span class="table-name-copy-icon">
+            <IonIcon v-if="copiedTableName" name="CheckmarkOutline" :size="12" />
+            <IonIcon v-else name="CopyOutline" :size="12" />
+          </span>
+        </button>
       </span>
       <span v-if="totalCount !== null" class="row-count">{{ totalCount }} records</span>
       <div style="flex:1" />
@@ -51,7 +59,10 @@
           <div v-if="showAddMenu" class="add-menu" @click.stop @mousedown.stop>
             <button v-for="t in WIDGET_TYPES" :key="t.key" class="add-menu-item"
               @click="addWidget(t.key); showAddMenu = false">
-              <span class="add-menu-icon">{{ t.icon }}</span>
+              <span class="add-menu-icon">
+                <IonIcon v-if="t.icon.startsWith('ion:')" :name="t.icon.slice(4)" :size="16" />
+                <span v-else>{{ t.icon }}</span>
+              </span>
               <div>
                 <div class="add-menu-name">{{ t.label }}</div>
                 <div class="add-menu-desc">{{ t.desc }}</div>
@@ -71,7 +82,9 @@
           <div class="widget-header">
             <span class="widget-title">{{ widget.title || defaultTitle(widget) }}</span>
             <div class="widget-actions">
-              <button class="waction-btn" @click="toggleEdit(widget.id)" title="Configure">⚙</button>
+              <button class="waction-btn" @click="toggleEdit(widget.id)" title="Configure">
+                <IonIcon name="SettingsOutline" :size="14" />
+              </button>
               <button class="waction-btn waction-btn--danger" @click="removeWidget(widget.id)" title="Remove">×</button>
             </div>
           </div>
@@ -88,7 +101,9 @@
                 <button v-for="t in WIDGET_TYPES" :key="t.key"
                   class="type-pill" :class="{ active: widget.type === t.key }"
                   @click="widget.type = t.key; persistWidgets()">
-                  {{ t.icon }} {{ t.label }}
+                  <IonIcon v-if="t.icon.startsWith('ion:')" :name="t.icon.slice(4)" :size="14" />
+                  <span v-else>{{ t.icon }}</span>
+                  {{ t.label }}
                 </button>
               </div>
             </div>
@@ -210,8 +225,8 @@
 
           <!-- 图表内容 -->
           <div v-else class="chart-body">
-            <div v-if="widget.mode === 'raw' && widget.rawYCols.length === 0" class="chart-empty">Click ⚙ to select Y axis fields</div>
-            <div v-else-if="widget.mode !== 'raw' && widget.valueKeys.length === 0" class="chart-empty">Click ⚙ to select values</div>
+            <div v-if="widget.mode === 'raw' && widget.rawYCols.length === 0" class="chart-empty">Use settings to select Y axis fields</div>
+            <div v-else-if="widget.mode !== 'raw' && widget.valueKeys.length === 0" class="chart-empty">Use settings to select values</div>
             <div v-else-if="computeChartPayload(widget).labels.length === 0" class="chart-empty">No data</div>
             <ChartCanvas v-else :widget="widget" :payload="computeChartPayload(widget)" />
           </div>
@@ -224,7 +239,10 @@
           <div v-if="showAddMenu" class="add-menu" @click.stop @mousedown.stop>
             <button v-for="t in WIDGET_TYPES" :key="t.key" class="add-menu-item"
               @click="addWidget(t.key); showAddMenu = false">
-              <span class="add-menu-icon">{{ t.icon }}</span>
+              <span class="add-menu-icon">
+                <IonIcon v-if="t.icon.startsWith('ion:')" :name="t.icon.slice(4)" :size="16" />
+                <span v-else>{{ t.icon }}</span>
+              </span>
               <div>
                 <div class="add-menu-name">{{ t.label }}</div>
                 <div class="add-menu-desc">{{ t.desc }}</div>
@@ -244,6 +262,7 @@ import { BarChart, LineChart, PieChart } from 'echarts/charts'
 import { GridComponent, TooltipComponent, LegendComponent, DataZoomComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 import { api, type FieldMeta, type RecordRow } from '@/api/client'
+import { copyText } from '@/utils/clipboard'
 import IonIcon from './IonIcon.vue'
 
 echarts.use([BarChart, LineChart, PieChart, GridComponent, TooltipComponent, LegendComponent, DataZoomComponent, CanvasRenderer])
@@ -343,13 +362,22 @@ const props = defineProps<{
   totalCount: number | null
 }>()
 const emit = defineEmits<{ switchView: [view: string] }>()
+const copiedTableName = ref(false)
+
+function copyTableName() {
+  copyText(props.tableName)
+  copiedTableName.value = true
+  window.setTimeout(() => {
+    copiedTableName.value = false
+  }, 1200)
+}
 
 // ── Widget types ──────────────────────────────────────────
 const WIDGET_TYPES = [
-  { key: 'kpi',  icon: '🔢', label: 'KPI Card',   desc: 'A single big number' },
-  { key: 'bar',  icon: '▌',  label: 'Bar Chart',  desc: 'Compare categories' },
-  { key: 'line', icon: '〜', label: 'Line Chart', desc: 'Trends over time' },
-  { key: 'pie',  icon: '◉',  label: 'Pie Chart',  desc: 'Part-to-whole' },
+  { key: 'kpi',  icon: 'ion:SpeedometerOutline', label: 'KPI Card',   desc: 'A single big number' },
+  { key: 'bar',  icon: 'ion:BarChartOutline',    label: 'Bar Chart',  desc: 'Compare categories' },
+  { key: 'line', icon: 'ion:StatsChartOutline',  label: 'Line Chart', desc: 'Trends over time' },
+  { key: 'pie',  icon: 'ion:PieChartOutline',    label: 'Pie Chart',  desc: 'Part-to-whole' },
 ] as const
 type WidgetType = 'kpi' | 'bar' | 'line' | 'pie'
 
@@ -663,7 +691,42 @@ onUnmounted(() => {
   padding: 0 16px; height: 48px;
   border-bottom: 1px solid #e9e9e7; flex-shrink: 0; background: #fff;
 }
-.table-title { font-size: 15px; font-weight: 600; color: #37352f; display: flex; align-items: center; gap: 5px; }
+.table-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #37352f;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  white-space: nowrap;
+}
+.table-title-text {
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.table-name-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid #e0e2e8;
+  background: #f7f8fa;
+  color: #6b6f76;
+  font-size: 12px;
+  border-radius: 10px;
+  padding: 2px 8px;
+  cursor: pointer;
+  max-width: 240px;
+}
+.table-name-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 200px;
+}
+.table-name-copy-icon { display: inline-flex; align-items: center; }
 .title-icon-emoji { font-size: 16px; line-height: 1; }
 .row-count, .loading-hint { font-size: 12px; color: #a3a19d; }
 

@@ -155,8 +155,14 @@
                 @click.stop="toggleNotesLinkExpand(item.note.id)"
               >&rsaquo;</span>
               <span v-else class="nlp-arrow-ph" />
-              <span class="nlp-icon">{{ item.note.icon || (item.hasChildren ? '📁' : '📄') }}</span>
-              <span class="nlp-name">{{ item.note.title || 'Untitled' }}</span>
+              <span class="nlp-icon">
+                <IonIcon v-if="item.note.icon?.startsWith('ion:')" :name="item.note.icon.slice(4)" :size="14" />
+                <IonIcon v-else :name="item.hasChildren ? 'FolderOutline' : 'DocumentOutline'" :size="14" />
+              </span>
+              <HoverTooltipText
+                :text="item.note.title || 'Untitled'"
+                class-name="nlp-name"
+              />
             </div>
           </div>
         </div>
@@ -213,8 +219,10 @@ import {
 } from 'naive-ui'
 import type { FieldMeta, RecordRow } from '@/api/client'
 import { api } from '@/api/client'
+import HoverTooltipText from './HoverTooltipText.vue'
 import ImageUpload from './ImageUpload.vue'
 import PasswordInput from './PasswordInput.vue'
+import IonIcon from './IonIcon.vue'
 import { useNoteTree, type NoteTreeNode } from '@/utils/useNoteTree'
 
 const formRef = ref<FormInst>()
@@ -244,39 +252,51 @@ const writableFields = computed(() =>
   )
 )
 
-// 编辑模式：填入现有值
-watch(
-  () => props.record,
-  (rec) => {
-    if (rec) {
-      formData.value = { ...rec }
-      // 预填 link/note 字段的选项，确保当前值能显示
-      for (const f of writableFields.value) {
-        const val = rec[f.column_name]
-        if (!val) continue
-        if (f.field_type === 'link') {
-          const id = extractLinkId(val)
-          if (id) {
-            try {
-              const parsed = JSON.parse(String(val))
-              if (parsed?.title) {
-                linkOptions[f.column_name] = [{ label: parsed.title, value: id }]
-              }
-            } catch {
-              linkOptions[f.column_name] = [{ label: `#${id}`, value: id }]
-            }
-          }
-        }
+function resetPickerState() {
+  notesLinkExpanded.value = new Set()
+  for (const key of Object.keys(notesLinkSearch)) delete notesLinkSearch[key]
+  for (const key of Object.keys(linkOptions)) delete linkOptions[key]
+  for (const key of Object.keys(linkLoading)) delete linkLoading[key]
+}
+
+function buildEmptyFormData(): Record<string, unknown> {
+  const defaults: Record<string, unknown> = {}
+  for (const f of writableFields.value) {
+    if (f.field_type === 'checkbox') defaults[f.column_name] = 0
+    else defaults[f.column_name] = undefined
+  }
+  return defaults
+}
+
+function syncFormData(rec: RecordRow | null | undefined) {
+  resetPickerState()
+  if (!rec) {
+    formData.value = buildEmptyFormData()
+    return
+  }
+
+  formData.value = { ...rec }
+  for (const f of writableFields.value) {
+    const val = rec[f.column_name]
+    if (!val || f.field_type !== 'link') continue
+    const id = extractLinkId(val)
+    if (!id) continue
+    try {
+      const parsed = JSON.parse(String(val))
+      if (parsed?.title) {
+        linkOptions[f.column_name] = [{ label: parsed.title, value: id }]
       }
-    } else {
-      // 新增模式：设置默认值
-      const defaults: Record<string, unknown> = {}
-      for (const f of writableFields.value) {
-        if (f.field_type === 'checkbox') defaults[f.column_name] = 0
-        else defaults[f.column_name] = undefined
-      }
-      formData.value = defaults
+    } catch {
+      linkOptions[f.column_name] = [{ label: `#${id}`, value: id }]
     }
+  }
+}
+
+watch(
+  [() => visible.value, () => props.record, writableFields],
+  ([isVisible, rec]) => {
+    if (!isVisible) return
+    syncFormData(rec)
   },
   { immediate: true }
 )
@@ -368,7 +388,7 @@ function getSelectedNoteTitle(colName: string): string {
   const id = extractLinkId(formData.value[colName])
   if (!id) return ''
   const note = (allNotes.value ?? []).find(n => n.id === id)
-  return note ? `${note.icon || '📄'} ${note.title || 'Untitled'}` : `#${id}`
+  return note ? `${note.title || 'Untitled'}` : `#${id}`
 }
 
 // ── 日期工具（兼容数字、数字字符串、日期字符串）──────────────
@@ -400,6 +420,9 @@ function datetimeToTs(v: unknown): number | null {
 <style scoped>
 .notes-link-picker {
   width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 .nlp-input-wrap {
   height: 34px;
@@ -408,7 +431,6 @@ function datetimeToTs(v: unknown): number | null {
   border: 1px solid #e9e9e7;
   border-radius: 4px;
   padding: 0 8px;
-  margin-bottom: 4px;
   background: #fff;
   box-sizing: border-box;
 }
@@ -449,16 +471,24 @@ function datetimeToTs(v: unknown): number | null {
 }
 .nlp-search-inline::placeholder { color: #c4c4c0; }
 .nlp-tree {
-  max-height: 200px;
+  height: 200px;
   overflow-y: auto;
+  overflow-x: hidden;
   border: 1px solid #e9e9e7;
   border-radius: 4px;
+  background: #fff;
+  scrollbar-gutter: stable;
+  overscroll-behavior: contain;
 }
 .nlp-empty {
+  min-height: 100%;
   padding: 16px;
-  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   color: #9b9a97;
   font-size: 13px;
+  box-sizing: border-box;
 }
 .nlp-item {
   display: flex;

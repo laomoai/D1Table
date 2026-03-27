@@ -143,7 +143,7 @@ auth.get('/callback', async (c) => {
 
   // 6. 生成 session cookie
   const user: SessionUser = { email: userInfo.email, name: userInfo.name, picture: userInfo.picture }
-  const isSecure = c.env.ENVIRONMENT === 'production'
+  const isSecure = new URL(c.req.url).protocol === 'https:'
   const sessionCookie = await createSessionCookie(user, c.env.SESSION_SECRET, isSecure)
 
   // 7. 清除 state cookie，设置 session cookie，重定向到首页

@@ -7,9 +7,9 @@
         <div class="note-header">
           <div class="note-title-row">
             <button class="note-icon-btn" @click="showIconPicker = true" :disabled="!!activeNote.is_locked" :title="activeNote.icon ? 'Change icon' : 'Add icon'">
-              <span v-if="activeNote.icon && !activeNote.icon.startsWith('ion:')" class="note-icon-emoji">{{ activeNote.icon }}</span>
-              <IonIcon v-else-if="activeNote.icon" :name="activeNote.icon.slice(4)" :size="22" />
-              <span v-else class="note-icon-placeholder">📄</span>
+              <IonIcon v-if="activeNote.icon && activeNote.icon.startsWith('ion:')" :name="activeNote.icon.slice(4)" :size="22" />
+              <span v-else-if="activeNote.icon" class="note-emoji-icon note-emoji-icon--lg">{{ activeNote.icon }}</span>
+              <IonIcon v-else :name="activeNoteHasChildren ? 'FolderOutline' : 'DocumentOutline'" :size="22" />
             </button>
             <input
               v-model="noteTitle"
@@ -22,15 +22,21 @@
           </div>
           <div class="note-meta">
             <button class="note-lock-btn" @click="toggleNoteLock" :title="activeNote.is_locked ? 'Unlock note' : 'Lock note'">
-              {{ activeNote.is_locked ? '🔒' : '🔓' }}
+              <IonIcon :name="activeNote.is_locked ? 'LockClosedOutline' : 'LockOpenOutline'" :size="14" />
             </button>
-            <button class="note-action-btn" @click="showImportExport = true" title="Import / Export">⇅</button>
+            <button class="note-action-btn" @click="showImportExport = true" title="Import / Export">
+              <IonIcon name="SwapVerticalOutline" :size="14" />
+            </button>
             <span v-if="activeNote.updated_at" class="note-time">
               Updated {{ formatTime(activeNote.updated_at) }}
             </span>
             <span v-if="saveError" class="note-error">{{ saveError }}</span>
             <span v-else-if="saving" class="note-saving">Saving...</span>
             <span v-else-if="lastSaved" class="note-saved">Saved</span>
+            <div class="note-meta-spacer" />
+            <button class="note-action-btn danger icon-only" @click="confirmDeleteCurrentNote" title="Delete note" aria-label="Delete note">
+              <IonIcon name="TrashOutline" :size="14" />
+            </button>
           </div>
         </div>
         <NoteEditor
@@ -45,7 +51,10 @@
         <div v-if="activeSubPages.length > 0" class="subpages-section" :style="subpagesSectionStyle">
           <div class="subpages-resize-handle" @mousedown="startSubpagesResize" />
           <div class="subpages-header">
-            <span class="subpages-title">📂 Sub-pages ({{ activeSubPages.length }})</span>
+            <span class="subpages-title">
+              <IonIcon name="FolderOutline" :size="14" />
+              Sub-pages ({{ activeSubPages.length }})
+            </span>
             <div class="subpages-header-actions">
               <button class="subpages-add" @click="createChildNote(activeNoteId!)">+ Add</button>
               <button class="subpages-minimize-btn" @click="toggleSubpagesMinimized" :title="subpagesMinimized ? 'Expand' : 'Minimize'">
@@ -60,8 +69,15 @@
               class="subpage-item"
               @click="selectNote(sub.id)"
             >
-              <span class="subpage-icon">{{ sub.icon || '📄' }}</span>
-              <span class="subpage-name">{{ sub.title || 'Untitled' }}</span>
+              <span class="subpage-icon">
+                <IonIcon v-if="sub.icon && sub.icon.startsWith('ion:')" :name="sub.icon.slice(4)" :size="14" />
+                <span v-else-if="sub.icon" class="note-emoji-icon">{{ sub.icon }}</span>
+                <IonIcon v-else :name="hasChildNotes(sub.id) ? 'FolderOutline' : 'DocumentOutline'" :size="14" />
+              </span>
+              <HoverTooltipText
+                :text="sub.title || 'Untitled'"
+                class-name="subpage-name"
+              />
               <span class="subpage-time">{{ formatTime(sub.updated_at) }}</span>
               <span class="subpage-arrow">→</span>
             </div>
@@ -69,7 +85,9 @@
         </div>
       </template>
       <div v-else class="notes-placeholder">
-        <div class="placeholder-icon">📝</div>
+        <div class="placeholder-icon">
+          <IonIcon name="DocumentTextOutline" :size="48" />
+        </div>
         <p>Select a note or create a new one</p>
       </div>
     </div>
@@ -95,7 +113,10 @@
           class="tp-item"
           @click="insertTableRef(t)"
         >
-          <span class="tp-icon">{{ t.icon && !t.icon.startsWith('ion:') ? t.icon : '📊' }}</span>
+          <span class="tp-icon">
+            <IonIcon v-if="t.icon && t.icon.startsWith('ion:')" :name="t.icon.slice(4)" :size="16" />
+            <IonIcon v-else name="GridOutline" :size="16" />
+          </span>
           <div class="tp-info">
             <span class="tp-name">{{ t.title || t.name }}</span>
             <span class="tp-meta">{{ t.name }} · {{ t.row_count ?? 0 }} rows</span>
@@ -134,16 +155,18 @@
 import { ref, computed, watch, nextTick, defineAsyncComponent, onBeforeUnmount, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
-import { NSpin, useMessage } from 'naive-ui'
+import { NSpin, useDialog, useMessage } from 'naive-ui'
 import { api, notesApi, type NoteListItem, type TableMeta } from '@/api/client'
 const NoteEditor = defineAsyncComponent(() => import('@/components/NoteEditor.vue'))
 import AppModal from '@/components/AppModal.vue'
+import HoverTooltipText from '@/components/HoverTooltipText.vue'
 import IonIcon from '@/components/IonIcon.vue'
 
 const IconPicker = defineAsyncComponent(() => import('@/components/IconPicker.vue'))
 
 const route = useRoute()
 const router = useRouter()
+const dialog = useDialog()
 const message = useMessage()
 const queryClient = useQueryClient()
 const showIconPicker = ref(false)
@@ -199,6 +222,15 @@ const activeSubPages = computed(() => {
   if (!activeNoteId.value) return []
   return childrenMap.value.get(activeNoteId.value) ?? []
 })
+
+const activeNoteHasChildren = computed(() => {
+  if (!activeNoteId.value) return false
+  return (childrenMap.value.get(activeNoteId.value)?.length ?? 0) > 0
+})
+
+function hasChildNotes(noteId: string): boolean {
+  return (childrenMap.value.get(noteId)?.length ?? 0) > 0
+}
 
 // ── Active note state ────────────────────────────────────────
 const activeNoteId = ref<string | null>(null)
@@ -264,6 +296,28 @@ async function switchToNote(id: string | null) {
 
 function selectNote(id: string) {
   switchToNote(id)
+}
+
+function confirmDeleteCurrentNote() {
+  if (!activeNoteId.value) return
+  const noteId = activeNoteId.value
+  dialog.warning({
+    title: 'Delete Note',
+    content: 'This note and all its sub-notes will be moved to trash.',
+    positiveText: 'Delete',
+    negativeText: 'Cancel',
+    onPositiveClick: async () => {
+      try {
+        await notesApi.deleteNote(noteId)
+        queryClient.invalidateQueries({ queryKey: ['notes', 'tree'] })
+        queryClient.invalidateQueries({ queryKey: ['notes-trash'], exact: false })
+        await switchToNote(null)
+        message.success('Note moved to trash')
+      } catch (err) {
+        message.error((err as Error).message)
+      }
+    },
+  })
 }
 
 watch(() => route.params.noteId, (id) => {
@@ -578,14 +632,22 @@ async function handleImport(event: Event) {
   cursor: pointer;
   padding: 4px;
   border-radius: 4px;
-  font-size: 24px;
   line-height: 1;
   transition: background 0.1s;
   flex-shrink: 0;
+  color: #37352f;
 }
 .note-icon-btn:hover { background: rgba(55, 53, 47, 0.06); }
-.note-icon-emoji { font-size: 24px; }
-.note-icon-placeholder { opacity: 0.4; font-size: 24px; }
+.note-emoji-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  font-size: 14px;
+}
+.note-emoji-icon--lg {
+  font-size: 22px;
+}
 .note-title-input {
   flex: 1;
   border: none;
@@ -606,6 +668,7 @@ async function handleImport(event: Event) {
   padding-bottom: 12px;
   border-bottom: 1px solid #e9e9e7;
 }
+.note-meta-spacer { margin-left: auto; }
 .note-lock-btn {
   background: none;
   border: none;
@@ -628,6 +691,23 @@ async function handleImport(event: Event) {
   transition: all 0.1s;
 }
 .note-action-btn:hover { background: rgba(55,53,47,0.06); color: #37352f; }
+.note-action-btn.icon-only {
+  width: 28px;
+  height: 24px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.note-action-btn.danger {
+  border-color: #f1d7d7;
+  color: #c45555;
+}
+.note-action-btn.danger:hover {
+  background: #fff5f5;
+  border-color: #e7b8b8;
+  color: #b83d3d;
+}
 .note-time { font-size: 12px; color: #a3a19d; }
 .note-error { font-size: 12px; color: #e03e3e; font-weight: 500; }
 .note-saving { font-size: 12px; color: #b3b0ab; }
@@ -685,7 +765,14 @@ async function handleImport(event: Event) {
   align-items: center;
   gap: 4px;
 }
-.subpages-title { font-size: 13px; font-weight: 600; color: #787774; }
+.subpages-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #787774;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
 .subpages-add {
   background: none;
   border: 1px solid #e9e9e7;
@@ -722,7 +809,7 @@ async function handleImport(event: Event) {
   color: #37352f;
 }
 .subpage-item:hover { background: rgba(55,53,47,0.06); }
-.subpage-icon { font-size: 13px; flex-shrink: 0; }
+.subpage-icon { font-size: 13px; flex-shrink: 0; color: #787774; }
 .subpage-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .subpage-time { font-size: 11px; color: #a3a19d; flex-shrink: 0; }
 .subpage-arrow { color: #c4c4c0; font-size: 12px; flex-shrink: 0; }

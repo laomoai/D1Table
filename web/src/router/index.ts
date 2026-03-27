@@ -29,7 +29,7 @@ const router = createRouter({
       path: '/',
       component: () => import('@/components/AppLayout.vue'),
       children: [
-        { path: '', component: () => import('@/pages/DashboardPage.vue') },
+        { path: '', component: () => import('@/pages/TableList.vue') },
         { path: 'tables/:tableName', component: () => import('@/pages/TableView.vue') },
         { path: 'settings', component: () => import('@/pages/Settings.vue') },
         { path: 'notes', component: () => import('@/pages/NotesPage.vue') },

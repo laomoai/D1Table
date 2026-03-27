@@ -20,6 +20,21 @@ bucket_name = "d1table-files"
 [vars]
 ENVIRONMENT = "production"
 
+[env.preview]
+workers_dev = true
+
+[[env.preview.d1_databases]]
+binding = "DB"
+database_name = "d1table-preview"
+database_id = "YOUR_PREVIEW_DATABASE_ID"
+
+[[env.preview.r2_buckets]]
+binding = "BUCKET"
+bucket_name = "d1table-preview-files"
+
+[env.preview.vars]
+ENVIRONMENT = "preview"
+
 # Secrets (set via `wrangler secret put`):
 #   GOOGLE_CLIENT_ID
 #   GOOGLE_CLIENT_SECRET
