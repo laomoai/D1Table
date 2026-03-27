@@ -59,6 +59,14 @@
               <div class="group-header-left">
                 <h2 class="group-section-name">{{ groupName }}</h2>
                 <span class="group-section-count">{{ items.length }} tables</span>
+                <button
+                  v-if="getGroupByName(groupName)"
+                  class="group-settings-btn"
+                  @click="openEditGroup(groupName)"
+                  title="Edit group"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                </button>
               </div>
             </div>
             <div class="table-cards">
@@ -93,29 +101,24 @@
                     </div>
                   </div>
                 </div>
-                <div class="card-right">
-                  <n-dropdown
-                    trigger="click"
-                    :options="cardMenuOptions"
-                    @select="(key) => handleCardMenuSelect(key as string, t)"
+                <n-dropdown
+                  trigger="click"
+                  :options="cardMenuOptions"
+                  @select="(key) => handleCardMenuSelect(key as string, t)"
+                >
+                  <button
+                    class="card-menu-btn"
+                    @click.stop
+                    title="Table actions"
+                    aria-label="Table actions"
                   >
-                    <button
-                      class="card-menu-btn"
-                      @click.stop
-                      title="Table actions"
-                      aria-label="Table actions"
-                    >
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                        <circle cx="5" cy="12" r="1.75" />
-                        <circle cx="12" cy="12" r="1.75" />
-                        <circle cx="19" cy="12" r="1.75" />
-                      </svg>
-                    </button>
-                  </n-dropdown>
-                  <span class="card-arrow">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
-                  </span>
-                </div>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                      <circle cx="5" cy="12" r="1.75" />
+                      <circle cx="12" cy="12" r="1.75" />
+                      <circle cx="19" cy="12" r="1.75" />
+                    </svg>
+                  </button>
+                </n-dropdown>
               </div>
             </div>
           </div>
@@ -158,6 +161,38 @@
         @created="(name: string) => { queryClient.invalidateQueries({ queryKey: ['tables'] }); router.push(`/tables/${name}`) }"
       />
 
+      <!-- Edit Group modal -->
+      <AppModal v-model:show="showEditGroup" title="Edit Group" width="440px" height="auto">
+        <div class="ng-form">
+          <label class="ng-label">Group Name</label>
+          <input v-model="editGroupName" class="ng-input" placeholder="Group name" />
+          <label class="ng-label" style="margin-top:16px;">Included Tables</label>
+          <div class="ng-hint">{{ editGroupTables.size }} selected</div>
+          <div class="ng-table-list">
+            <label
+              v-for="t in tables ?? []"
+              :key="t.name"
+              class="ng-table-item"
+            >
+              <input
+                type="checkbox"
+                :checked="editGroupTables.has(t.name)"
+                @change="toggleEditGroupTable(t.name)"
+                class="ng-checkbox"
+              />
+              <span class="ng-table-icon">{{ t.icon && !t.icon.startsWith('ion:') ? t.icon : '📊' }}</span>
+              <span class="ng-table-name">{{ t.title || t.name }}</span>
+            </label>
+          </div>
+          <div class="ng-footer">
+            <button class="ng-btn danger" @click="deleteGroup">Delete Group</button>
+            <span style="flex:1" />
+            <button class="ng-btn" @click="showEditGroup = false">Cancel</button>
+            <button class="ng-btn primary" :disabled="!editGroupName.trim()" @click="saveEditGroup">Save</button>
+          </div>
+        </div>
+      </AppModal>
+
       <!-- New Group modal -->
       <AppModal v-model:show="showNewGroup" title="New Group" width="440px" height="auto">
         <div class="ng-form">
@@ -179,7 +214,6 @@
               />
               <span class="ng-table-icon">{{ t.icon && !t.icon.startsWith('ion:') ? t.icon : '📊' }}</span>
               <span class="ng-table-name">{{ t.title || t.name }}</span>
-              <span v-if="getTableGroup(t.name)" class="ng-table-badge">in {{ getTableGroup(t.name) }}</span>
             </label>
           </div>
           <div class="ng-footer">
@@ -440,6 +474,68 @@ async function onIconSelect(icon: string | null) {
   iconPickerTarget.value = null
 }
 
+// ── Edit Group ──
+const showEditGroup = ref(false)
+const editGroupId = ref<number | null>(null)
+const editGroupName = ref('')
+const editGroupTables = ref(new Set<string>())
+
+function getGroupByName(name: string) {
+  return groups.value?.find(g => g.name === name) ?? null
+}
+
+function openEditGroup(groupName: string) {
+  const group = getGroupByName(groupName)
+  if (!group) return
+  editGroupId.value = group.id
+  editGroupName.value = group.name
+  editGroupTables.value = new Set(group.tables)
+  showEditGroup.value = true
+}
+
+function toggleEditGroupTable(name: string) {
+  const s = new Set(editGroupTables.value)
+  if (s.has(name)) s.delete(name); else s.add(name)
+  editGroupTables.value = s
+}
+
+async function saveEditGroup() {
+  if (!editGroupId.value || !editGroupName.value.trim()) return
+  try {
+    await api.updateGroup(editGroupId.value, { name: editGroupName.value.trim() })
+    await api.setGroupTables(editGroupId.value, [...editGroupTables.value])
+    queryClient.invalidateQueries({ queryKey: ['groups'] })
+    queryClient.invalidateQueries({ queryKey: ['tables'] })
+    showEditGroup.value = false
+    message.success('Group updated')
+  } catch (err) {
+    message.error((err as Error).message)
+  }
+}
+
+async function deleteGroup() {
+  if (!editGroupId.value) return
+  dialog.warning({
+    title: 'Delete group',
+    content: `Delete group "${editGroupName.value}"? Tables in this group will not be deleted.`,
+    positiveText: 'Delete',
+    negativeText: 'Cancel',
+    onPositiveClick: async () => {
+      try {
+        await api.deleteGroup(editGroupId.value!)
+        queryClient.invalidateQueries({ queryKey: ['groups'] })
+        showEditGroup.value = false
+        message.success('Group deleted')
+        if (activeTab.value === editGroupName.value) {
+          activeTab.value = 'Recent'
+        }
+      } catch (err) {
+        message.error((err as Error).message)
+      }
+    },
+  })
+}
+
 // ── New Group ──
 const showNewGroup = ref(false)
 const newGroupName = ref('')
@@ -449,14 +545,6 @@ function toggleNewGroupTable(name: string) {
   const s = new Set(newGroupTables.value)
   if (s.has(name)) s.delete(name); else s.add(name)
   newGroupTables.value = s
-}
-
-function getTableGroup(tableName: string): string | null {
-  if (!groups.value) return null
-  for (const g of groups.value) {
-    if (g.tables.includes(tableName)) return g.name
-  }
-  return null
 }
 
 async function createGroup() {
@@ -727,6 +815,30 @@ watch(showRenameTable, (v) => {
   border-radius: 12px;
 }
 
+.group-settings-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #9b9a97;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s, background 0.15s, color 0.15s;
+}
+
+.group-section-header:hover .group-settings-btn {
+  opacity: 1;
+}
+
+.group-settings-btn:hover {
+  background: #efefed;
+  color: #37352f;
+}
+
 /* ── Card grid ── */
 .table-cards {
   display: grid;
@@ -740,9 +852,9 @@ watch(showRenameTable, (v) => {
 }
 
 .table-card {
+  position: relative;
   display: flex;
   align-items: center;
-  justify-content: space-between;
   padding: 14px 16px;
   background: #fff;
   border: 1px solid #e9e9e7;
@@ -845,15 +957,10 @@ watch(showRenameTable, (v) => {
   color: #9b9a97;
 }
 
-.card-right {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: #787774;
-  flex-shrink: 0;
-}
-
 .card-menu-btn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -878,16 +985,6 @@ watch(showRenameTable, (v) => {
   background: #efefed;
   color: #37352f;
   outline: none;
-}
-
-.card-arrow {
-  opacity: 0.4;
-  transition: opacity 0.15s;
-  display: flex;
-  align-items: center;
-}
-.table-card:hover .card-arrow {
-  opacity: 0.8;
 }
 
 /* ── Empty state ── */
@@ -965,14 +1062,6 @@ watch(showRenameTable, (v) => {
 }
 .ng-table-icon { font-size: 16px; flex-shrink: 0; }
 .ng-table-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ng-table-badge {
-  font-size: 11px;
-  color: #9b9a97;
-  background: #f1f1ef;
-  padding: 1px 6px;
-  border-radius: 3px;
-  white-space: nowrap;
-}
 .ng-footer {
   display: flex;
   justify-content: flex-end;
@@ -999,4 +1088,6 @@ watch(showRenameTable, (v) => {
 .ng-btn.primary { background: #2383e2; color: #fff; border-color: #2383e2; }
 .ng-btn.primary:hover { background: #1b6ec2; }
 .ng-btn.primary:disabled { opacity: 0.5; cursor: not-allowed; }
+.ng-btn.danger { color: #e03e3e; border-color: #e03e3e; }
+.ng-btn.danger:hover { background: #fef0f0; }
 </style>
