@@ -148,7 +148,7 @@ const archivedIds = computed(() => new Set(archivedChildren.value.map(c => c.id)
 
 const archivedRootNodes = computed(() => {
   return archivedChildren.value.filter(c =>
-    c.parent_id === rootId.value || !archivedIds.value.has(c.parent_id!)
+    !c.parent_id || c.parent_id === rootId.value || !archivedIds.value.has(c.parent_id)
   )
 })
 
@@ -213,11 +213,6 @@ function checkContentOverflow() {
 
 watch(rootContentHtml, checkContentOverflow)
 onMounted(checkContentOverflow)
-
-function formatDate(ts: number | null): string {
-  if (!ts) return ''
-  return new Date(ts * 1000).toLocaleDateString()
-}
 
 function previewNote(noteId: string) {
   openNotePreview(noteId)

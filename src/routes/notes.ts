@@ -25,7 +25,7 @@ notes.get('/', async (c) => {
   if (allowedNoteIds !== null) {
     const rows = await c.env.DB.prepare(
       `SELECT id, title, icon, parent_id, sort_order, created_by, created_at, updated_at
-       FROM _notes WHERE ${clause} AND deleted_at IS NULL
+       FROM _notes WHERE ${clause} AND deleted_at IS NULL AND archived_at IS NULL
        ORDER BY sort_order ASC, created_at DESC
        LIMIT 500`
     ).bind(...params)
@@ -45,7 +45,7 @@ notes.get('/', async (c) => {
     return c.json({ data: filtered.slice(0, 200) })
   }
 
-  let sql = `SELECT id, title, icon, parent_id, sort_order, created_by, created_at, updated_at FROM _notes WHERE ${clause} AND deleted_at IS NULL`
+  let sql = `SELECT id, title, icon, parent_id, sort_order, created_by, created_at, updated_at FROM _notes WHERE ${clause} AND deleted_at IS NULL AND archived_at IS NULL`
 
   if (parentId && parentId !== 'root') {
     sql += ` AND parent_id = ?`
@@ -99,11 +99,12 @@ notes.get('/archived', async (c) => {
   const allowedNoteIds = await getAccessibleNoteIds(c.env.DB, c.get('teamId'), c.get('allowedNoteRootIds'))
   const q = c.req.query('q')?.toLowerCase()
 
-  // Load all non-deleted notes (id, parent_id, archived_at) to build tree in memory
+  // Load non-deleted notes to build tree in memory (capped at 5000)
   const allRows = await c.env.DB.prepare(
     `SELECT id, title, icon, parent_id, archived_at, cover, description, sort_order, created_at, updated_at
      FROM _notes WHERE ${clause} AND deleted_at IS NULL
-     ORDER BY sort_order ASC, created_at DESC`
+     ORDER BY sort_order ASC, created_at DESC
+     LIMIT 5000`
   ).bind(...params)
     .all<{ id: string; title: string; icon: string | null; parent_id: string | null; archived_at: number | null; cover: string | null; description: string | null; sort_order: number; created_at: number; updated_at: number }>()
 
@@ -144,8 +145,6 @@ notes.get('/archived', async (c) => {
   for (const [rootId, archivedCount] of archivedByRoot) {
     const root = noteMap.get(rootId)
     if (!root) continue
-    // If search query, also check root title
-    if (q && !root.title.toLowerCase().includes(q) && archivedCount === 0) continue
     data.push({
       id: root.id,
       title: root.title,
@@ -174,11 +173,12 @@ notes.get('/:id/archived-children', async (c) => {
     return c.json({ error: { code: 'FORBIDDEN', message: 'Access to this note is not allowed' } }, 403)
   }
 
-  // Load all non-deleted notes to build tree
+  // Load non-deleted notes to build tree (capped at 5000)
   const allRows = await c.env.DB.prepare(
     `SELECT id, title, icon, parent_id, archived_at, sort_order, created_at, updated_at
      FROM _notes WHERE ${clause} AND deleted_at IS NULL
-     ORDER BY sort_order ASC, created_at DESC`
+     ORDER BY sort_order ASC, created_at DESC
+     LIMIT 5000`
   ).bind(...params)
     .all<{ id: string; title: string; icon: string | null; parent_id: string | null; archived_at: number | null; sort_order: number; created_at: number; updated_at: number }>()
 
@@ -574,6 +574,9 @@ notes.post('/batch-archive', requireWriteMiddleware, async (c) => {
   const body = await c.req.json<{ ids: string[] }>()
   if (!body.ids || !Array.isArray(body.ids) || body.ids.length === 0) {
     return c.json({ error: { code: 'INVALID_BODY', message: 'ids array is required' } }, 400)
+  }
+  if (body.ids.length > 50) {
+    return c.json({ error: { code: 'INVALID_BODY', message: 'Maximum 50 notes per batch' } }, 400)
   }
 
   const teamId = c.get('teamId')
