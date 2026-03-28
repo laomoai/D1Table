@@ -150,6 +150,15 @@ const archivedRootNodes = computed(() => {
 
 const expandedIds = ref(new Set<string>())
 
+// Auto-expand non-archived path nodes so the tree is visible by default
+watch(archivedChildren, (children) => {
+  const s = new Set(expandedIds.value)
+  for (const c of children) {
+    if (!c.archived_at) s.add(c.id) // path nodes default expanded
+  }
+  expandedIds.value = s
+}, { immediate: true })
+
 function toggleExpand(id: string) {
   const s = new Set(expandedIds.value)
   if (s.has(id)) s.delete(id); else s.add(id)

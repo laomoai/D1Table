@@ -196,8 +196,10 @@ notes.get('/:id/archived-children', async (c) => {
     childrenMap.set(n.parent_id, arr)
   }
 
-  // BFS to find all descendants of root, return only archived ones
-  const archived: typeof notes_all = []
+  // BFS to find all descendants of root
+  // First pass: collect all archived notes
+  const allDescendants = new Map<string, (typeof notes_all)[0]>()
+  const archivedIds = new Set<string>()
   const queue = [id]
   const visited = new Set<string>()
   while (queue.length > 0) {
@@ -205,12 +207,28 @@ notes.get('/:id/archived-children', async (c) => {
     if (visited.has(current)) continue
     visited.add(current)
     for (const child of childrenMap.get(current) ?? []) {
-      if (child.archived_at) archived.push(child)
+      allDescendants.set(child.id, child)
+      if (child.archived_at) archivedIds.add(child.id)
       queue.push(child.id)
     }
   }
 
-  return c.json({ data: archived })
+  // Second pass: for each archived note, walk up to root and include intermediate path nodes
+  const resultIds = new Set<string>(archivedIds)
+  for (const archivedId of archivedIds) {
+    let current = allDescendants.get(archivedId)
+    while (current && current.parent_id && current.parent_id !== id) {
+      if (resultIds.has(current.parent_id)) break
+      resultIds.add(current.parent_id)
+      current = allDescendants.get(current.parent_id)
+    }
+  }
+
+  const result = [...resultIds]
+    .map(nid => allDescendants.get(nid)!)
+    .filter(Boolean)
+
+  return c.json({ data: result })
 })
 
 /**
