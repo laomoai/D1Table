@@ -20,7 +20,7 @@
           </div>
           <h1 class="kbd-title">{{ rootNote.title }}</h1>
           <div class="kbd-actions">
-            <button class="kbd-action-btn" @click="showSettings = true" title="Edit cover & description">
+            <button class="kbd-action-btn" @click="openSettingsModal" title="Edit cover & description">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
             </button>
             <button class="kbd-action-btn" @click="addChildNote" title="New sub-note (returns to sidebar)">
@@ -29,34 +29,36 @@
           </div>
         </div>
 
-        <!-- Root note content preview -->
-        <div v-if="rootNote.content" class="kbd-root-content preview-pane" v-html="rootContentHtml" />
+        <!-- Root note content preview (collapsible) -->
+        <div v-if="rootNote.content" class="kbd-root-content-wrap">
+          <div
+            class="kbd-root-content preview-pane"
+            :class="{ collapsed: !contentExpanded }"
+            v-html="rootContentHtml"
+          />
+          <div v-if="contentOverflows" class="kbd-content-toggle">
+            <button class="kbd-toggle-btn" @click="contentExpanded = !contentExpanded">
+              {{ contentExpanded ? 'Collapse' : 'Show more' }}
+              <svg :class="{ flipped: contentExpanded }" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+            </button>
+          </div>
+        </div>
 
-        <!-- Archived children -->
+        <!-- Archived children tree -->
         <div class="kbd-section">
           <h2 class="kbd-section-title">Archived Notes <span class="kbd-section-count">{{ archivedChildren.length }}</span></h2>
           <div v-if="archivedChildren.length === 0" class="kbd-empty-children">No archived notes</div>
           <div v-else class="kbd-children-list">
-            <div
-              v-for="child in archivedChildren"
-              :key="child.id"
-              class="kbd-child-item"
-            >
-              <div class="kbd-child-left" @click="previewNote(child.id)">
-                <span class="kbd-child-icon">
-                  <span v-if="child.icon && !child.icon.startsWith('ion:')">{{ child.icon }}</span>
-                  <IonIcon v-else-if="child.icon" :name="child.icon.slice(4)" :size="16" />
-                  <IonIcon v-else name="DocumentOutline" :size="16" />
-                </span>
-                <span class="kbd-child-title">{{ child.title }}</span>
-                <span class="kbd-child-date">{{ formatDate(child.archived_at) }}</span>
-              </div>
-              <div class="kbd-child-actions">
-                <button class="kbd-child-btn" @click="unarchiveChild(child.id)" title="Restore to sidebar">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
-                </button>
-              </div>
-            </div>
+            <KbTreeItem
+              v-for="node in archivedRootNodes"
+              :key="node.id"
+              :node="node"
+              :children-map="archivedChildrenMap"
+              :expanded-ids="expandedIds"
+              @preview="previewNote"
+              @unarchive="unarchiveChild"
+              @toggle="toggleExpand"
+            />
           </div>
         </div>
       </template>
@@ -64,7 +66,19 @@
       <!-- Settings modal -->
       <AppModal v-model:show="showSettings" title="Knowledge Base Settings" width="480px" height="auto">
         <div class="kbd-settings-form">
-          <label class="kbd-label">Description</label>
+          <label class="kbd-label">Cover Image</label>
+          <div class="kbd-cover-upload">
+            <div v-if="settingsCover" class="kbd-cover-preview">
+              <img :src="`/api/files/${settingsCover}`" alt="cover" />
+              <button class="kbd-cover-remove" @click="settingsCover = null">Remove</button>
+            </div>
+            <div v-else class="kbd-cover-drop" @click="triggerCoverPicker">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9b9a97" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+              <span>Click to upload cover image</span>
+            </div>
+            <input ref="coverInputRef" type="file" accept="image/*" style="display:none" @change="handleCoverUpload" />
+          </div>
+          <label class="kbd-label" style="margin-top:16px">Description</label>
           <textarea
             v-model="settingsDescription"
             class="kbd-textarea"
@@ -82,15 +96,16 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import { NSpin, useMessage } from 'naive-ui'
-import { notesApi, type Note } from '@/api/client'
+import { notesApi, api, type ArchivedChild } from '@/api/client'
 import { renderMarkdown } from '@/utils/markdown'
 import { openNotePreview } from '@/utils/notePreview'
 import IonIcon from '@/components/IonIcon.vue'
 import AppModal from '@/components/AppModal.vue'
+import KbTreeItem from '@/components/KbTreeItem.vue'
 import DOMPurify from 'dompurify'
 
 const router = useRouter()
@@ -112,9 +127,48 @@ const { data: archivedChildrenData } = useQuery({
 
 const archivedChildren = computed(() => archivedChildrenData.value ?? [])
 
+// Build tree from flat archived children list
+const archivedChildrenMap = computed(() => {
+  const map = new Map<string, ArchivedChild[]>()
+  for (const c of archivedChildren.value) {
+    if (!c.parent_id) continue
+    const arr = map.get(c.parent_id) ?? []
+    arr.push(c)
+    map.set(c.parent_id, arr)
+  }
+  return map
+})
+
+const archivedIds = computed(() => new Set(archivedChildren.value.map(c => c.id)))
+
+const archivedRootNodes = computed(() => {
+  // Root nodes: those whose parent_id is the KB root, or whose parent is not in the archived set
+  return archivedChildren.value.filter(c =>
+    c.parent_id === rootId.value || !archivedIds.value.has(c.parent_id!)
+  )
+})
+
+const expandedIds = ref(new Set<string>())
+
+function toggleExpand(id: string) {
+  const s = new Set(expandedIds.value)
+  if (s.has(id)) s.delete(id); else s.add(id)
+  expandedIds.value = s
+}
+
+// Content collapse
+const contentExpanded = ref(false)
+const contentOverflows = ref(false)
+
 const rootContentHtml = computed(() => {
   if (!rootNote.value?.content) return ''
   return DOMPurify.sanitize(renderMarkdown(rootNote.value.content))
+})
+
+watch(rootContentHtml, async () => {
+  await nextTick()
+  const el = document.querySelector('.kbd-root-content')
+  if (el) contentOverflows.value = el.scrollHeight > 200
 })
 
 function formatDate(ts: number | null): string {
@@ -149,16 +203,37 @@ async function addChildNote() {
 // Settings
 const showSettings = ref(false)
 const settingsDescription = ref('')
+const settingsCover = ref<string | null>(null)
+const coverInputRef = ref<HTMLInputElement | null>(null)
 
-function openSettings() {
-  settingsDescription.value = rootNote.value?.content ? '' : ''
+function openSettingsModal() {
+  settingsDescription.value = (rootNote.value as any)?.description ?? ''
+  settingsCover.value = (rootNote.value as any)?.cover ?? null
   showSettings.value = true
+}
+
+function triggerCoverPicker() {
+  coverInputRef.value?.click()
+}
+
+async function handleCoverUpload(e: Event) {
+  const file = (e.target as HTMLInputElement).files?.[0]
+  if (!file) return
+  try {
+    const result = await api.uploadImage(file, file, file.name)
+    settingsCover.value = result.display
+    message.success('Cover uploaded')
+  } catch (err) {
+    message.error((err as Error).message)
+  }
+  if (coverInputRef.value) coverInputRef.value.value = ''
 }
 
 async function saveSettings() {
   try {
     await notesApi.updateNote(rootId.value, {
       description: settingsDescription.value || null,
+      cover: settingsCover.value || null,
     })
     queryClient.invalidateQueries({ queryKey: ['notes', rootId.value] })
     queryClient.invalidateQueries({ queryKey: ['notes', 'archived-roots'] })
@@ -171,99 +246,30 @@ async function saveSettings() {
 </script>
 
 <style scoped>
-.kbd-page {
-  height: 100%;
-  overflow-y: auto;
-  background: #fff;
-  color: #37352f;
-}
+.kbd-page { height: 100%; overflow-y: auto; background: #fff; color: #37352f; }
+.kbd-inner { max-width: 800px; margin: 0 auto; padding: 32px 24px 80px; }
 
-.kbd-inner {
-  max-width: 800px;
-  margin: 0 auto;
-  padding: 32px 24px 80px;
-}
+.kbd-back { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border: none; background: none; border-radius: 6px; font-size: 13px; color: #787774; cursor: pointer; margin-bottom: 24px; transition: background 0.12s, color 0.12s; }
+.kbd-back:hover { background: #f1f1ef; color: #37352f; }
 
-.kbd-back {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  border: none;
-  background: none;
-  border-radius: 6px;
-  font-size: 13px;
-  color: #787774;
-  cursor: pointer;
-  margin-bottom: 24px;
-  transition: background 0.12s, color 0.12s;
-}
+.kbd-header { display: flex; align-items: center; gap: 16px; margin-bottom: 24px; }
+.kbd-header-icon { font-size: 32px; line-height: 1; flex-shrink: 0; }
+.kbd-title { font-size: 28px; font-weight: 700; color: #37352f; margin: 0; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kbd-actions { display: flex; gap: 4px; flex-shrink: 0; }
+.kbd-action-btn { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border: none; border-radius: 6px; background: transparent; color: #787774; cursor: pointer; transition: background 0.15s, color 0.15s; }
+.kbd-action-btn:hover { background: #f1f1ef; color: #37352f; }
 
-.kbd-back:hover {
-  background: #f1f1ef;
-  color: #37352f;
-}
+/* Collapsible root content */
+.kbd-root-content-wrap { margin-bottom: 32px; }
+.kbd-root-content { padding: 20px 24px; background: #f9f9f8; border-radius: 8px; font-size: 15px; line-height: 1.7; overflow: hidden; transition: max-height 0.3s ease; }
+.kbd-root-content.collapsed { max-height: 200px; }
+.kbd-content-toggle { text-align: center; margin-top: -1px; padding-top: 8px; }
+.kbd-toggle-btn { display: inline-flex; align-items: center; gap: 4px; padding: 4px 12px; border: 1px solid #e9e9e7; border-radius: 16px; background: #fff; font-size: 12px; color: #787774; cursor: pointer; transition: all 0.15s; }
+.kbd-toggle-btn:hover { background: #f7f7f5; color: #37352f; }
+.kbd-toggle-btn svg { transition: transform 0.2s; }
+.kbd-toggle-btn svg.flipped { transform: rotate(180deg); }
 
-.kbd-header {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  margin-bottom: 24px;
-}
-
-.kbd-header-icon {
-  font-size: 32px;
-  line-height: 1;
-  flex-shrink: 0;
-}
-
-.kbd-title {
-  font-size: 28px;
-  font-weight: 700;
-  color: #37352f;
-  margin: 0;
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.kbd-actions {
-  display: flex;
-  gap: 4px;
-  flex-shrink: 0;
-}
-
-.kbd-action-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  border: none;
-  border-radius: 6px;
-  background: transparent;
-  color: #787774;
-  cursor: pointer;
-  transition: background 0.15s, color 0.15s;
-}
-
-.kbd-action-btn:hover {
-  background: #f1f1ef;
-  color: #37352f;
-}
-
-.kbd-root-content {
-  padding: 20px 24px;
-  background: #f9f9f8;
-  border-radius: 8px;
-  margin-bottom: 32px;
-  font-size: 15px;
-  line-height: 1.7;
-}
-
-/* Reuse preview-pane markdown styles */
+/* Preview pane markdown */
 .preview-pane :deep(h1) { font-size: 1.5em; font-weight: 700; margin: 0.6em 0 0.3em; }
 .preview-pane :deep(h2) { font-size: 1.25em; font-weight: 600; margin: 0.5em 0 0.2em; }
 .preview-pane :deep(h3) { font-size: 1.1em; font-weight: 600; margin: 0.4em 0 0.2em; }
@@ -276,164 +282,29 @@ async function saveSettings() {
 .preview-pane :deep(a) { color: #2383e2; text-decoration: none; }
 .preview-pane :deep(a:hover) { text-decoration: underline; }
 
-.kbd-section {
-  margin-top: 8px;
-}
-
-.kbd-section-title {
-  font-size: 16px;
-  font-weight: 600;
-  color: #37352f;
-  margin: 0 0 16px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.kbd-section-count {
-  font-size: 12px;
-  font-weight: 500;
-  color: #787774;
-  background: #f1f1ef;
-  padding: 2px 8px;
-  border-radius: 10px;
-}
-
-.kbd-empty-children {
-  padding: 40px;
-  text-align: center;
-  color: #9b9a97;
-  font-size: 14px;
-}
-
-.kbd-children-list {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.kbd-child-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 10px 14px;
-  border-radius: 6px;
-  transition: background 0.12s;
-}
-
-.kbd-child-item:hover {
-  background: #f7f7f5;
-}
-
-.kbd-child-left {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex: 1;
-  min-width: 0;
-  cursor: pointer;
-}
-
-.kbd-child-icon {
-  display: flex;
-  align-items: center;
-  color: #787774;
-  flex-shrink: 0;
-}
-
-.kbd-child-title {
-  font-size: 14px;
-  color: #37352f;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.kbd-child-date {
-  font-size: 12px;
-  color: #9b9a97;
-  flex-shrink: 0;
-}
-
-.kbd-child-actions {
-  display: flex;
-  gap: 4px;
-  opacity: 0;
-  transition: opacity 0.12s;
-}
-
-.kbd-child-item:hover .kbd-child-actions {
-  opacity: 1;
-}
-
-.kbd-child-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border: none;
-  border-radius: 6px;
-  background: transparent;
-  color: #787774;
-  cursor: pointer;
-  transition: background 0.12s, color 0.12s;
-}
-
-.kbd-child-btn:hover {
-  background: #e9e9e7;
-  color: #37352f;
-}
+/* Section */
+.kbd-section { margin-top: 8px; }
+.kbd-section-title { font-size: 16px; font-weight: 600; color: #37352f; margin: 0 0 16px; display: flex; align-items: center; gap: 8px; }
+.kbd-section-count { font-size: 12px; font-weight: 500; color: #787774; background: #f1f1ef; padding: 2px 8px; border-radius: 10px; }
+.kbd-empty-children { padding: 40px; text-align: center; color: #9b9a97; font-size: 14px; }
+.kbd-children-list { display: flex; flex-direction: column; }
 
 /* Settings modal */
-.kbd-settings-form {
-  display: flex;
-  flex-direction: column;
-}
+.kbd-settings-form { display: flex; flex-direction: column; }
+.kbd-label { font-size: 14px; font-weight: 500; color: #37352f; margin-bottom: 6px; }
+.kbd-textarea { width: 100%; padding: 8px 12px; border: 1px solid #e9e9e7; border-radius: 6px; font-size: 14px; outline: none; box-sizing: border-box; color: #37352f; resize: vertical; font-family: inherit; }
+.kbd-textarea:focus { border-color: #2383e2; box-shadow: 0 0 0 2px rgba(35, 131, 226, 0.2); }
 
-.kbd-label {
-  font-size: 14px;
-  font-weight: 500;
-  color: #37352f;
-  margin-bottom: 6px;
-}
+.kbd-cover-upload { margin-bottom: 8px; }
+.kbd-cover-preview { position: relative; border-radius: 8px; overflow: hidden; }
+.kbd-cover-preview img { width: 100%; height: 120px; object-fit: cover; display: block; }
+.kbd-cover-remove { position: absolute; top: 8px; right: 8px; padding: 4px 10px; border: none; border-radius: 4px; background: rgba(0,0,0,0.6); color: #fff; font-size: 12px; cursor: pointer; }
+.kbd-cover-remove:hover { background: rgba(0,0,0,0.8); }
+.kbd-cover-drop { display: flex; align-items: center; gap: 10px; padding: 16px; border: 1.5px dashed #d9d9d7; border-radius: 8px; cursor: pointer; color: #9b9a97; font-size: 13px; transition: border-color 0.15s, background 0.15s; }
+.kbd-cover-drop:hover { border-color: #787774; background: #f9f9f8; }
 
-.kbd-textarea {
-  width: 100%;
-  padding: 8px 12px;
-  border: 1px solid #e9e9e7;
-  border-radius: 6px;
-  font-size: 14px;
-  outline: none;
-  box-sizing: border-box;
-  color: #37352f;
-  resize: vertical;
-  font-family: inherit;
-}
-
-.kbd-textarea:focus {
-  border-color: #2383e2;
-  box-shadow: 0 0 0 2px rgba(35, 131, 226, 0.2);
-}
-
-.kbd-settings-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  margin-top: 16px;
-}
-
-.kbd-btn {
-  padding: 8px 20px;
-  border: 1px solid #e9e9e7;
-  border-radius: 6px;
-  background: #fff;
-  font-size: 14px;
-  color: #37352f;
-  cursor: pointer;
-  transition: all 0.15s;
-}
-
+.kbd-settings-footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+.kbd-btn { padding: 8px 20px; border: 1px solid #e9e9e7; border-radius: 6px; background: #fff; font-size: 14px; color: #37352f; cursor: pointer; transition: all 0.15s; }
 .kbd-btn:hover { background: #f7f7f5; }
 .kbd-btn.primary { background: #2383e2; color: #fff; border-color: #2383e2; }
 .kbd-btn.primary:hover { background: #1b6ec2; }
