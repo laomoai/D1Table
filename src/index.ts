@@ -838,7 +838,7 @@ function openApiSpec(serverUrl: string) {
       '/api/notes/tree': {
         get: {
           summary: 'Get full notes tree',
-          description: 'Returns all non-deleted notes (up to 500) as a flat list. Use `parent_id` to reconstruct the hierarchy client-side.',
+          description: 'Returns all active (non-deleted, non-archived) notes (up to 500) as a flat list. Use `parent_id` to reconstruct the hierarchy client-side. Archived notes are excluded; use `/api/notes/archived` to access them.',
           responses: {
             '200': {
               description: 'Full note tree (flat list)',
@@ -954,6 +954,8 @@ function openApiSpec(serverUrl: string) {
                     parent_id: { type: 'string', nullable: true, description: 'Move note to a different parent; null to move to root' },
                     sort_order: { type: 'integer' },
                     is_locked: { type: 'boolean' },
+                    cover: { type: 'string', nullable: true, description: 'R2 path for cover image; null to clear' },
+                    description: { type: 'string', nullable: true, description: 'Knowledge base description; null to clear' },
                   },
                 },
               },
@@ -992,6 +994,97 @@ function openApiSpec(serverUrl: string) {
           responses: {
             '200': { description: 'Deleted permanently' },
             '404': { description: 'Trashed note not found' },
+          },
+        },
+      },
+      '/api/notes/archived': {
+        get: {
+          summary: 'List archived root notes (Knowledge Base)',
+          description: 'Returns root notes that have archived children, aggregated with count. Used as the Knowledge Base card list.',
+          parameters: [
+            { name: 'q', in: 'query', schema: { type: 'string' }, description: 'Search keyword (matches archived note titles)' },
+          ],
+          responses: {
+            '200': {
+              description: 'Archived root note list',
+              content: { 'application/json': { schema: { type: 'object', properties: {
+                data: { type: 'array', items: { type: 'object', properties: {
+                  id: { type: 'string' },
+                  title: { type: 'string' },
+                  icon: { type: 'string', nullable: true },
+                  cover: { type: 'string', nullable: true, description: 'R2 path for cover image' },
+                  description: { type: 'string', nullable: true },
+                  archived_count: { type: 'integer', description: 'Number of archived notes under this root' },
+                  created_at: { type: 'integer' },
+                  updated_at: { type: 'integer' },
+                } } },
+              } } } },
+            },
+          },
+        },
+      },
+      '/api/notes/{id}/archived-children': {
+        get: {
+          summary: 'List archived children of a root note',
+          description: 'Returns all archived descendants of a root note, including non-archived intermediate path nodes to preserve tree structure.',
+          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+          responses: {
+            '200': {
+              description: 'Archived children list (flat, use parent_id to build tree)',
+              content: { 'application/json': { schema: { type: 'object', properties: {
+                data: { type: 'array', items: { type: 'object', properties: {
+                  id: { type: 'string' },
+                  title: { type: 'string' },
+                  icon: { type: 'string', nullable: true },
+                  parent_id: { type: 'string', nullable: true },
+                  archived_at: { type: 'integer', nullable: true, description: 'Non-null = archived; null = path node' },
+                  sort_order: { type: 'integer' },
+                  created_at: { type: 'integer' },
+                  updated_at: { type: 'integer' },
+                } } },
+              } } } },
+            },
+            '403': { description: 'Access denied' },
+          },
+        },
+      },
+      '/api/notes/{id}/archive': {
+        post: {
+          summary: 'Archive a note and its descendants',
+          description: 'Sets archived_at on the note and all its descendants. Root notes (parent_id IS NULL) cannot be archived directly.',
+          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+          responses: {
+            '200': { description: 'Archived successfully; returns archived_count' },
+            '400': { description: 'Cannot archive root notes directly' },
+            '403': { description: 'Access denied' },
+            '404': { description: 'Note not found' },
+          },
+        },
+      },
+      '/api/notes/{id}/unarchive': {
+        post: {
+          summary: 'Unarchive a note and its descendants',
+          description: 'Clears archived_at on the note and all its descendants, restoring them to the sidebar.',
+          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+          responses: {
+            '200': { description: 'Unarchived successfully' },
+            '403': { description: 'Access denied' },
+          },
+        },
+      },
+      '/api/notes/batch-archive': {
+        post: {
+          summary: 'Batch archive multiple notes',
+          description: 'Archives multiple notes and their descendants in one request. Maximum 50 notes per batch.',
+          requestBody: {
+            required: true,
+            content: { 'application/json': { schema: { type: 'object', required: ['ids'], properties: {
+              ids: { type: 'array', items: { type: 'string' }, description: 'Note IDs to archive (max 50)', maxItems: 50 },
+            } } } },
+          },
+          responses: {
+            '200': { description: 'Batch archived successfully; returns archived_count' },
+            '400': { description: 'Invalid body or exceeds 50 limit' },
           },
         },
       },
