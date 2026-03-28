@@ -90,7 +90,7 @@ It combines database-style table management, notes, charts, trash recovery, team
 ### One-Command Setup
 
 ```bash
-git clone https://github.com/nicepkg/D1Table.git
+git clone https://github.com/laomoai/D1Table.git
 cd D1Table
 ./setup.sh
 ```
@@ -109,7 +109,7 @@ The setup script will help you:
 ### 1. Install Dependencies
 
 ```bash
-git clone https://github.com/nicepkg/D1Table.git
+git clone https://github.com/laomoai/D1Table.git
 cd D1Table
 npm install
 cd web && npm install && cd ..
