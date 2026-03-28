@@ -67,17 +67,7 @@
       <AppModal v-model:show="showSettings" title="Knowledge Base Settings" width="480px" height="auto">
         <div class="kbd-settings-form">
           <label class="kbd-label">Cover Image</label>
-          <div class="kbd-cover-upload">
-            <div v-if="settingsCover" class="kbd-cover-preview">
-              <img :src="`/api/files/${settingsCover}`" alt="cover" />
-              <button class="kbd-cover-remove" @click="settingsCover = null">Remove</button>
-            </div>
-            <div v-else class="kbd-cover-drop" @click="triggerCoverPicker">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9b9a97" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-              <span>Click to upload cover image</span>
-            </div>
-            <input ref="coverInputRef" type="file" accept="image/*" style="display:none" @change="handleCoverUpload" />
-          </div>
+          <ImageUpload :value="settingsCoverJson" @update:value="onCoverChange" />
           <label class="kbd-label" style="margin-top:16px">Description</label>
           <textarea
             v-model="settingsDescription"
@@ -100,12 +90,13 @@ import { ref, computed, watch, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import { NSpin, useMessage } from 'naive-ui'
-import { notesApi, api, type ArchivedChild } from '@/api/client'
+import { notesApi, type ArchivedChild, type ImageValue } from '@/api/client'
 import { renderMarkdown } from '@/utils/markdown'
 import { openNotePreview } from '@/utils/notePreview'
 import IonIcon from '@/components/IonIcon.vue'
 import AppModal from '@/components/AppModal.vue'
 import KbTreeItem from '@/components/KbTreeItem.vue'
+import ImageUpload from '@/components/ImageUpload.vue'
 import DOMPurify from 'dompurify'
 
 const router = useRouter()
@@ -212,37 +203,31 @@ async function addChildNote() {
 // Settings
 const showSettings = ref(false)
 const settingsDescription = ref('')
-const settingsCover = ref<string | null>(null)
-const coverInputRef = ref<HTMLInputElement | null>(null)
+const settingsCoverJson = ref<string | null>(null)
 
 function openSettingsModal() {
   settingsDescription.value = (rootNote.value as any)?.description ?? ''
-  settingsCover.value = (rootNote.value as any)?.cover ?? null
+  const cover = (rootNote.value as any)?.cover
+  settingsCoverJson.value = cover ? JSON.stringify({ thumb: cover, display: cover, name: 'cover', size: 0 }) : null
   showSettings.value = true
 }
 
-function triggerCoverPicker() {
-  coverInputRef.value?.click()
-}
-
-async function handleCoverUpload(e: Event) {
-  const file = (e.target as HTMLInputElement).files?.[0]
-  if (!file) return
-  try {
-    const result = await api.uploadImage(file, file, file.name)
-    settingsCover.value = result.display
-    message.success('Cover uploaded')
-  } catch (err) {
-    message.error((err as Error).message)
-  }
-  if (coverInputRef.value) coverInputRef.value.value = ''
+function onCoverChange(val: string | null) {
+  settingsCoverJson.value = val
 }
 
 async function saveSettings() {
   try {
+    let coverPath: string | null = null
+    if (settingsCoverJson.value) {
+      try {
+        const img = JSON.parse(settingsCoverJson.value) as ImageValue
+        coverPath = img.display
+      } catch {}
+    }
     await notesApi.updateNote(rootId.value, {
       description: settingsDescription.value || null,
-      cover: settingsCover.value || null,
+      cover: coverPath,
     })
     queryClient.invalidateQueries({ queryKey: ['notes', rootId.value] })
     queryClient.invalidateQueries({ queryKey: ['notes', 'archived-roots'] })
@@ -256,7 +241,7 @@ async function saveSettings() {
 
 <style scoped>
 .kbd-page { height: 100%; overflow-y: auto; background: #fff; color: #37352f; }
-.kbd-inner { max-width: 800px; margin: 0 auto; padding: 32px 24px 80px; }
+.kbd-inner { max-width: 960px; margin: 0 auto; padding: 32px 40px 80px; }
 
 .kbd-back { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border: none; background: none; border-radius: 6px; font-size: 13px; color: #787774; cursor: pointer; margin-bottom: 24px; transition: background 0.12s, color 0.12s; }
 .kbd-back:hover { background: #f1f1ef; color: #37352f; }
@@ -303,14 +288,6 @@ async function saveSettings() {
 .kbd-label { font-size: 14px; font-weight: 500; color: #37352f; margin-bottom: 6px; }
 .kbd-textarea { width: 100%; padding: 8px 12px; border: 1px solid #e9e9e7; border-radius: 6px; font-size: 14px; outline: none; box-sizing: border-box; color: #37352f; resize: vertical; font-family: inherit; }
 .kbd-textarea:focus { border-color: #2383e2; box-shadow: 0 0 0 2px rgba(35, 131, 226, 0.2); }
-
-.kbd-cover-upload { margin-bottom: 8px; }
-.kbd-cover-preview { position: relative; border-radius: 8px; overflow: hidden; }
-.kbd-cover-preview img { width: 100%; height: 120px; object-fit: cover; display: block; }
-.kbd-cover-remove { position: absolute; top: 8px; right: 8px; padding: 4px 10px; border: none; border-radius: 4px; background: rgba(0,0,0,0.6); color: #fff; font-size: 12px; cursor: pointer; }
-.kbd-cover-remove:hover { background: rgba(0,0,0,0.8); }
-.kbd-cover-drop { display: flex; align-items: center; gap: 10px; padding: 16px; border: 1.5px dashed #d9d9d7; border-radius: 8px; cursor: pointer; color: #9b9a97; font-size: 13px; transition: border-color 0.15s, background 0.15s; }
-.kbd-cover-drop:hover { border-color: #787774; background: #f9f9f8; }
 
 .kbd-settings-footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
 .kbd-btn { padding: 8px 20px; border: 1px solid #e9e9e7; border-radius: 6px; background: #fff; font-size: 14px; color: #37352f; cursor: pointer; transition: all 0.15s; }
