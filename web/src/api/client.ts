@@ -319,6 +319,9 @@ export interface Note {
   owner_id: number | null
   created_at: number
   updated_at: number
+  cover: string | null
+  description: string | null
+  archived_at: number | null
 }
 
 export type NoteListItem = Omit<Note, 'content' | 'owner_id'>

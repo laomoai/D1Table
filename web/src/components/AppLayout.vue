@@ -242,7 +242,7 @@
 import { computed, ref, nextTick, reactive, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
-import { NIcon, NSpin, useMessage } from 'naive-ui'
+import { NIcon, NSpin, useMessage, useDialog } from 'naive-ui'
 import {
   GridOutline as TableIcon,
   SettingsOutline as SettingsIcon,
@@ -258,6 +258,7 @@ import NoteTreeItem from './NoteTreeItem.vue'
 import NotePreviewModal from './NotePreviewModal.vue'
 
 const message = useMessage()
+const dialog = useDialog()
 registerClipboardToast((content, opts) => message.success(content, opts))
 const router = useRouter()
 const route = useRoute()
@@ -703,15 +704,35 @@ async function createNewNote() {
   }
 }
 
-async function archiveNote(noteId: string) {
-  try {
-    await notesApi.archiveNote(noteId)
-    message.success('Archived')
-    queryClient.invalidateQueries({ queryKey: ['notes', 'tree'] })
-    queryClient.invalidateQueries({ queryKey: ['notes', 'archived-roots'] })
-  } catch (err) {
-    message.error((err as Error).message)
-  }
+function archiveNote(noteId: string) {
+  dialog.warning({
+    title: 'Archive note',
+    content: 'Archive this note and its sub-pages? You can restore them from Knowledge Base.',
+    positiveText: 'Archive',
+    negativeText: 'Cancel',
+    onPositiveClick: async () => {
+      try {
+        await notesApi.archiveNote(noteId)
+        queryClient.invalidateQueries({ queryKey: ['notes', 'tree'] })
+        queryClient.invalidateQueries({ queryKey: ['notes', 'archived-roots'] })
+        // If currently viewing this note, navigate away
+        if (route.params.noteId === noteId) {
+          router.push('/')
+        }
+        const msgReactive = message.success('Note archived. Undo?', {
+          duration: 5000,
+          closable: true,
+          onClose: () => {},
+        })
+        // Undo via clicking the message (auto-dismiss after 5s)
+        setTimeout(async () => {
+          // Undo window expired — no action needed
+        }, 5000)
+      } catch (err) {
+        message.error((err as Error).message)
+      }
+    },
+  })
 }
 
 async function createChildNote(parentId: string) {

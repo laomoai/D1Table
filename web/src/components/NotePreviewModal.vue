@@ -34,6 +34,9 @@
           <n-spin size="small" />
         </div>
 
+        <!-- Error -->
+        <div v-else-if="loadError" class="note-preview-error">Failed to load note</div>
+
         <!-- Content -->
         <div
           v-else-if="note"
@@ -47,7 +50,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { NSpin } from 'naive-ui'
 import { notesApi, type Note } from '@/api/client'
@@ -60,7 +63,9 @@ const router = useRouter()
 const noteId = notePreviewId
 const note = ref<Note | null>(null)
 const isLoading = ref(false)
+const loadError = ref(false)
 const fontSize = ref(15)
+let requestCounter = 0
 
 const renderedHtml = computed(() => {
   if (!note.value?.content) return ''
@@ -70,17 +75,31 @@ const renderedHtml = computed(() => {
 watch(noteId, async (id) => {
   if (!id) {
     note.value = null
+    loadError.value = false
     return
   }
+  const thisRequest = ++requestCounter
   isLoading.value = true
+  loadError.value = false
   try {
-    note.value = await notesApi.getNote(id)
+    const result = await notesApi.getNote(id)
+    if (thisRequest === requestCounter) note.value = result
   } catch {
-    note.value = null
+    if (thisRequest === requestCounter) {
+      note.value = null
+      loadError.value = true
+    }
   } finally {
-    isLoading.value = false
+    if (thisRequest === requestCounter) isLoading.value = false
   }
 })
+
+// Escape key to close
+function onKeyDown(e: KeyboardEvent) {
+  if (e.key === 'Escape' && noteId.value) close()
+}
+onMounted(() => document.addEventListener('keydown', onKeyDown))
+onUnmounted(() => document.removeEventListener('keydown', onKeyDown))
 
 function close() {
   closeNotePreview()
@@ -181,6 +200,13 @@ function goEdit() {
   display: flex;
   justify-content: center;
   padding: 60px;
+}
+
+.note-preview-error {
+  padding: 60px;
+  text-align: center;
+  color: #e03e3e;
+  font-size: 14px;
 }
 
 .note-preview-content {

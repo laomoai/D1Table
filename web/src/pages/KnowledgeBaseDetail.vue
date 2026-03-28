@@ -77,6 +77,12 @@
         </div>
       </template>
 
+      <!-- Not found / Error -->
+      <div v-else class="kbd-not-found">
+        <p style="font-size: 15px; color: #787774;">Note not found or failed to load.</p>
+        <button class="kbd-btn" @click="router.push('/knowledge-base')">Back to Knowledge Base</button>
+      </div>
+
       <!-- Settings modal -->
       <AppModal v-model:show="showSettings" title="Knowledge Base Settings" width="480px" height="auto">
         <div class="kbd-settings-form">
@@ -177,6 +183,14 @@ const filteredRootNodes = computed(() => {
 
 const expandedIds = ref(new Set<string>())
 
+// Reset state when navigating between KB detail pages
+watch(rootId, () => {
+  searchQuery.value = ''
+  expandedIds.value = new Set()
+  contentExpanded.value = false
+  contentOverflows.value = false
+})
+
 // Auto-expand non-archived path nodes so the tree is visible by default
 watch(archivedChildren, (children) => {
   const s = new Set(expandedIds.value)
@@ -244,8 +258,8 @@ const settingsDescription = ref('')
 const settingsCoverJson = ref<string | null>(null)
 
 function openSettingsModal() {
-  settingsDescription.value = (rootNote.value as any)?.description ?? ''
-  const cover = (rootNote.value as any)?.cover
+  settingsDescription.value = rootNote.value?.description ?? ''
+  const cover = rootNote.value?.cover
   settingsCoverJson.value = cover ? JSON.stringify({ thumb: cover, display: cover, name: 'cover', size: 0 }) : null
   showSettings.value = true
 }
@@ -334,6 +348,8 @@ async function saveSettings() {
 .kbd-label { font-size: 14px; font-weight: 500; color: #37352f; margin-bottom: 6px; }
 .kbd-textarea { width: 100%; padding: 8px 12px; border: 1px solid #e9e9e7; border-radius: 6px; font-size: 14px; outline: none; box-sizing: border-box; color: #37352f; resize: vertical; font-family: inherit; }
 .kbd-textarea:focus { border-color: #2383e2; box-shadow: 0 0 0 2px rgba(35, 131, 226, 0.2); }
+
+.kbd-not-found { text-align: center; padding: 80px 20px; }
 
 .kbd-settings-footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
 .kbd-btn { padding: 8px 20px; border: 1px solid #e9e9e7; border-radius: 6px; background: #fff; font-size: 14px; color: #37352f; cursor: pointer; transition: all 0.15s; }

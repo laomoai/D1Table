@@ -25,6 +25,11 @@
       <!-- Loading -->
       <n-spin v-if="isLoading" style="padding: 80px; display: flex; justify-content: center;" />
 
+      <!-- Error -->
+      <div v-else-if="error" class="kb-empty">
+        <p class="kb-empty-text" style="color: #e03e3e;">Failed to load knowledge base</p>
+      </div>
+
       <!-- Cards grid -->
       <div v-else-if="roots.length > 0" class="kb-cards">
         <div
@@ -74,7 +79,7 @@ import IonIcon from '@/components/IonIcon.vue'
 const router = useRouter()
 const searchQuery = ref('')
 
-const { data: archivedRoots, isLoading } = useQuery({
+const { data: archivedRoots, isLoading, error } = useQuery({
   queryKey: ['notes', 'archived-roots'],
   queryFn: () => notesApi.getArchivedRoots(),
 })

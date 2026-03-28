@@ -9,6 +9,38 @@ function generateId(): string {
   return 'n_' + crypto.randomUUID().replace(/-/g, '').slice(0, 12)
 }
 
+/** BFS collect descendants with access control and breadth cap */
+async function collectDescendants(
+  db: D1Database,
+  rootId: string,
+  teamId: number | undefined,
+  allowedNoteIds: Set<string> | null,
+  opts?: { filterDeleted?: boolean }
+): Promise<string[]> {
+  const MAX_DEPTH = 10
+  const MAX_BREADTH = 500
+  const allIds: string[] = [rootId]
+  let currentLevel = [rootId]
+
+  for (let depth = 0; depth < MAX_DEPTH && currentLevel.length > 0; depth++) {
+    const placeholders = currentLevel.map(() => '?').join(',')
+    let childSql = `SELECT id FROM _notes WHERE parent_id IN (${placeholders}) AND deleted_at IS NULL`
+    const childParams: unknown[] = [...currentLevel]
+    if (teamId !== undefined) {
+      childSql += ` AND team_id = ?`
+      childParams.push(teamId)
+    }
+    const children = await db.prepare(childSql).bind(...childParams).all<{ id: string }>()
+    currentLevel = children.results
+      .filter(r => allowedNoteIds === null || allowedNoteIds.has(r.id))
+      .map(r => r.id)
+      .slice(0, MAX_BREADTH)
+    allIds.push(...currentLevel)
+  }
+
+  return allIds
+}
+
 /**
  * GET /api/notes
  * 获取笔记列表（支持按 parent_id 过滤）
@@ -492,21 +524,7 @@ notes.post('/:id/archive', requireWriteMiddleware, async (c) => {
     return c.json({ error: { code: 'INVALID_OPERATION', message: 'Cannot archive root notes directly' } }, 400)
   }
 
-  // Collect all descendant IDs (BFS)
-  const allIds: string[] = [id]
-  let currentLevel = [id]
-  for (let depth = 0; depth < 10 && currentLevel.length > 0; depth++) {
-    const placeholders = currentLevel.map(() => '?').join(',')
-    let childSql = `SELECT id FROM _notes WHERE parent_id IN (${placeholders}) AND deleted_at IS NULL`
-    const childParams: unknown[] = [...currentLevel]
-    if (teamId !== undefined) {
-      childSql += ` AND team_id = ?`
-      childParams.push(teamId)
-    }
-    const children = await c.env.DB.prepare(childSql).bind(...childParams).all<{ id: string }>()
-    currentLevel = children.results.map(r => r.id)
-    allIds.push(...currentLevel)
-  }
+  const allIds = await collectDescendants(c.env.DB, id, teamId, allowedNoteIds)
 
   const now = Math.floor(Date.now() / 1000)
   const stmts = allIds.map(noteId => {
@@ -536,21 +554,7 @@ notes.post('/:id/unarchive', requireWriteMiddleware, async (c) => {
     return c.json({ error: { code: 'FORBIDDEN', message: 'Access to this note is not allowed' } }, 403)
   }
 
-  // Collect all descendant IDs (BFS)
-  const allIds: string[] = [id]
-  let currentLevel = [id]
-  for (let depth = 0; depth < 10 && currentLevel.length > 0; depth++) {
-    const placeholders = currentLevel.map(() => '?').join(',')
-    let childSql = `SELECT id FROM _notes WHERE parent_id IN (${placeholders}) AND deleted_at IS NULL`
-    const childParams: unknown[] = [...currentLevel]
-    if (teamId !== undefined) {
-      childSql += ` AND team_id = ?`
-      childParams.push(teamId)
-    }
-    const children = await c.env.DB.prepare(childSql).bind(...childParams).all<{ id: string }>()
-    currentLevel = children.results.map(r => r.id)
-    allIds.push(...currentLevel)
-  }
+  const allIds = await collectDescendants(c.env.DB, id, teamId, allowedNoteIds)
 
   const stmts = allIds.map(noteId => {
     let sql = `UPDATE _notes SET archived_at = NULL WHERE id = ? AND deleted_at IS NULL`
@@ -583,24 +587,15 @@ notes.post('/batch-archive', requireWriteMiddleware, async (c) => {
   const allowedNoteIds = await getAccessibleNoteIds(c.env.DB, c.get('teamId'), c.get('allowedNoteRootIds'))
   const now = Math.floor(Date.now() / 1000)
 
+  // Validate IDs are strings
+  const validIds = body.ids.filter((id): id is string => typeof id === 'string' && id.length > 0)
+
   // For each ID, collect descendants and archive
   const allIds = new Set<string>()
-  for (const noteId of body.ids) {
+  for (const noteId of validIds) {
     if (!canAccessNote(allowedNoteIds, noteId)) continue
-    allIds.add(noteId)
-    let currentLevel = [noteId]
-    for (let depth = 0; depth < 10 && currentLevel.length > 0; depth++) {
-      const placeholders = currentLevel.map(() => '?').join(',')
-      let childSql = `SELECT id FROM _notes WHERE parent_id IN (${placeholders}) AND deleted_at IS NULL`
-      const childParams: unknown[] = [...currentLevel]
-      if (teamId !== undefined) {
-        childSql += ` AND team_id = ?`
-        childParams.push(teamId)
-      }
-      const children = await c.env.DB.prepare(childSql).bind(...childParams).all<{ id: string }>()
-      currentLevel = children.results.map(r => r.id)
-      currentLevel.forEach(cid => allIds.add(cid))
-    }
+    const descendants = await collectDescendants(c.env.DB, noteId, teamId, allowedNoteIds)
+    descendants.forEach(id => allIds.add(id))
   }
 
   const stmts = [...allIds].map(nid => {
@@ -642,22 +637,7 @@ notes.delete('/:id', requireWriteMiddleware, async (c) => {
     return c.json({ error: { code: 'NOT_FOUND', message: 'Note not found' } }, 404)
   }
 
-  // Collect all descendant IDs level by level (breadth-first, max 10 levels)
-  // Only traverse within same team
-  const allIds: string[] = [id]
-  let currentLevel = [id]
-  for (let depth = 0; depth < 10 && currentLevel.length > 0; depth++) {
-    const placeholders = currentLevel.map(() => '?').join(',')
-    let childSql = `SELECT id FROM _notes WHERE parent_id IN (${placeholders}) AND deleted_at IS NULL`
-    const childParams: unknown[] = [...currentLevel]
-    if (teamId !== undefined) {
-      childSql += ` AND team_id = ?`
-      childParams.push(teamId)
-    }
-    const children = await c.env.DB.prepare(childSql).bind(...childParams).all<{ id: string }>()
-    currentLevel = children.results.map(r => r.id)
-    allIds.push(...currentLevel)
-  }
+  const allIds = await collectDescendants(c.env.DB, id, teamId, allowedNoteIds)
   const now = Math.floor(Date.now() / 1000)
 
   const stmts = allIds.map(noteId => {
@@ -730,7 +710,7 @@ notes.post('/:id/restore', requireWriteMiddleware, async (c) => {
     return c.json({ error: { code: 'NOT_FOUND', message: 'Deleted note not found' } }, 404)
   }
 
-  // Use same breadth-first approach as delete to find all descendants (within same team)
+  // BFS to find all descendants deleted at the same timestamp (with access check + breadth cap)
   const allIds: string[] = [id]
   let currentLevel = [id]
   for (let depth = 0; depth < 10 && currentLevel.length > 0; depth++) {
@@ -742,7 +722,10 @@ notes.post('/:id/restore', requireWriteMiddleware, async (c) => {
       childParams.push(teamId)
     }
     const children = await c.env.DB.prepare(childSql).bind(...childParams).all<{ id: string }>()
-    currentLevel = children.results.map(r => r.id)
+    currentLevel = children.results
+      .filter(r => allowedNoteIds === null || allowedNoteIds.has(r.id))
+      .map(r => r.id)
+      .slice(0, 500)
     allIds.push(...currentLevel)
   }
 
