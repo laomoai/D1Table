@@ -336,6 +336,30 @@ export interface NoteUpdate {
   parent_id?: string | null
   sort_order?: number
   is_locked?: boolean
+  cover?: string | null
+  description?: string | null
+}
+
+export interface ArchivedRoot {
+  id: string
+  title: string
+  icon: string | null
+  cover: string | null
+  description: string | null
+  archived_count: number
+  created_at: number
+  updated_at: number
+}
+
+export interface ArchivedChild {
+  id: string
+  title: string
+  icon: string | null
+  parent_id: string | null
+  archived_at: number | null
+  sort_order: number
+  created_at: number
+  updated_at: number
 }
 
 export const notesApi = {
@@ -374,6 +398,26 @@ export const notesApi = {
   /** 获取已删除的笔记 */
   getTrash: (params?: { page?: number; page_size?: number }) =>
     http.get<{ data: { id: string; title: string; icon: string | null; deleted_at: number }[]; meta: { total: number; page: number; page_size: number } }>('/notes/trash', { params }).then(r => r.data),
+
+  /** 归档笔记（连带子笔记） */
+  archiveNote: (id: string) =>
+    http.post<{ data: { success: boolean; archived_count: number } }>(`/notes/${id}/archive`).then(r => r.data.data),
+
+  /** 取消归档 */
+  unarchiveNote: (id: string) =>
+    http.post<{ data: { success: boolean } }>(`/notes/${id}/unarchive`).then(r => r.data.data),
+
+  /** 批量归档 */
+  batchArchive: (ids: string[]) =>
+    http.post<{ data: { success: boolean; archived_count: number } }>('/notes/batch-archive', { ids }).then(r => r.data.data),
+
+  /** 获取已归档的根笔记列表 */
+  getArchivedRoots: (params?: { q?: string }) =>
+    http.get<{ data: ArchivedRoot[] }>('/notes/archived', { params }).then(r => r.data.data),
+
+  /** 获取某根笔记下的已归档子笔记 */
+  getArchivedChildren: (rootId: string) =>
+    http.get<{ data: ArchivedChild[] }>(`/notes/${rootId}/archived-children`).then(r => r.data.data),
 }
 
 export const getCurrentUser = (): Promise<CurrentUser> =>

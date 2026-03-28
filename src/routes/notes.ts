@@ -72,7 +72,7 @@ notes.get('/tree', async (c) => {
 
   const rows = await c.env.DB.prepare(
     `SELECT id, title, icon, parent_id, sort_order, is_locked, created_at, updated_at
-     FROM _notes WHERE ${clause} AND deleted_at IS NULL
+     FROM _notes WHERE ${clause} AND deleted_at IS NULL AND archived_at IS NULL
      ORDER BY sort_order ASC, created_at DESC
      LIMIT 500`
   ).bind(...params)
@@ -88,6 +88,129 @@ notes.get('/tree', async (c) => {
         }))
 
   return c.json({ data })
+})
+
+/**
+ * GET /api/notes/archived
+ * 获取已归档笔记，按根笔记聚合返回
+ */
+notes.get('/archived', async (c) => {
+  const { clause, params } = teamFilter(c.get('teamId'))
+  const allowedNoteIds = await getAccessibleNoteIds(c.env.DB, c.get('teamId'), c.get('allowedNoteRootIds'))
+  const q = c.req.query('q')?.toLowerCase()
+
+  // Load all non-deleted notes (id, parent_id, archived_at) to build tree in memory
+  const allRows = await c.env.DB.prepare(
+    `SELECT id, title, icon, parent_id, archived_at, cover, description, sort_order, created_at, updated_at
+     FROM _notes WHERE ${clause} AND deleted_at IS NULL
+     ORDER BY sort_order ASC, created_at DESC`
+  ).bind(...params)
+    .all<{ id: string; title: string; icon: string | null; parent_id: string | null; archived_at: number | null; cover: string | null; description: string | null; sort_order: number; created_at: number; updated_at: number }>()
+
+  let notes_all = allRows.results
+  if (allowedNoteIds !== null) {
+    notes_all = notes_all.filter(r => allowedNoteIds.has(r.id))
+  }
+
+  // Build parent lookup
+  const noteMap = new Map(notes_all.map(n => [n.id, n]))
+
+  // Find root for a given note
+  function findRoot(noteId: string): string | null {
+    let current = noteId
+    const visited = new Set<string>()
+    while (true) {
+      if (visited.has(current)) return null
+      visited.add(current)
+      const n = noteMap.get(current)
+      if (!n) return null
+      if (!n.parent_id) return current
+      current = n.parent_id
+    }
+  }
+
+  // Find all archived notes and group by root
+  const archivedByRoot = new Map<string, number>()
+  for (const n of notes_all) {
+    if (!n.archived_at) continue
+    if (q && !n.title.toLowerCase().includes(q)) continue
+    const rootId = findRoot(n.id)
+    if (!rootId) continue
+    archivedByRoot.set(rootId, (archivedByRoot.get(rootId) ?? 0) + 1)
+  }
+
+  // Build response: root notes that have archived children
+  const data = []
+  for (const [rootId, archivedCount] of archivedByRoot) {
+    const root = noteMap.get(rootId)
+    if (!root) continue
+    // If search query, also check root title
+    if (q && !root.title.toLowerCase().includes(q) && archivedCount === 0) continue
+    data.push({
+      id: root.id,
+      title: root.title,
+      icon: root.icon,
+      cover: root.cover,
+      description: root.description,
+      archived_count: archivedCount,
+      created_at: root.created_at,
+      updated_at: root.updated_at,
+    })
+  }
+
+  return c.json({ data })
+})
+
+/**
+ * GET /api/notes/:id/archived-children
+ * 获取某个根笔记下所有已归档的子笔记
+ */
+notes.get('/:id/archived-children', async (c) => {
+  const { id } = c.req.param()
+  const { clause, params } = teamFilter(c.get('teamId'))
+  const allowedNoteIds = await getAccessibleNoteIds(c.env.DB, c.get('teamId'), c.get('allowedNoteRootIds'))
+
+  if (!canAccessNote(allowedNoteIds, id)) {
+    return c.json({ error: { code: 'FORBIDDEN', message: 'Access to this note is not allowed' } }, 403)
+  }
+
+  // Load all non-deleted notes to build tree
+  const allRows = await c.env.DB.prepare(
+    `SELECT id, title, icon, parent_id, archived_at, sort_order, created_at, updated_at
+     FROM _notes WHERE ${clause} AND deleted_at IS NULL
+     ORDER BY sort_order ASC, created_at DESC`
+  ).bind(...params)
+    .all<{ id: string; title: string; icon: string | null; parent_id: string | null; archived_at: number | null; sort_order: number; created_at: number; updated_at: number }>()
+
+  let notes_all = allRows.results
+  if (allowedNoteIds !== null) {
+    notes_all = notes_all.filter(r => allowedNoteIds.has(r.id))
+  }
+
+  // Build children map
+  const childrenMap = new Map<string, typeof notes_all>()
+  for (const n of notes_all) {
+    if (!n.parent_id) continue
+    const arr = childrenMap.get(n.parent_id) ?? []
+    arr.push(n)
+    childrenMap.set(n.parent_id, arr)
+  }
+
+  // BFS to find all descendants of root, return only archived ones
+  const archived: typeof notes_all = []
+  const queue = [id]
+  const visited = new Set<string>()
+  while (queue.length > 0) {
+    const current = queue.shift()!
+    if (visited.has(current)) continue
+    visited.add(current)
+    for (const child of childrenMap.get(current) ?? []) {
+      if (child.archived_at) archived.push(child)
+      queue.push(child.id)
+    }
+  }
+
+  return c.json({ data: archived })
 })
 
 /**
@@ -292,6 +415,14 @@ notes.patch('/:id', requireWriteMiddleware, async (c) => {
     sets.push('is_locked = ?')
     params.push(body.is_locked ? 1 : 0)
   }
+  if ((body as { cover?: string | null }).cover !== undefined) {
+    sets.push('cover = ?')
+    params.push((body as { cover?: string | null }).cover)
+  }
+  if ((body as { description?: string | null }).description !== undefined) {
+    sets.push('description = ?')
+    params.push((body as { description?: string | null }).description)
+  }
 
   if (sets.length === 1) {
     return c.json({ error: { code: 'INVALID_BODY', message: 'No valid fields provided' } }, 400)
@@ -311,6 +442,158 @@ notes.patch('/:id', requireWriteMiddleware, async (c) => {
   }
 
   return c.json({ data: { success: true } })
+})
+
+/**
+ * POST /api/notes/:id/archive
+ * Archive a note and all its descendants
+ */
+notes.post('/:id/archive', requireWriteMiddleware, async (c) => {
+  const { id } = c.req.param()
+  const teamId = c.get('teamId')
+  const allowedNoteIds = await getAccessibleNoteIds(c.env.DB, c.get('teamId'), c.get('allowedNoteRootIds'))
+
+  if (!canAccessNote(allowedNoteIds, id)) {
+    return c.json({ error: { code: 'FORBIDDEN', message: 'Access to this note is not allowed' } }, 403)
+  }
+
+  // Verify note exists and is not deleted
+  let verifySql = `SELECT id, parent_id FROM _notes WHERE id = ? AND deleted_at IS NULL`
+  const verifyParams: unknown[] = [id]
+  if (teamId !== undefined) {
+    verifySql += ` AND team_id = ?`
+    verifyParams.push(teamId)
+  }
+  const target = await c.env.DB.prepare(verifySql).bind(...verifyParams).first<{ id: string; parent_id: string | null }>()
+  if (!target) {
+    return c.json({ error: { code: 'NOT_FOUND', message: 'Note not found' } }, 404)
+  }
+
+  // Cannot archive root notes (notes without parent)
+  if (!target.parent_id) {
+    return c.json({ error: { code: 'INVALID_OPERATION', message: 'Cannot archive root notes directly' } }, 400)
+  }
+
+  // Collect all descendant IDs (BFS)
+  const allIds: string[] = [id]
+  let currentLevel = [id]
+  for (let depth = 0; depth < 10 && currentLevel.length > 0; depth++) {
+    const placeholders = currentLevel.map(() => '?').join(',')
+    let childSql = `SELECT id FROM _notes WHERE parent_id IN (${placeholders}) AND deleted_at IS NULL`
+    const childParams: unknown[] = [...currentLevel]
+    if (teamId !== undefined) {
+      childSql += ` AND team_id = ?`
+      childParams.push(teamId)
+    }
+    const children = await c.env.DB.prepare(childSql).bind(...childParams).all<{ id: string }>()
+    currentLevel = children.results.map(r => r.id)
+    allIds.push(...currentLevel)
+  }
+
+  const now = Math.floor(Date.now() / 1000)
+  const stmts = allIds.map(noteId => {
+    let sql = `UPDATE _notes SET archived_at = ? WHERE id = ? AND archived_at IS NULL AND deleted_at IS NULL`
+    const params: unknown[] = [now, noteId]
+    if (teamId !== undefined) {
+      sql += ` AND team_id = ?`
+      params.push(teamId)
+    }
+    return c.env.DB.prepare(sql).bind(...params)
+  })
+
+  await c.env.DB.batch(stmts)
+  return c.json({ data: { success: true, archived_count: allIds.length } })
+})
+
+/**
+ * POST /api/notes/:id/unarchive
+ * Unarchive a note and all its descendants
+ */
+notes.post('/:id/unarchive', requireWriteMiddleware, async (c) => {
+  const { id } = c.req.param()
+  const teamId = c.get('teamId')
+  const allowedNoteIds = await getAccessibleNoteIds(c.env.DB, c.get('teamId'), c.get('allowedNoteRootIds'))
+
+  if (!canAccessNote(allowedNoteIds, id)) {
+    return c.json({ error: { code: 'FORBIDDEN', message: 'Access to this note is not allowed' } }, 403)
+  }
+
+  // Collect all descendant IDs (BFS)
+  const allIds: string[] = [id]
+  let currentLevel = [id]
+  for (let depth = 0; depth < 10 && currentLevel.length > 0; depth++) {
+    const placeholders = currentLevel.map(() => '?').join(',')
+    let childSql = `SELECT id FROM _notes WHERE parent_id IN (${placeholders}) AND deleted_at IS NULL`
+    const childParams: unknown[] = [...currentLevel]
+    if (teamId !== undefined) {
+      childSql += ` AND team_id = ?`
+      childParams.push(teamId)
+    }
+    const children = await c.env.DB.prepare(childSql).bind(...childParams).all<{ id: string }>()
+    currentLevel = children.results.map(r => r.id)
+    allIds.push(...currentLevel)
+  }
+
+  const stmts = allIds.map(noteId => {
+    let sql = `UPDATE _notes SET archived_at = NULL WHERE id = ? AND deleted_at IS NULL`
+    const params: unknown[] = [noteId]
+    if (teamId !== undefined) {
+      sql += ` AND team_id = ?`
+      params.push(teamId)
+    }
+    return c.env.DB.prepare(sql).bind(...params)
+  })
+
+  await c.env.DB.batch(stmts)
+  return c.json({ data: { success: true } })
+})
+
+/**
+ * POST /api/notes/batch-archive
+ * Batch archive multiple notes
+ */
+notes.post('/batch-archive', requireWriteMiddleware, async (c) => {
+  const body = await c.req.json<{ ids: string[] }>()
+  if (!body.ids || !Array.isArray(body.ids) || body.ids.length === 0) {
+    return c.json({ error: { code: 'INVALID_BODY', message: 'ids array is required' } }, 400)
+  }
+
+  const teamId = c.get('teamId')
+  const allowedNoteIds = await getAccessibleNoteIds(c.env.DB, c.get('teamId'), c.get('allowedNoteRootIds'))
+  const now = Math.floor(Date.now() / 1000)
+
+  // For each ID, collect descendants and archive
+  const allIds = new Set<string>()
+  for (const noteId of body.ids) {
+    if (!canAccessNote(allowedNoteIds, noteId)) continue
+    allIds.add(noteId)
+    let currentLevel = [noteId]
+    for (let depth = 0; depth < 10 && currentLevel.length > 0; depth++) {
+      const placeholders = currentLevel.map(() => '?').join(',')
+      let childSql = `SELECT id FROM _notes WHERE parent_id IN (${placeholders}) AND deleted_at IS NULL`
+      const childParams: unknown[] = [...currentLevel]
+      if (teamId !== undefined) {
+        childSql += ` AND team_id = ?`
+        childParams.push(teamId)
+      }
+      const children = await c.env.DB.prepare(childSql).bind(...childParams).all<{ id: string }>()
+      currentLevel = children.results.map(r => r.id)
+      currentLevel.forEach(cid => allIds.add(cid))
+    }
+  }
+
+  const stmts = [...allIds].map(nid => {
+    let sql = `UPDATE _notes SET archived_at = ? WHERE id = ? AND archived_at IS NULL AND deleted_at IS NULL`
+    const params: unknown[] = [now, nid]
+    if (teamId !== undefined) {
+      sql += ` AND team_id = ?`
+      params.push(teamId)
+    }
+    return c.env.DB.prepare(sql).bind(...params)
+  })
+
+  if (stmts.length > 0) await c.env.DB.batch(stmts)
+  return c.json({ data: { success: true, archived_count: allIds.size } })
 })
 
 /**

@@ -36,6 +36,9 @@
         />
       </span>
       <div class="note-actions">
+        <button v-if="note.parent_id" class="note-action-btn note-archive-btn" title="Archive" @click.stop="emit('archive', note.id)">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
+        </button>
         <button class="note-action-btn" title="Add sub-note" @click.stop="emit('create-child', note.id)">+</button>
       </div>
     </div>
@@ -54,6 +57,7 @@
         @select="emit('select', $event)"
         @toggle="emit('toggle', $event)"
         @create-child="emit('create-child', $event)"
+        @archive="emit('archive', $event)"
         @reorder="emit('reorder', $event)"
         @update:drop-state="emit('update:drop-state', $event)"
       />
@@ -82,6 +86,7 @@ const emit = defineEmits<{
   select: [id: string]
   toggle: [id: string]
   'create-child': [id: string]
+  archive: [id: string]
   reorder: [payload: { dragId: string; dropId: string; mode: 'above' | 'child' }]
   'update:drop-state': [state: { id: string | null; position: 'above' | 'child' | null }]
 }>()

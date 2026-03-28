@@ -34,6 +34,8 @@ const router = createRouter({
         { path: 'settings', component: () => import('@/pages/Settings.vue') },
         { path: 'notes', component: () => import('@/pages/NotesPage.vue') },
         { path: 'notes/:noteId', component: () => import('@/pages/NotesPage.vue') },
+        { path: 'knowledge-base', component: () => import('@/pages/KnowledgeBase.vue') },
+        { path: 'knowledge-base/:rootId', component: () => import('@/pages/KnowledgeBaseDetail.vue') },
       ],
     },
   ],

@@ -170,11 +170,24 @@
                 @select="selectNote"
                 @toggle="toggleNoteFolder"
                 @create-child="createChildNote"
+                @archive="archiveNote"
                 @reorder="handleNoteReorder"
                 @update:drop-state="noteDropState = $event"
               />
             </template>
           </div>
+        </div>
+
+        <!-- Knowledge Base entry -->
+        <div
+          v-show="sidebarTab === 'notes'"
+          class="kb-entry"
+          :class="{ active: route.path === '/knowledge-base' }"
+          @click="router.push('/knowledge-base')"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+          <span>Knowledge Base</span>
+          <span v-if="archivedRoots?.length" class="kb-badge">{{ archivedRoots.length }}</span>
         </div>
       </div>
 
@@ -567,9 +580,27 @@ const { data: notesTree, isLoading: notesTreeLoading } = useQuery({
   queryFn: notesApi.getTree,
 })
 
-const noteRootNotes = computed(() =>
-  (notesTree.value ?? []).filter(n => !n.parent_id)
+const { data: archivedRoots } = useQuery({
+  queryKey: ['notes', 'archived-roots'],
+  queryFn: () => notesApi.getArchivedRoots(),
+})
+
+// Set of root IDs that have archived children
+const archivedRootIds = computed(() =>
+  new Set((archivedRoots.value ?? []).map(r => r.id))
 )
+
+const noteRootNotes = computed(() => {
+  const roots = (notesTree.value ?? []).filter(n => !n.parent_id)
+  // Hide root notes whose children are all archived:
+  // root appears in archivedRootIds AND has no visible children in the tree
+  return roots.filter(root => {
+    if (!archivedRootIds.value.has(root.id)) return true
+    // Check if root has any visible children in the tree
+    const hasVisibleChildren = (notesTree.value ?? []).some(n => n.parent_id === root.id)
+    return hasVisibleChildren
+  })
+})
 
 const noteChildrenMap = computed(() => {
   const map = new Map<string, NoteListItem[]>()
@@ -667,6 +698,17 @@ async function createNewNote() {
     const result = await notesApi.createNote({ title: 'Untitled' })
     queryClient.invalidateQueries({ queryKey: ['notes', 'tree'] })
     router.push(`/notes/${result.id}`)
+  } catch (err) {
+    message.error((err as Error).message)
+  }
+}
+
+async function archiveNote(noteId: string) {
+  try {
+    await notesApi.archiveNote(noteId)
+    message.success('Archived')
+    queryClient.invalidateQueries({ queryKey: ['notes', 'tree'] })
+    queryClient.invalidateQueries({ queryKey: ['notes', 'archived-roots'] })
   } catch (err) {
     message.error((err as Error).message)
   }
@@ -1005,6 +1047,35 @@ async function logout() {
   text-align: center;
   font-size: 13px;
   color: #a3a19d;
+}
+
+.kb-entry {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  font-size: 13px;
+  color: #787774;
+  cursor: pointer;
+  border-top: 1px solid #e9e9e7;
+  transition: background 0.12s, color 0.12s;
+  flex-shrink: 0;
+}
+.kb-entry:hover {
+  background: #f1f1ef;
+  color: #37352f;
+}
+.kb-entry.active {
+  color: #37352f;
+  background: #f1f1ef;
+}
+.kb-badge {
+  font-size: 11px;
+  background: #e9e9e7;
+  color: #787774;
+  padding: 1px 6px;
+  border-radius: 8px;
+  margin-left: auto;
 }
 
 /* ── Footer ────────────────────────────────────────────────── */
