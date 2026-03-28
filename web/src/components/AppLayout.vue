@@ -220,6 +220,8 @@
     <main class="main-content">
       <router-view />
     </main>
+
+    <NotePreviewModal />
   </div>
 </template>
 
@@ -240,6 +242,7 @@ import { registerClipboardToast } from '@/utils/clipboard'
 import HoverTooltipText from './HoverTooltipText.vue'
 import IonIcon from './IonIcon.vue'
 import NoteTreeItem from './NoteTreeItem.vue'
+import NotePreviewModal from './NotePreviewModal.vue'
 
 const message = useMessage()
 registerClipboardToast((content, opts) => message.success(content, opts))

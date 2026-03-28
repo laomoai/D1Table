@@ -125,6 +125,7 @@ import type { FieldType, SelectOption, LinkValue } from '@/api/client'
 import router from '@/router'
 import { decodeNoteValue } from '@/utils/noteValue'
 import { navigateToLinkedRecord } from '@/utils/recordNavigation'
+import { openNotePreview } from '@/utils/notePreview'
 import { generateTOTP, getTOTPRemaining } from '@/utils/totp'
 import { copyText } from '@/utils/clipboard'
 import IonIcon from './IonIcon.vue'
@@ -188,6 +189,10 @@ const linkInfo = computed<LinkValue | null>(() => {
 
 function goToLinked() {
   if (!linkInfo.value || !props.linkTable) return
+  if (props.linkTable === '_notes') {
+    openNotePreview(String(linkInfo.value.id))
+    return
+  }
   navigateToLinkedRecord(router, props.linkTable, linkInfo.value.id)
 }
 

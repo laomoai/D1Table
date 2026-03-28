@@ -407,6 +407,7 @@ import IonIcon from './IonIcon.vue'
 import { decodeNoteValue, encodeNoteValue } from '@/utils/noteValue'
 import router from '@/router'
 import { navigateToLinkedRecord } from '@/utils/recordNavigation'
+import { openNotePreview } from '@/utils/notePreview'
 import { copyText } from '@/utils/clipboard'
 import { useNoteTree, type NoteTreeNode } from '@/utils/useNoteTree'
 
@@ -714,6 +715,10 @@ function goToLinkedRecord(field: FieldMeta) {
   const val = parseLinkValue(currentRow.value?.[field.column_name])
   const linkTable = getLinkTable(field)
   if (!val || !linkTable) return
+  if (linkTable === '_notes') {
+    openNotePreview(String(val.id))
+    return
+  }
   navigateToLinkedRecord(router, linkTable, val.id)
 }
 

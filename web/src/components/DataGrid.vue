@@ -184,6 +184,7 @@ import { copyText } from '@/utils/clipboard'
 import router from '@/router'
 import { buildRecordQueryParams } from '@/utils/recordQuery'
 import { getLinkedRecordPath, navigateToLinkedRecord } from '@/utils/recordNavigation'
+import { openNotePreview } from '@/utils/notePreview'
 import FilterBar, { type Filter } from './FilterBar.vue'
 import RecordForm from './RecordForm.vue'
 import FieldPanel from './FieldPanel.vue'
@@ -692,7 +693,11 @@ function typedCellRenderer(params: { value: unknown; fieldType: FieldType; selec
           if (lt) {
             span.onclick = (e) => {
               e.stopPropagation()
-              router.push(getLinkedRecordPath(lt, linked.id))
+              if (lt === '_notes') {
+                openNotePreview(String(linked.id))
+              } else {
+                router.push(getLinkedRecordPath(lt, linked.id))
+              }
             }
           }
           return span
