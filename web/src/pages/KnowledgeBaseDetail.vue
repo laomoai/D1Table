@@ -32,6 +32,7 @@
         <!-- Root note content preview (collapsible) -->
         <div v-if="rootNote.content" class="kbd-root-content-wrap">
           <div
+            ref="contentRef"
             class="kbd-root-content preview-pane"
             :class="{ collapsed: !contentExpanded }"
             v-html="rootContentHtml"
@@ -44,13 +45,26 @@
           </div>
         </div>
 
+        <!-- Search -->
+        <div class="kbd-search-wrap">
+          <span class="kbd-search-icon">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          </span>
+          <input
+            v-model="searchQuery"
+            type="text"
+            class="kbd-search-input"
+            placeholder="Search archived notes..."
+          />
+        </div>
+
         <!-- Archived children tree -->
         <div class="kbd-section">
-          <h2 class="kbd-section-title">Archived Notes <span class="kbd-section-count">{{ archivedChildren.length }}</span></h2>
-          <div v-if="archivedChildren.length === 0" class="kbd-empty-children">No archived notes</div>
+          <h2 class="kbd-section-title">Archived Notes <span class="kbd-section-count">{{ filteredRootNodes.length }}</span></h2>
+          <div v-if="filteredRootNodes.length === 0" class="kbd-empty-children">{{ searchQuery ? 'No matching notes' : 'No archived notes' }}</div>
           <div v-else class="kbd-children-list">
             <KbTreeItem
-              v-for="node in archivedRootNodes"
+              v-for="node in filteredRootNodes"
               :key="node.id"
               :node="node"
               :children-map="archivedChildrenMap"
@@ -86,7 +100,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, nextTick } from 'vue'
+import { ref, computed, watch, nextTick, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import { NSpin, useMessage } from 'naive-ui'
@@ -133,10 +147,32 @@ const archivedChildrenMap = computed(() => {
 const archivedIds = computed(() => new Set(archivedChildren.value.map(c => c.id)))
 
 const archivedRootNodes = computed(() => {
-  // Root nodes: those whose parent_id is the KB root, or whose parent is not in the archived set
   return archivedChildren.value.filter(c =>
     c.parent_id === rootId.value || !archivedIds.value.has(c.parent_id!)
   )
+})
+
+// Search
+const searchQuery = ref('')
+
+const filteredRootNodes = computed(() => {
+  if (!searchQuery.value) return archivedRootNodes.value
+  const q = searchQuery.value.toLowerCase()
+  // Find all nodes matching search, then include their ancestors up to root
+  const matchingIds = new Set<string>()
+  for (const c of archivedChildren.value) {
+    if (c.title.toLowerCase().includes(q)) {
+      matchingIds.add(c.id)
+      // Walk up to mark parent chain as visible
+      let parentId = c.parent_id
+      while (parentId && parentId !== rootId.value) {
+        matchingIds.add(parentId)
+        const parent = archivedChildren.value.find(n => n.id === parentId)
+        parentId = parent?.parent_id ?? null
+      }
+    }
+  }
+  return archivedRootNodes.value.filter(n => matchingIds.has(n.id))
 })
 
 const expandedIds = ref(new Set<string>())
@@ -159,17 +195,24 @@ function toggleExpand(id: string) {
 // Content collapse
 const contentExpanded = ref(false)
 const contentOverflows = ref(false)
+const contentRef = ref<HTMLElement | null>(null)
 
 const rootContentHtml = computed(() => {
   if (!rootNote.value?.content) return ''
   return DOMPurify.sanitize(renderMarkdown(rootNote.value.content))
 })
 
-watch(rootContentHtml, async () => {
-  await nextTick()
-  const el = document.querySelector('.kbd-root-content')
-  if (el) contentOverflows.value = el.scrollHeight > 200
-})
+function checkContentOverflow() {
+  nextTick(() => {
+    setTimeout(() => {
+      const el = contentRef.value
+      if (el) contentOverflows.value = el.scrollHeight > 200
+    }, 50)
+  })
+}
+
+watch(rootContentHtml, checkContentOverflow)
+onMounted(checkContentOverflow)
 
 function formatDate(ts: number | null): string {
   if (!ts) return ''
@@ -275,6 +318,14 @@ async function saveSettings() {
 .preview-pane :deep(pre code) { background: none; padding: 0; }
 .preview-pane :deep(a) { color: #2383e2; text-decoration: none; }
 .preview-pane :deep(a:hover) { text-decoration: underline; }
+
+/* Search */
+.kbd-search-wrap { position: relative; margin-bottom: 20px; }
+.kbd-search-icon { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: #787774; display: flex; align-items: center; pointer-events: none; }
+.kbd-search-input { width: 100%; box-sizing: border-box; padding: 8px 14px 8px 34px; background: #f7f7f5; border: 1px solid transparent; border-radius: 6px; font-size: 13px; color: #37352f; outline: none; transition: background 0.15s, border-color 0.15s, box-shadow 0.15s; }
+.kbd-search-input::placeholder { color: #9b9a97; }
+.kbd-search-input:hover { background: #efefed; }
+.kbd-search-input:focus { background: #fff; border-color: #e9e9e7; box-shadow: inset 0 0 0 1px rgba(35, 131, 226, 0.5), 0 0 0 2px rgba(35, 131, 226, 0.2); }
 
 /* Section */
 .kbd-section { margin-top: 8px; }
