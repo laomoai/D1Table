@@ -243,51 +243,68 @@ api POST "/notes/$ALICE_NOTE/restore" "$ADMIN_KEY" > /dev/null
 echo ""
 echo "── Team Management ──"
 
+# 互斥校验：已在其他 Space 的用户不能再加入
 R=$(api POST /teams/current/members "$ALICE" '{"email":"bob@test.com"}')
-check "T37 Alice can add Bob to her team" "User added" "$R"
+check "T37 Cannot add user from another space" "USER_EXISTS" "$R"
 
-R=$(npx wrangler d1 execute d1table --local --command "SELECT team_id FROM _api_keys WHERE user_id = 2" 2>&1 | grep -o '"team_id": [0-9]*' | head -1)
-check "T38 Bob's API key team_id synced" '"team_id": 1' "$R"
+# 新用户（不在 _users 中）可以加入 Space
+R=$(api POST /teams/current/members "$ALICE" '{"email":"charlie@test.com"}')
+check "T38 Alice can add new user Charlie to space" "User account created" "$R"
 
-R=$(api GET /tables "$BOB" | jq_extract "names=[t['name'] for t in json.load(sys.stdin)['data']]; print('has_a1=' + str('tbl_a1' in names))")
-check "T39 Bob sees Alice's table after joining" "has_a1=True" "$R"
+# 为 Charlie 插入 API Key（team_id=1，与 Alice 同队）
+CHARLIE="charlie_key_0000000000000000000000"
+CHARLIE_HASH=$(echo -n "$CHARLIE" | shasum -a 256 | cut -d' ' -f1)
+npx wrangler d1 execute d1table --local --command "
+INSERT OR IGNORE INTO _api_keys (key_prefix, key_hash, name, type, scope, user_id, team_id, is_active)
+VALUES ('charlie_ke', '$CHARLIE_HASH', 'Charlie Key', 'readwrite', 'all', 3, 1, 1);
+" 2>&1 > /dev/null
+
+R=$(npx wrangler d1 execute d1table --local --command "SELECT team_id FROM _users WHERE id = 3" 2>&1 | grep -o '"team_id": [0-9]*' | head -1)
+check "T39 Charlie's team_id is Alice's team" '"team_id": 1' "$R"
+
+R=$(api GET /tables "$CHARLIE" | jq_extract "names=[t['name'] for t in json.load(sys.stdin)['data']]; print('has_a1=' + str('tbl_a1' in names))")
+check "T40 Charlie sees Alice's table after joining" "has_a1=True" "$R"
 
 # Team member can edit shared data
-api POST /tables/tbl_a1/records "$BOB" '{"col1":"from bob"}' > /dev/null
+api POST /tables/tbl_a1/records "$CHARLIE" '{"col1":"from charlie"}' > /dev/null
 R=$(api GET /tables/tbl_a1/records "$ALICE" | jq_extract "d=json.load(sys.stdin); print('ok' if d['meta']['count'] >= 1 else 'empty')")
-check "T40 Bob can create records in team table" "ok" "$R"
+check "T41 Charlie can create records in team table" "ok" "$R"
 
-BOB_TEAM_NOTE=$(api POST /notes "$BOB" '{"title":"Bob Team Note"}' | jq_extract "print(json.load(sys.stdin)['data']['id'])")
-R=$(api GET "/notes/$BOB_TEAM_NOTE" "$ALICE" | jq_extract "print(json.load(sys.stdin)['data']['title'])")
-check "T41 Alice can see note created by Bob in team" "Bob Team Note" "$R"
+CHARLIE_TEAM_NOTE=$(api POST /notes "$CHARLIE" '{"title":"Charlie Team Note"}' | jq_extract "print(json.load(sys.stdin)['data']['id'])")
+R=$(api GET "/notes/$CHARLIE_TEAM_NOTE" "$ALICE" | jq_extract "print(json.load(sys.stdin)['data']['title'])")
+check "T42 Alice can see note created by Charlie in team" "Charlie Team Note" "$R"
 
-R=$(api PATCH "/notes/$BOB_TEAM_NOTE" "$ALICE" '{"title":"Edited by Alice"}')
-check "T42 Alice can edit Bob's note in same team" "success" "$R"
+R=$(api PATCH "/notes/$CHARLIE_TEAM_NOTE" "$ALICE" '{"title":"Edited by Alice"}')
+check "T43 Alice can edit Charlie's note in same team" "success" "$R"
 
 # Duplicate add
-R=$(api POST /teams/current/members "$ALICE" '{"email":"bob@test.com"}')
-check "T43 Cannot add same member twice" "ALREADY_MEMBER" "$R"
+R=$(api POST /teams/current/members "$ALICE" '{"email":"charlie@test.com"}')
+check "T44 Cannot add same member twice" "ALREADY_MEMBER" "$R"
 
 # Cannot remove self
 R=$(api DELETE /teams/current/members/1 "$ALICE")
-check "T44 Cannot remove self from team" "FORBIDDEN" "$R"
+check "T45 Cannot remove self from team" "FORBIDDEN" "$R"
 
 # Invalid email
 R=$(api POST /teams/current/members "$ALICE" '{"email":""}')
-check "T45 Empty email rejected" "INVALID_BODY" "$R"
+check "T46 Empty email rejected" "INVALID_BODY" "$R"
 
-# Remove member
-R=$(api DELETE /teams/current/members/2 "$ALICE")
-check "T46 Alice can remove Bob" "success" "$R"
+# Remove member (hard delete)
+R=$(api DELETE /teams/current/members/3 "$ALICE")
+check "T47 Alice can remove Charlie" "success" "$R"
 
-R=$(npx wrangler d1 execute d1table --local --command "SELECT team_id FROM _users WHERE id = 2" 2>&1 | grep -o '"team_id": [0-9]*' | head -1)
-check "T47 Removed Bob gets new personal team" '"team_id": 3' "$R"
+R=$(npx wrangler d1 execute d1table --local --command "SELECT COUNT(*) as cnt FROM _users WHERE id = 3" 2>&1 | grep -o '"cnt": [0-9]*' | head -1)
+check "T48 Charlie hard deleted from _users" '"cnt": 0' "$R"
 
-R=$(npx wrangler d1 execute d1table --local --command "SELECT team_id FROM _api_keys WHERE user_id = 2" 2>&1 | grep -o '"team_id": [0-9]*' | head -1)
-check "T48 Bob's API key points to new team" '"team_id": 3' "$R"
+R=$(npx wrangler d1 execute d1table --local --command "SELECT COUNT(*) as cnt FROM _api_keys WHERE user_id = 3" 2>&1 | grep -o '"cnt": [0-9]*' | head -1)
+check "T49 Charlie's API keys deleted" '"cnt": 0' "$R"
 
-R=$(api GET /tables "$BOB" | jq_extract "print([t['name'] for t in json.load(sys.stdin)['data']])")
-check "T49 Bob no longer sees Alice's tables" "[]" "$R"
+R=$(api GET /tables "$CHARLIE")
+check "T50 Charlie's key no longer works" "UNAUTHORIZED" "$R"
+
+# Verify resources remain in space with owner_id nullified
+R=$(npx wrangler d1 execute d1table --local --command "SELECT COUNT(*) as cnt FROM _notes WHERE owner_id IS NULL AND team_id = 1 AND title = 'Edited by Alice'" 2>&1 | grep -o '"cnt": [0-9]*' | head -1)
+check "T51 Charlie's note still exists with owner_id NULL" '"cnt": 1' "$R"
 
 # ── Results ───────────────────────────────────────────────
 

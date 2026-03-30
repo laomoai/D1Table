@@ -16,6 +16,7 @@ import dashboardsRouter from './routes/dashboards'
 import preferencesRouter from './routes/preferences'
 import notesRouter from './routes/notes'
 import teamsRouter from './routes/teams'
+import administrationRouter from './routes/administration'
 
 const app = new Hono<{ Bindings: Env; Variables: AuthVariables }>()
 
@@ -71,6 +72,7 @@ app.route('/api/tables', tablesRouter)
 app.route('/api/tables', recordsRouter)
 app.route('/api/tables', fieldsRouter)
 app.route('/api/admin', adminRouter)
+app.route('/api/admin', administrationRouter)
 app.route('/api/groups', groupsRouter)
 app.route('/api/trash', trashRouter)
 app.route('/api/upload', uploadRouter)

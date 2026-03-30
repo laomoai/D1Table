@@ -295,6 +295,7 @@ export interface TeamMember {
   picture: string
   role: 'admin' | 'user'
   status: 'active' | 'disabled'
+  last_login: number | null
 }
 
 export interface TeamDetail {
@@ -447,4 +448,43 @@ export const teamApi = {
     http.post<{ data: { id: number; email: string; message: string } }>('/teams/current/members', { email }).then(r => r.data.data),
   removeMember: (userId: number) =>
     http.delete(`/teams/current/members/${userId}`),
+}
+
+// ── Administration (Space 管理) ──────────────────────────────
+
+export interface SpaceSummary {
+  id: number
+  name: string
+  created_by: number | null
+  created_at: number
+  owner_email: string | null
+  member_count: number
+  table_count: number
+  note_count: number
+}
+
+export interface SpaceDetail {
+  id: number
+  name: string
+  created_by: number | null
+  created_at: number
+  owner_email: string | null
+  members: TeamMember[]
+}
+
+export const administrationApi = {
+  getSpaces: () =>
+    http.get<{ data: SpaceSummary[] }>('/admin/spaces').then(r => r.data.data),
+  createSpace: (data: { name: string; owner_email: string }) =>
+    http.post<{ data: { id: number; name: string; owner_email: string; owner_id: number } }>('/admin/spaces', data).then(r => r.data.data),
+  getSpace: (id: number) =>
+    http.get<{ data: SpaceDetail }>(`/admin/spaces/${id}`).then(r => r.data.data),
+  renameSpace: (id: number, name: string) =>
+    http.patch<{ data: { success: boolean } }>(`/admin/spaces/${id}`, { name }).then(r => r.data.data),
+  addMember: (spaceId: number, email: string) =>
+    http.post<{ data: { id: number; email: string } }>(`/admin/spaces/${spaceId}/members`, { email }).then(r => r.data.data),
+  removeMember: (spaceId: number, userId: number) =>
+    http.delete(`/admin/spaces/${spaceId}/members/${userId}`),
+  deleteSpace: (id: number, confirmName: string) =>
+    http.post(`/admin/spaces/${id}/delete`, { confirm_name: confirmName }),
 }

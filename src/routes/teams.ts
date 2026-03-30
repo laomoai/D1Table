@@ -1,6 +1,22 @@
 import { Hono } from 'hono'
+import type { Context } from 'hono'
 import type { AuthVariables, Env } from '../types'
 import { requireWriteMiddleware } from '../middleware/auth'
+import { hardDeleteMember, isValidEmail } from '../utils/members'
+
+type AppContext = Context<{ Bindings: Env; Variables: AuthVariables }>
+
+/** Verify current user is the Space owner (created_by). Returns error response or null. */
+async function requireOwner(c: AppContext, teamId: number): Promise<Response | null> {
+  const userId = c.get('userId')
+  const team = await c.env.DB.prepare(
+    `SELECT created_by FROM _teams WHERE id = ?`
+  ).bind(teamId).first<{ created_by: number | null }>()
+  if (!team || team.created_by !== userId) {
+    return c.json({ error: { code: 'FORBIDDEN', message: 'Only the Space owner can perform this action' } }, 403)
+  }
+  return null
+}
 
 const teams = new Hono<{ Bindings: Env; Variables: AuthVariables }>()
 
@@ -18,7 +34,7 @@ teams.get('/current', async (c) => {
     c.env.DB.prepare(`SELECT id, name, created_by, created_at FROM _teams WHERE id = ?`)
       .bind(teamId).first<{ id: number; name: string; created_by: number | null; created_at: number }>(),
     c.env.DB.prepare(
-      `SELECT u.id, u.email, u.name, u.picture, u.role, u.status
+      `SELECT u.id, u.email, u.name, u.picture, u.role, u.status, u.last_login
        FROM _users u WHERE u.team_id = ? ORDER BY u.id ASC`
     ).bind(teamId).all<{ id: number; email: string; name: string; picture: string; role: string; status: string }>(),
   ])
@@ -45,6 +61,9 @@ teams.patch('/current', requireWriteMiddleware, async (c) => {
     return c.json({ error: { code: 'NO_TEAM', message: 'No team associated' } }, 400)
   }
 
+  const ownerErr = await requireOwner(c, teamId)
+  if (ownerErr) return ownerErr
+
   const body = await c.req.json<{ name?: string }>()
   if (!body.name?.trim()) {
     return c.json({ error: { code: 'INVALID_BODY', message: 'Team name cannot be empty' } }, 400)
@@ -66,12 +85,14 @@ teams.post('/current/members', requireWriteMiddleware, async (c) => {
     return c.json({ error: { code: 'NO_TEAM', message: 'No team associated' } }, 400)
   }
 
-  const body = await c.req.json<{ email: string }>()
-  if (!body.email?.trim()) {
-    return c.json({ error: { code: 'INVALID_BODY', message: 'Email is required' } }, 400)
-  }
+  const ownerErr = await requireOwner(c, teamId)
+  if (ownerErr) return ownerErr
 
-  const email = body.email.trim().toLowerCase()
+  const body = await c.req.json<{ email: string }>()
+  const email = body.email?.trim().toLowerCase()
+  if (!email || !isValidEmail(email)) {
+    return c.json({ error: { code: 'INVALID_BODY', message: 'Valid email is required' } }, 400)
+  }
 
   // 查找现有用户
   const existingUser = await c.env.DB.prepare(
@@ -80,17 +101,9 @@ teams.post('/current/members', requireWriteMiddleware, async (c) => {
 
   if (existingUser) {
     if (existingUser.team_id === teamId) {
-      return c.json({ error: { code: 'ALREADY_MEMBER', message: 'User is already a member of this team' } }, 409)
+      return c.json({ error: { code: 'ALREADY_MEMBER', message: 'User is already a member of this space' } }, 409)
     }
-    // 更新用户的 team_id，同步更新其 API key 的 team_id
-    await c.env.DB.batch([
-      c.env.DB.prepare(`UPDATE _users SET team_id = ? WHERE id = ?`)
-        .bind(teamId, existingUser.id),
-      c.env.DB.prepare(`UPDATE _api_keys SET team_id = ? WHERE user_id = ?`)
-        .bind(teamId, existingUser.id),
-    ])
-
-    return c.json({ data: { id: existingUser.id, email, message: 'User added to team' } })
+    return c.json({ error: { code: 'USER_EXISTS', message: `User "${email}" already belongs to another space` } }, 409)
   }
 
   // 用户不存在，预创建账号
@@ -98,7 +111,7 @@ teams.post('/current/members', requireWriteMiddleware, async (c) => {
     `INSERT INTO _users (email, name, role, status, team_id) VALUES (?, ?, 'user', 'active', ?)`
   ).bind(email, email, teamId).run()
 
-  return c.json({ data: { id: result.meta.last_row_id, email, message: 'User account created and added to team' } }, 201)
+  return c.json({ data: { id: result.meta.last_row_id, email, message: 'User account created and added to space' } }, 201)
 })
 
 /**
@@ -114,9 +127,20 @@ teams.delete('/current/members/:userId', requireWriteMiddleware, async (c) => {
     return c.json({ error: { code: 'NO_TEAM', message: 'No team associated' } }, 400)
   }
 
-  // 不能移除自己
+  const ownerErr = await requireOwner(c, teamId)
+  if (ownerErr) return ownerErr
+
+  // 不能移除自己（即 owner 不可被移除）
   if (targetId === currentUserId) {
     return c.json({ error: { code: 'FORBIDDEN', message: 'Cannot remove yourself from the team' } }, 400)
+  }
+
+  // owner 不可被移除（防止通过 API 直接调用绕过前端）
+  const team = await c.env.DB.prepare(
+    `SELECT created_by FROM _teams WHERE id = ?`
+  ).bind(teamId).first<{ created_by: number | null }>()
+  if (team && team.created_by === targetId) {
+    return c.json({ error: { code: 'FORBIDDEN', message: 'Cannot remove the Space owner' } }, 400)
   }
 
   // 验证目标用户属于当前团队
@@ -128,18 +152,7 @@ teams.delete('/current/members/:userId', requireWriteMiddleware, async (c) => {
     return c.json({ error: { code: 'NOT_FOUND', message: 'User not found in this team' } }, 404)
   }
 
-  // 为被移除的用户创建个人团队
-  const teamResult = await c.env.DB.prepare(
-    `INSERT INTO _teams (name, created_by) VALUES (?, ?)`
-  ).bind('My Team', targetId).run()
-
-  // 将用户和其 API key 移到个人团队
-  await c.env.DB.batch([
-    c.env.DB.prepare(`UPDATE _users SET team_id = ? WHERE id = ?`)
-      .bind(teamResult.meta.last_row_id, targetId),
-    c.env.DB.prepare(`UPDATE _api_keys SET team_id = ? WHERE user_id = ?`)
-      .bind(teamResult.meta.last_row_id, targetId),
-  ])
+  await hardDeleteMember(c.env.DB, targetId)
 
   return c.json({ data: { success: true } })
 })

@@ -234,63 +234,6 @@
         </div>
       </n-tab-pane>
 
-      <!-- ─── Tab: Users (admin only) ──────────────────────────── -->
-      <n-tab-pane v-if="currentUserRole === 'admin'" name="users" tab="Users">
-        <div class="tab-content">
-          <div class="hint" style="margin-bottom: 16px;">
-            Manage who can access this application. Only admins can manage users.
-          </div>
-
-          <!-- Add user form -->
-          <div style="display: flex; gap: 8px; margin-bottom: 16px;">
-            <n-input v-model:value="newUserEmail" size="small" placeholder="Email address" style="width: 260px;" @keyup.enter="handleAddUser" />
-            <n-radio-group v-model:value="newUserRole" size="small">
-              <n-radio value="user">User</n-radio>
-              <n-radio value="admin">Admin</n-radio>
-            </n-radio-group>
-            <n-button size="small" type="primary" :loading="addingUser" @click="handleAddUser">Add</n-button>
-          </div>
-
-          <n-spin :show="usersLoading">
-            <div v-if="userList?.length" class="user-list">
-              <div v-for="u in userList" :key="u.id" class="user-row">
-                <img v-if="u.picture" :src="u.picture" class="user-avatar" referrerpolicy="no-referrer" />
-                <div v-else class="user-avatar-placeholder">{{ (u.name || u.email)[0] }}</div>
-                <div class="user-info">
-                  <div class="user-name">{{ u.name || u.email }}</div>
-                  <div class="user-email">{{ u.email }}</div>
-                </div>
-                <n-tag :type="u.role === 'admin' ? 'warning' : 'info'" size="small">{{ u.role }}</n-tag>
-                <n-tag :type="u.status === 'active' ? 'success' : 'error'" size="small">{{ u.status }}</n-tag>
-                <n-tag v-if="u.team_name" size="small" :bordered="false">{{ u.team_name }}</n-tag>
-                <div class="user-actions">
-                  <n-button
-                    v-if="u.status === 'active' && u.id !== currentUserId"
-                    size="tiny"
-                    quaternary
-                    @click="handleToggleUser(u.id, 'disabled')"
-                  >Disable</n-button>
-                  <n-button
-                    v-if="u.status === 'disabled'"
-                    size="tiny"
-                    type="primary"
-                    quaternary
-                    @click="handleToggleUser(u.id, 'active')"
-                  >Enable</n-button>
-                  <n-button
-                    v-if="u.id !== currentUserId"
-                    size="tiny"
-                    quaternary
-                    @click="handleToggleRole(u)"
-                  >{{ u.role === 'admin' ? 'Set User' : 'Set Admin' }}</n-button>
-                </div>
-              </div>
-            </div>
-            <div v-else class="empty-hint">No users yet</div>
-          </n-spin>
-        </div>
-      </n-tab-pane>
-
       <!-- ─── Tab: Team ──────────────────────────────────────── -->
       <n-tab-pane name="team" tab="Team">
         <div class="tab-content">
@@ -300,9 +243,9 @@
 
           <n-spin :show="teamLoading">
             <template v-if="teamData">
-              <!-- Team name -->
-              <div class="section" style="margin-bottom: 20px;">
-                <div class="section-title" style="font-size: 13px; font-weight: 600; color: #555; margin-bottom: 8px;">Team Name</div>
+              <!-- Team name (owner only) -->
+              <div v-if="isOwner" class="section" style="margin-bottom: 20px;">
+                <div class="section-title" style="font-size: 13px; font-weight: 600; color: #555; margin-bottom: 8px;">Space Name</div>
                 <div style="display: flex; gap: 8px; align-items: center;">
                   <n-input
                     v-model:value="editTeamName"
@@ -319,9 +262,13 @@
                   >Rename</n-button>
                 </div>
               </div>
+              <div v-else class="section" style="margin-bottom: 20px;">
+                <div class="section-title" style="font-size: 13px; font-weight: 600; color: #555; margin-bottom: 8px;">Space Name</div>
+                <div style="font-size: 14px; color: #1a1d2e;">{{ teamData.name }}</div>
+              </div>
 
-              <!-- Add member -->
-              <div class="section" style="margin-bottom: 20px;">
+              <!-- Add member (owner only) -->
+              <div v-if="isOwner" class="section" style="margin-bottom: 20px;">
                 <div class="section-title" style="font-size: 13px; font-weight: 600; color: #555; margin-bottom: 8px;">Add Member</div>
                 <div style="display: flex; gap: 8px;">
                   <n-input v-model:value="newMemberEmail" size="small" placeholder="Email address" style="width: 260px;" @keyup.enter="handleAddMember" />
@@ -340,10 +287,10 @@
                       <div class="user-name">{{ m.name || m.email }}</div>
                       <div class="user-email">{{ m.email }}</div>
                     </div>
+                    <span class="user-last-login">{{ formatLastLogin(m.last_login) }}</span>
                     <n-tag v-if="m.id === teamData.created_by" size="small" type="warning">Owner</n-tag>
-                    <div class="user-actions">
+                    <div v-if="isOwner && m.id !== teamData.created_by" class="user-actions">
                       <n-button
-                        v-if="m.id !== currentUserId"
                         size="tiny"
                         quaternary
                         type="error"
@@ -509,7 +456,7 @@ import {
   NSpin, NModal, NAlert, NRadioGroup, NRadio, NCheckboxGroup, NCheckbox,
   NSlider, NPagination, useMessage, useDialog,
 } from 'naive-ui'
-import { api, notesApi, userApi, teamApi, getCurrentUser, type ApiKeyInfo, type TableMeta, type TrashItem, type UserInfo, type TeamDetail, type NoteListItem } from '@/api/client'
+import { api, notesApi, teamApi, getCurrentUser, type ApiKeyInfo, type TableMeta, type TrashItem, type TeamDetail, type NoteListItem } from '@/api/client'
 import ExportSchemaModal from '@/components/ExportSchemaModal.vue'
 import HoverTooltipText from '@/components/HoverTooltipText.vue'
 import IonIcon from '@/components/IonIcon.vue'
@@ -576,6 +523,10 @@ async function handleCreateKey() {
   } finally {
     creating.value = false
   }
+}
+
+function formatLastLogin(ts: number | null): string {
+  return ts ? formatRelativeTime(ts) : 'Never'
 }
 
 function formatRelativeTime(ts: number): string {
@@ -1011,7 +962,7 @@ async function handleAddMember() {
 async function handleRemoveMember(userId: number, name: string) {
   dialog.warning({
     title: 'Remove Member',
-    content: `Remove "${name}" from the team?`,
+    content: `Remove "${name}" from the team? This will permanently delete the user account.`,
     positiveText: 'Remove',
     negativeText: 'Cancel',
     onPositiveClick: async () => {
@@ -1029,58 +980,11 @@ async function handleRemoveMember(userId: number, name: string) {
   })
 }
 
-// ── User Management ──────────────────────────────────────────
-const newUserEmail = ref('')
-const newUserRole = ref<'admin' | 'user'>('user')
-const addingUser = ref(false)
-
-const { data: userList, isLoading: usersLoading } = useQuery({
-  queryKey: ['admin-users'],
-  queryFn: userApi.getUsers,
-  retry: false,
-  enabled: () => currentUserRole.value === 'admin',
+// ── Owner check ─────────────────────────────────────────────
+const isOwner = computed(() => {
+  if (!teamData.value || !currentUserId.value) return false
+  return teamData.value.created_by === currentUserId.value
 })
-
-async function handleAddUser() {
-  const email = newUserEmail.value.trim()
-  if (!email) {
-    message.warning('Please enter an email')
-    return
-  }
-  addingUser.value = true
-  try {
-    await userApi.addUser({ email, role: newUserRole.value })
-    message.success(`User "${email}" added`)
-    newUserEmail.value = ''
-    newUserRole.value = 'user'
-    queryClient.invalidateQueries({ queryKey: ['admin-users'] })
-  } catch (err) {
-    message.error((err as Error).message)
-  } finally {
-    addingUser.value = false
-  }
-}
-
-async function handleToggleUser(id: number, status: 'active' | 'disabled') {
-  try {
-    await userApi.updateUser(id, { status })
-    message.success(status === 'disabled' ? 'User disabled' : 'User enabled')
-    queryClient.invalidateQueries({ queryKey: ['admin-users'] })
-  } catch (err) {
-    message.error((err as Error).message)
-  }
-}
-
-async function handleToggleRole(u: UserInfo) {
-  const newRole = u.role === 'admin' ? 'user' : 'admin'
-  try {
-    await userApi.updateUser(u.id, { role: newRole })
-    message.success(`Role updated to ${newRole}`)
-    queryClient.invalidateQueries({ queryKey: ['admin-users'] })
-  } catch (err) {
-    message.error((err as Error).message)
-  }
-}
 </script>
 
 <style scoped>
@@ -1480,5 +1384,6 @@ async function handleToggleRole(u: UserInfo) {
 .user-name { font-size: 14px; font-weight: 500; color: #1a1d2e; }
 .user-email { font-size: 12px; color: #8b92a5; }
 .user-table-count { font-size: 12px; color: #787774; white-space: nowrap; }
+.user-last-login { font-size: 11px; color: #aab0c0; flex-shrink: 0; }
 .user-actions { display: flex; gap: 4px; flex-shrink: 0; }
 </style>

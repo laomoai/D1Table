@@ -199,6 +199,10 @@
               <n-icon :component="SettingsIcon" size="16" />
               <span>Settings</span>
             </div>
+            <div v-if="currentUser?.role === 'admin'" class="user-menu-item" @click="handleMenuItem('administration')">
+              <n-icon :component="AdminIcon" size="16" />
+              <span>Administration</span>
+            </div>
             <div class="user-menu-divider" />
             <div class="user-menu-item" @click="handleMenuItem('logout')">
               <n-icon :component="LogoutIcon" size="16" />
@@ -248,6 +252,7 @@ import {
   SettingsOutline as SettingsIcon,
   LogOutOutline as LogoutIcon,
   DocumentTextOutline as NotesIcon,
+  ShieldCheckmarkOutline as AdminIcon,
 } from '@vicons/ionicons5'
 import { api, notesApi, http, type TableMeta, type NoteListItem } from '@/api/client'
 import { getCachedUser, resetAuthState } from '@/router'
@@ -788,6 +793,7 @@ const showUserMenu = ref(false)
 function handleMenuItem(key: string) {
   showUserMenu.value = false
   if (key === 'settings') router.push('/settings')
+  if (key === 'administration') router.push('/administration')
   if (key === 'logout') logout()
 }
 

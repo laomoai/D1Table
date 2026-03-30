@@ -100,14 +100,9 @@ auth.get('/callback', async (c) => {
       `UPDATE _users SET last_login = unixepoch(), name = ?, picture = ? WHERE id = ?`
     ).bind(userInfo.name, userInfo.picture, existingUser.id).run()
 
-    // 如果用户没有团队，自动创建个人团队
+    // 用户没有 Space，拒绝登录
     if (!existingUser.team_id) {
-      const teamResult = await c.env.DB.prepare(
-        `INSERT INTO _teams (name, created_by) VALUES (?, ?)`
-      ).bind(`${userInfo.name}'s Team`, existingUser.id).run()
-      await c.env.DB.prepare(
-        `UPDATE _users SET team_id = ? WHERE id = ?`
-      ).bind(teamResult.meta.last_row_id, existingUser.id).run()
+      return c.redirect('/login?error=no_space')
     }
   } else {
     // 用户不存在，检查是否为引导模式（_users 表空）

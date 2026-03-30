@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import type { AuthVariables, Env } from '../types'
 import { requireWriteMiddleware, requireAdminMiddleware } from '../middleware/auth'
+import { isValidEmail } from '../utils/members'
 import { generateApiKey, sha256 } from '../utils/crypto'
 
 const admin = new Hono<{ Bindings: Env; Variables: AuthVariables }>()
@@ -441,11 +442,10 @@ admin.get('/users', requireAdminMiddleware, async (c) => {
 admin.post('/users', requireAdminMiddleware, async (c) => {
   const body = await c.req.json<{ email: string; name?: string; role?: 'admin' | 'user' }>()
 
-  if (!body.email?.trim()) {
-    return c.json({ error: { code: 'INVALID_BODY', message: 'Email is required' } }, 400)
+  const email = body.email?.trim().toLowerCase()
+  if (!email || !isValidEmail(email)) {
+    return c.json({ error: { code: 'INVALID_BODY', message: 'Valid email is required' } }, 400)
   }
-
-  const email = body.email.trim().toLowerCase()
   const name = body.name?.trim() || email
   const role = body.role === 'admin' ? 'admin' : 'user'
 
